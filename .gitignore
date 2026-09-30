@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# Node
+node_modules/
+dist/
+
+# 모델 가중치 · 학습 결과
+*.pt
+*.onnx
+runs/
+weights/
+
+# 이미지 데이터 (개인정보 포함 가능 — 절대 커밋 금지)
+data/raw/
+data/real/
+data/synthetic/
+*.jpg
+*.jpeg
+*.png
+*.heic
+!docs/**/*.png
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
