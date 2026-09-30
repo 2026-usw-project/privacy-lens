@@ -1,0 +1,9 @@
+parcel_label
+name_tag
+student_id
+payment_card
+screen
+license_plate
+receipt
+document
+qr_barcode
