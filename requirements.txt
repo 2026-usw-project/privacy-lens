@@ -1,13 +1,24 @@
-# 스키마 · 서버
-pydantic>=2.6
-fastapi>=0.110
-uvicorn[standard]>=0.29
-python-multipart>=0.0.9
+# 핵심
 pillow>=10.0
-numpy>=1.26
-# 데모 파이프라인
-easyocr>=1.7          # torch 를 함께 설치합니다 (CPU 동작 가능, GPU 있으면 PL_GPU=1)
-opencv-contrib-python-headless>=4.9   # WeChat QR 디코더 포함
-piexif>=1.1
-qrcode>=7.4           # 합성 데이터 생성기용
+opencv-python-headless>=4.8
+pytesseract>=0.3.10
+# iPhone HEIC 사진. 없으면 JPEG/PNG 만 받는다
+pillow-heif>=0.16
+
+# 서버
+fastapi>=0.110
+uvicorn>=0.27
+python-multipart>=0.0.9
+
+# 샘플 생성
+qrcode>=7.4
+
+# 테스트
 pytest>=8.0
+httpx>=0.27
+
+# 선택: 한국어 OCR 교체 (권장)
+#   pip install paddleocr "paddlepaddle<3.3"
+#   paddlepaddle 3.3.x 는 CPU(oneDNN) 추론이 NotImplementedError
+#   (ConvertPirAttribute2RuntimeAttribute) 로 죽는다. 3.2.2 에서 확인함.
+#   PL_OCR=paddleocr python3 server.py
