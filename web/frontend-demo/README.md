@@ -67,7 +67,7 @@ Codex 내장 브라우저에서 로컬 파일 열기가 제한되면 위 로컬 
 ## 개인정보와 파일 처리
 
 - 기본 데모에서는 메모리에서만 처리하며 사진을 외부로 보내지 않습니다.
-- localStorage·IndexedDB·추적 코드·외부 글꼴·외부 이미지 요청을 사용하지 않습니다.
+- localStorage·IndexedDB·추적 코드·외부 글꼴·외부 이미지 요청을 사용하지 않습니다. 글꼴은 `dist/fonts/`에서 자체 제공합니다.
 - 서버 모드에서는 분석 및 최종 저장 시, 선택한 서버에 방향 보정·PNG 변환된 사진을 보냅니다.
 - 원본 파일을 수정하지 않습니다. 새 PNG를 만듭니다.
 - JPEG EXIF의 GPS·기기·촬영 시각 **태그 존재 여부**를 검사합니다.
@@ -92,7 +92,8 @@ npm 없이도 `node scripts/check.mjs`, `node scripts/check-contract.mjs`,
 | 파일 | 역할 |
 |---|---|
 | dist/index.html | 화면과 대화상자 |
-| dist/styles.css, workspace.css | 디자인·반응형·편집 화면 |
+| dist/styles.css | 디자인 토큰·반응형·편집 화면 (한 파일, `:root` 토큰 기준) |
+| dist/fonts/ | Pretendard 한글 서브셋 4종(OFL, `LICENSE.txt`) · 외부 요청 없이 자체 제공 |
 | dist/app.js | 업로드, 샘플, 편집, 메타데이터, 렌더링 |
 | dist/core.js | 좌표 변환, 결과 검증, 전송 데이터 |
 | dist/api.js | 선택적 서버 통신 어댑터 |
