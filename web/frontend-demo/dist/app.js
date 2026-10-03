@@ -17,7 +17,7 @@
   let dialogReturnFocus = null;
   const fixtures = new Map();
   const Core=PrivacyLensCore;
-  Object.assign(state,{connection:'demo',endpoint:'',analysisStatus:'idle',analysisId:null,scenario:'normal',zoom:1,guided:false,demoProgress:{},issues:[],requestController:null,requestSerial:0,saving:false,saveError:''});
+  Object.assign(state,{connection:'demo',endpoint:'',analysisStatus:'idle',analysisId:null,scenario:'normal',zoom:1,guided:false,demoProgress:{},issues:[],requestController:null,requestSerial:0,saving:false,saveError:'',editing:null});
 
   function notify(message, error = false) {
     clearTimeout(state.toastTimer);
@@ -106,7 +106,7 @@
     const number = state.nextId++;
     const region = normalizeRegion({ id: 'custom-' + number, x: rect.x, y: rect.y, w: rect.w, h: rect.h, label: '직접 지정한 영역 ' + number, reason: '직접 선택한 정보예요. 크기와 위치를 조절해 충분히 가려 주세요.', text: '수동 지정', kind: 'manual', type: 'CUSTOM', ocrStatus: 'ok', enabled: true });
     state.regions.push(region);state.demoProgress.added=true;
-    state.focused = region.id;
+    state.focused = state.editing = region.id;
     state.drawing = false;
     invalidate();
     syncDrawing();
@@ -352,7 +352,7 @@
     state.regions.filter(r=>r.enabled).forEach(r=>{
       const {x,y,width:w,height:h}=Core.toPixels(r,state.width,state.height);
       if(w<=0 || h<=0) return;
-      if(state.style==='solid') { c.fillStyle='#223a2d';c.fillRect(x,y,w,h);return; }
+      if(state.style==='solid') { c.fillStyle='#1f1d1a';c.fillRect(x,y,w,h);return; }
       if(state.style==='blur' && 'filter' in c) {
         c.save();c.beginPath();c.rect(x,y,w,h);c.clip();
         c.filter='blur('+Math.max(12,Math.round(Math.min(state.width,state.height)*(.015+state.strength*.00045)))+'px)';
@@ -379,7 +379,7 @@
         ctx.save();ctx.beginPath();ctx.rect(0,0,split,state.height);ctx.clip();ctx.drawImage(state.source,0,0,state.width,state.height);ctx.restore();
         ctx.fillStyle='#fff';ctx.fillRect(split-1.5,0,3,state.height);
         ctx.beginPath();ctx.arc(split,state.height/2,Math.max(10,state.width*.018),0,Math.PI*2);ctx.fill();
-        const s=Math.max(4,state.width*.004);ctx.strokeStyle='#164c3b';ctx.lineWidth=Math.max(2,state.width*.0012);
+        const s=Math.max(4,state.width*.004);ctx.strokeStyle='#ef5a1c';ctx.lineWidth=Math.max(2,state.width*.0012);
         ctx.beginPath();ctx.moveTo(split-s,state.height/2-s);ctx.lineTo(split-s,state.height/2+s);ctx.moveTo(split+s,state.height/2-s);ctx.lineTo(split+s,state.height/2+s);ctx.stroke();
       }
     }
@@ -398,7 +398,7 @@
       box.setAttribute('aria-label',r.label+' 영역. 방향키로 이동, Alt와 방향키로 크기 조절');
       box.title=r.label+' · 끌어서 이동, 모서리를 끌어 크기 조절';
       box.style.left=(r.x*100)+'%';box.style.top=(r.y*100)+'%';box.style.width=(r.w*100)+'%';box.style.height=(r.h*100)+'%';
-      const label=document.createElement('span');label.textContent=String(i+1).padStart(2,'0')+' '+r.label;box.append(label);
+      const label=document.createElement('span'),num=document.createElement('b'),name=document.createElement('span');num.textContent=String(i+1).padStart(2,'0');name.className='name';name.textContent=r.label;label.append(num,name);box.append(label);
       const handle=document.createElement('i');handle.className='resize-handle';handle.dataset.resize='true';box.append(handle);
       layer.append(box);
     });
@@ -419,10 +419,10 @@
       list.innerHTML='<div class="empty-regions">'+icon('scan')+'<p>'+(state.analysisStatus==='empty'?'탐지된 영역이 없어요.<br>안전하다는 뜻은 아니에요. 사진을 확인하고<br>놓친 부분은 직접 추가해 주세요.':'현재 지정한 영역이 없어요.<br>‘영역 추가’로 가릴 부분을 선택해 주세요.')+'</p></div>';return;
     }
     list.innerHTML=state.regions.map((r,index)=>{
-      const detail=state.focused===r.id,title=escapeHTML(r.label),px=Core.toPixels(r,state.width,state.height);
-      return '<div class="region-item'+(detail?' selected-detail':'')+'" data-region="'+escapeHTML(r.id)+'">'+
-        '<div class="region-item-top"><input type="checkbox" data-action="toggle" '+(r.enabled?'checked ':'')+'aria-label="'+title+' 가리기"><button class="region-item-name" data-action="focus" aria-expanded="'+detail+'"><span class="row-number">'+String(index+1).padStart(2,'0')+'</span>'+title+'</button><span class="risk-tag'+(r.kind==='manual'?' manual':'')+'">'+(r.ocrStatus==='failed'?'판독 실패':r.kind==='manual'?'직접 추가':Core.TYPES[r.type]||'문서')+'</span></div>'+
-        '<p class="region-item-description">'+escapeHTML(r.reason)+'</p><div class="region-item-meta"><code>'+escapeHTML(r.text)+'</code><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></div>'+
+      const focused=state.focused===r.id,detail=state.editing===r.id,title=escapeHTML(r.label),px=Core.toPixels(r,state.width,state.height);
+      return '<div class="region-item'+(focused?' selected-detail':'')+(detail?' editing':'')+'" data-region="'+escapeHTML(r.id)+'">'+
+        '<div class="region-item-top"><input type="checkbox" data-action="toggle" '+(r.enabled?'checked ':'')+'aria-label="'+title+' 가리기"><button class="region-item-name" data-action="focus" aria-pressed="'+focused+'"><span class="row-number">'+String(index+1).padStart(2,'0')+'</span>'+title+'</button><span class="risk-tag'+(r.kind==='manual'?' manual':'')+'">'+(r.ocrStatus==='failed'?'판독 실패':r.kind==='manual'?'직접 추가':Core.TYPES[r.type]||'문서')+'</span></div>'+
+        '<p class="region-item-description">'+escapeHTML(r.reason)+'</p><div class="region-item-meta"><code>'+escapeHTML(r.text)+'</code><span class="region-actions"><button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'유형 · 좌표 수정')+'</button><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span></div>'+
         (detail?'<div class="region-detail"><label class="type-label">개인정보 유형<select data-region-type="true" aria-label="'+title+' 개인정보 유형">'+Object.entries(Core.TYPES).map(([key,label])=>'<option value="'+key+'" '+(r.type===key?'selected':'')+'>'+label+'</option>').join('')+'</select></label><div class="coordinate-title">원본 좌표 <span>'+state.width+' × '+state.height+' px</span></div><div class="coordinate-editor" aria-label="원본 픽셀 좌표">'+[['x','왼쪽',px.x],['y','위쪽',px.y],['w','너비',px.width],['h','높이',px.height]].map(([key,label,value])=>'<label>'+label+'<input type="number" min="'+(['w','h'].includes(key)?1:0)+'" max="'+(['x','w'].includes(key)?state.width:state.height)+'" step="1" value="'+value+'" data-coordinate="'+key+'" aria-label="'+title+' '+label+' 픽셀">px</label>').join('')+'</div></div>':'')+'</div>';
     }).join('');
     if(focusId) {
@@ -436,8 +436,8 @@
     const count=state.regions.length,selected=state.regions.filter(r=>r.enabled).length;
     $('#resultCount').textContent=count;$('#selectedCount').textContent=selected;
     $('#resultTitle').textContent=state.analysisStatus==='partial'?'일부 정보를 확인해 주세요':state.analysisStatus==='empty'?'탐지된 영역이 없어요':state.analysisStatus==='manual'?'직접 가릴 정보를 선택해요':'확인이 필요한 정보';
-    $('#reviewKicker').textContent=state.sample?'SAMPLE RESULTS':state.analysisStatus==='manual'?'MANUAL EDIT':'ANALYSIS RESULTS';
-    $('#reviewSubtitle').textContent=state.analysisStatus==='manual'?'직접 추가한 영역만 가려집니다. 사진 전체를 확인해 주세요.':state.sample?'샘플 시뮬레이션 결과예요. 번호를 누르면 사진의 같은 박스를 확인할 수 있어요.':'팀 서버의 분석 결과예요. 놓치거나 잘못 분류한 정보가 있다면 수정해 주세요.';
+    $('#reviewKicker').textContent=state.sample?'SAMPLE':state.analysisStatus==='manual'?'MANUAL':'SERVER';
+    $('#reviewSubtitle').textContent=state.analysisStatus==='manual'?'직접 추가한 영역만 가려집니다. 사진 전체를 확인해 주세요.':state.sample?'샘플 시뮬레이션 결과예요. 번호로 사진 속 박스를 찾아요.':'팀 서버의 분석 결과예요. 놓치거나 잘못 분류한 정보가 있다면 수정해 주세요.';
     $('#riskSummary').classList.toggle('safe',count>0&&selected===count);
     $('#riskSummaryText').textContent=count===0?'탐지 결과가 없어도 개인정보가 없다는 뜻은 아니에요.':selected===count?selected+'개 영역을 가리도록 선택했어요.':(count-selected)+'개 영역이 가림에서 제외되어 있어요.';
     $('#selectAll').textContent=count>0&&selected===count?'전체 해제':'전체 선택';$('#selectAll').disabled=count===0||state.saving;
@@ -598,7 +598,6 @@
     $('#privacyMode').textContent=server?'팀 서버 모드':'로컬 처리 데모';
     $('#networkLabel').textContent=server&&!state.sample?'팀 서버 전송 모드':'서버 전송 없음';
     $('#footerPrivacy').textContent=server?'샘플은 로컬 처리 · 내 사진은 선택한 서버로 전송':'원본 전송 없이, 내 기기에서 편집해요.';
-    $('.local-badge').classList.toggle('hidden',server);
   }
   function startManual() {
     stopScan();cancelRequests();state.phase='review';state.analysisStatus='manual';state.issues=[];state.mode='original';
@@ -693,7 +692,7 @@
     const steps=[['inspected','결과와 근거 확인'],['deleted','SAMPLE 오탐 삭제'],['added','누락 이메일 추가'],['preview','전후 비교 · 미리보기'],['downloaded','PNG 다운로드']];
     const current=steps.find(([key])=>!p[key]);
     $('#demoStepLabel').textContent=current?current[1]:'시연 완료! 다시 시작해 반복 연습할 수 있어요.';
-    $('#demoChecklist').innerHTML=steps.map(([key,label],i)=>'<li class="'+(p[key]?'done':current?.[0]===key?'current':'')+'"><span>'+(p[key]?'✓':i+1)+'</span>'+label+'</li>').join('');
+    $('#demoChecklist').innerHTML=steps.map(([key,label],i)=>'<li class="'+(p[key]?'done':current?.[0]===key?'current':'')+'"><span>'+(p[key]?icon('check'):i+1)+'</span>'+label+'</li>').join('');
   }
   function openPayload() {
     if(!state.source)return;
@@ -754,6 +753,7 @@
     const row=control.closest('[data-region]');const region=state.regions.find(r=>r.id===row.dataset.region);if(!region)return;
     if(control.dataset.action==='delete') {if(region.id==='demo-false-positive')state.demoProgress.deleted=true;pushHistory();state.regions=state.regions.filter(r=>r.id!==region.id);if(state.focused===region.id)state.focused=null;invalidate();render();notify('영역을 삭제했어요. 되돌리기로 복원할 수 있어요.');}
     if(control.dataset.action==='focus') focusRegion(region.id);
+    if(control.dataset.action==='edit') {state.editing=state.editing===region.id?null:region.id;focusRegion(region.id);}
   });
   $('#regionList').addEventListener('change',event=>{
     const row=event.target.closest('[data-region]');if(!row)return;
@@ -805,9 +805,11 @@
   $('#zoomIn').addEventListener('click',()=>zoomTo(state.zoom+.25));$('#zoomOut').addEventListener('click',()=>zoomTo(state.zoom-.25));
   $('#zoomFit').addEventListener('click',()=>{state.zoom=1;layoutCanvas(false);});
   new ResizeObserver(()=>layoutCanvas()).observe($('#canvasStage'));
-  $('#runScenario').addEventListener('click',()=>loadSample(state.sampleKey||'mixed',{auto:true}));
-  $('#portraitSample').addEventListener('click',()=>loadSample('portrait'));
-  $('#startDemo').addEventListener('click',()=>{$('#scenarioSelect').value='correction';loadSample('mixed',{auto:true,guided:true});});
+  function toggleDemoPanel(open) {$('#demoPanel').classList.toggle('hidden',!open);$('#demoToggle').setAttribute('aria-expanded',String(open));}
+  $('#demoToggle').addEventListener('click',()=>toggleDemoPanel($('#demoPanel').classList.contains('hidden')));
+  $('#runScenario').addEventListener('click',()=>{toggleDemoPanel(false);loadSample(state.sampleKey||'mixed',{auto:true});});
+  $('#portraitSample').addEventListener('click',()=>{toggleDemoPanel(false);loadSample('portrait');});
+  $('#startDemo').addEventListener('click',()=>{toggleDemoPanel(false);$('#scenarioSelect').value='correction';loadSample('mixed',{auto:true,guided:true});});
   $('#endDemo').addEventListener('click',()=>{state.guided=false;updateGuide();});
   $('#payloadButton').addEventListener('click',openPayload);$('#downloadPayload').addEventListener('click',savePayload);
   $('#connectionButton').addEventListener('click',()=>{$('[name="connectionMode"][value="'+state.connection+'"]').checked=true;$('#endpointInput').value=state.endpoint;$('#connectionError').textContent='';showDialog('connectionDialog');});

@@ -1,0 +1,545 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-03T11:39:34+00:00",
+  "title": "Design System: Privacy Lens",
+  "extensions": {
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#f7f6f3",
+        "tonalRamp": [
+          "#0c0b0a",
+          "#272625",
+          "#464543",
+          "#676664",
+          "#8a8986",
+          "#afaeab",
+          "#d2d1ce",
+          "#efeeec"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Work Surface",
+        "canonical": "#fdfdfc",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#262626",
+          "#454544",
+          "#666665",
+          "#898988",
+          "#aeaead",
+          "#d1d1d0",
+          "#eeeeee"
+        ]
+      },
+      "surface-2": {
+        "role": "neutral",
+        "displayName": "Stone 2",
+        "canonical": "#f0efeb",
+        "tonalRamp": [
+          "#0c0b09",
+          "#272624",
+          "#464542",
+          "#676663",
+          "#8a8986",
+          "#afaeaa",
+          "#d2d1ce",
+          "#efeeeb"
+        ]
+      },
+      "surface-3": {
+        "role": "neutral",
+        "displayName": "Stone 3",
+        "canonical": "#e8e6e1",
+        "tonalRamp": [
+          "#0c0b09",
+          "#272623",
+          "#464541",
+          "#686662",
+          "#8b8984",
+          "#afaea9",
+          "#d2d1cd",
+          "#f0eeea"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#e6e3dd",
+        "tonalRamp": [
+          "#0c0b08",
+          "#282623",
+          "#474540",
+          "#686661",
+          "#8b8983",
+          "#b0aea8",
+          "#d3d1cc",
+          "#f1eee9"
+        ]
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Strong Hairline",
+        "canonical": "#d4d0c7",
+        "tonalRamp": [
+          "#0d0b07",
+          "#292621",
+          "#48453e",
+          "#69665e",
+          "#8c8981",
+          "#b1aea6",
+          "#d4d1c9",
+          "#f1eee7"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#1f1d1a",
+        "tonalRamp": [
+          "#0c0b09",
+          "#282624",
+          "#474542",
+          "#686662",
+          "#8b8985",
+          "#b0adaa",
+          "#d3d0cd",
+          "#f0eeeb"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Ink 2",
+        "canonical": "#4a4741",
+        "tonalRamp": [
+          "#0d0b08",
+          "#282622",
+          "#47453f",
+          "#696660",
+          "#8c8982",
+          "#b1aea7",
+          "#d4d1ca",
+          "#f1eee8"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "canonical": "#6b675f",
+        "tonalRamp": [
+          "#0d0b07",
+          "#292621",
+          "#48453e",
+          "#69665e",
+          "#8d8980",
+          "#b1ada5",
+          "#d4d0c9",
+          "#f2eee7"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Signal Orange",
+        "canonical": "#ef5a1c",
+        "tonalRamp": [
+          "#2c0000",
+          "#540000",
+          "#7e1c00",
+          "#aa3e11",
+          "#d66138",
+          "#fa8b65",
+          "#ffb18d",
+          "#ffd1ae"
+        ]
+      },
+      "accent-hover": {
+        "role": "primary",
+        "displayName": "Ember",
+        "canonical": "#b23f0b",
+        "tonalRamp": [
+          "#2c0000",
+          "#540000",
+          "#7e1c00",
+          "#aa3e14",
+          "#d6613a",
+          "#fb8b66",
+          "#ffb18e",
+          "#ffd1af"
+        ]
+      },
+      "accent-ink": {
+        "role": "primary",
+        "displayName": "Rust Ink",
+        "canonical": "#b23f0b",
+        "tonalRamp": [
+          "#2c0000",
+          "#540000",
+          "#7e1d00",
+          "#aa3e11",
+          "#d56237",
+          "#fa8b64",
+          "#ffb18d",
+          "#ffd1ae"
+        ]
+      },
+      "accent-tint": {
+        "role": "primary",
+        "displayName": "Apricot Tint",
+        "canonical": "#fdede4",
+        "tonalRamp": [
+          "#100906",
+          "#2d241f",
+          "#4d423c",
+          "#70635c",
+          "#94867e",
+          "#b8aba3",
+          "#dbcec7",
+          "#f8ece5"
+        ]
+      },
+      "accent-wash": {
+        "role": "primary",
+        "displayName": "Apricot Wash",
+        "canonical": "#fef6f1",
+        "tonalRamp": [
+          "#0e0a08",
+          "#2a2522",
+          "#494440",
+          "#6b6561",
+          "#8f8883",
+          "#b3aca8",
+          "#d6cfcb",
+          "#f3ede9"
+        ]
+      },
+      "accent-line": {
+        "role": "primary",
+        "displayName": "Apricot Line",
+        "canonical": "#f5ccb6",
+        "tonalRamp": [
+          "#180500",
+          "#382012",
+          "#5a3d2d",
+          "#7f5d4b",
+          "#a5806c",
+          "#c9a592",
+          "#ebc9b6",
+          "#ffe7d5"
+        ]
+      },
+      "ok": {
+        "role": "status",
+        "displayName": "Confirmed Green",
+        "canonical": "#2c7a4b",
+        "tonalRamp": [
+          "#001300",
+          "#003211",
+          "#0b532c",
+          "#2e774a",
+          "#519c6b",
+          "#7cc092",
+          "#a3e3b6",
+          "#c3ffd5"
+        ]
+      },
+      "warn": {
+        "role": "status",
+        "displayName": "Caution Amber",
+        "canonical": "#8a5a0c",
+        "tonalRamp": [
+          "#1d0200",
+          "#3e1d00",
+          "#623b00",
+          "#895b18",
+          "#b07e3c",
+          "#d4a468",
+          "#f6c890",
+          "#ffe6b2"
+        ]
+      },
+      "warn-bg": {
+        "role": "status",
+        "displayName": "Caution Wash",
+        "canonical": "#fdf6e7",
+        "tonalRamp": [
+          "#0e0b05",
+          "#2a261d",
+          "#49443a",
+          "#6b6559",
+          "#8f897b",
+          "#b3ada1",
+          "#d6d0c4",
+          "#f3eee2"
+        ]
+      },
+      "warn-line": {
+        "role": "status",
+        "displayName": "Caution Line",
+        "canonical": "#efd9a8",
+        "tonalRamp": [
+          "#140900",
+          "#322400",
+          "#53431c",
+          "#766439",
+          "#9b8759",
+          "#bfac81",
+          "#e2cfa6",
+          "#feedc6"
+        ]
+      },
+      "error": {
+        "role": "status",
+        "displayName": "Error Red",
+        "canonical": "#b42318",
+        "tonalRamp": [
+          "#2d0000",
+          "#550000",
+          "#7f170f",
+          "#ac3a2d",
+          "#d75d4e",
+          "#fc8776",
+          "#ffae9d",
+          "#ffcebd"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "빈 상태의 한 문장 헤드라인, 화면당 하나."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "패널·대화상자 제목."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "목록 행 이름, 카드·타일 제목."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "패널 부제, 대화상자 소개."
+      },
+      "body-sm": {
+        "displayName": "Body small",
+        "purpose": "행 설명, 상태 줄, 보조 문장."
+      },
+      "label": {
+        "displayName": "Mono Label",
+        "purpose": "숫자·좌표·파일 정보·대괄호 상태 태그."
+      },
+      "numeral": {
+        "displayName": "Numeral",
+        "purpose": "결과 개수, 진행률(40px)."
+      }
+    },
+    "shadows": [
+      {
+        "name": "floating-bar",
+        "value": "0 1px 2px #1f1d1a0d, 0 12px 32px #1f1d1a12",
+        "purpose": "업로드 드롭 막대."
+      },
+      {
+        "name": "photo",
+        "value": "0 1px 2px #1f1d1a14, 0 10px 28px #1f1d1a14",
+        "purpose": "캔버스의 사진, 내보내기 미리보기."
+      },
+      {
+        "name": "dialog",
+        "value": "0 2px 6px #1f1d1a14, 0 24px 64px #1f1d1a2e",
+        "purpose": "모달 대화상자."
+      },
+      {
+        "name": "toast",
+        "value": "0 12px 32px #1f1d1a33",
+        "purpose": "하단 알림."
+      },
+      {
+        "name": "segment-selected",
+        "value": "0 1px 2px #1f1d1a1f",
+        "purpose": "세그먼트 선택 칸."
+      },
+      {
+        "name": "primary-sheen",
+        "value": "inset 0 1px 0 #ffffff40, 0 1px 2px #b23f0b59",
+        "purpose": "주황 버튼과 브랜드 마크."
+      },
+      {
+        "name": "region-focus",
+        "value": "0 0 0 3px #ef5a1c40",
+        "purpose": "포커스된 탐지 박스 후광."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(.16,1,.3,1)",
+        "purpose": "대화상자 등장(180ms), 토스트 이동(250ms)."
+      },
+      {
+        "name": "state",
+        "value": "150ms",
+        "purpose": "hover 바탕·색 전환, 화살표 3px 이동."
+      },
+      {
+        "name": "press",
+        "value": "100ms translateY(1px)",
+        "purpose": "버튼 누름."
+      },
+      {
+        "name": "scan",
+        "value": "2s cubic-bezier(.45,0,.55,1) infinite",
+        "purpose": "분석 중 스캔 선."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "animation/transition none",
+        "purpose": "prefers-reduced-motion에서 전부 끔."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "rail",
+        "value": "1180px"
+      },
+      {
+        "name": "compact-steps",
+        "value": "1020px"
+      },
+      {
+        "name": "stack",
+        "value": "820px"
+      },
+      {
+        "name": "mobile",
+        "value": "580px"
+      },
+      {
+        "name": "narrow",
+        "value": "400px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "화면당 하나의 다음 행동(분석 시작, 저장, 다운로드).",
+      "html": "<button class=\"ds-btn-primary\"><svg viewBox=\"0 0 24 24\" width=\"17\" height=\"17\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 3v13m-5-5 5 5 5-5M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4\"/></svg>가린 사진 저장하기</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border:0;border-radius:10px;background:var(--accent,#ef5a1c);color:#fff;font-size:14px;font-weight:600;cursor:pointer;box-shadow:inset 0 1px 0 #ffffff40,0 1px 2px #b23f0b59;transition:background .15s,transform .1s}.ds-btn-primary:hover{background:var(--accent-hover,#b23f0b)}.ds-btn-primary:active{transform:translateY(1px)}.ds-btn-primary:focus-visible{outline:2px solid var(--accent,#ef5a1c);outline-offset:2px}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "보조 행동(직접 지정, 취소, 시연 재현).",
+      "html": "<button class=\"ds-btn-ghost\">직접 영역 지정하기</button>",
+      "css": ".ds-btn-ghost{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border:0;border-radius:10px;background:var(--surface-2,#f0efeb);color:var(--ink,#1f1d1a);font-size:14px;font-weight:600;cursor:pointer;transition:background .15s,transform .1s}.ds-btn-ghost:hover{background:var(--surface-3,#e8e6e1)}.ds-btn-ghost:active{transform:translateY(1px)}.ds-btn-ghost:focus-visible{outline:2px solid var(--accent,#ef5a1c);outline-offset:2px}"
+    },
+    {
+      "name": "Top Bar Chip",
+      "kind": "chip",
+      "refersTo": "chip-button",
+      "description": "상단바의 시연·연결 칩. 펼침 상태는 주황 틴트.",
+      "html": "<button class=\"ds-chip\">데모 · 서버 미연결</button><button class=\"ds-chip\" aria-expanded=\"true\">발표 시연</button>",
+      "css": ".ds-chip{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 12px;margin-right:8px;border:0;border-radius:10px;background:var(--surface-2,#f0efeb);color:var(--ink,#1f1d1a);font-size:13px;font-weight:500;cursor:pointer}.ds-chip:hover{background:var(--surface-3,#e8e6e1)}.ds-chip[aria-expanded=true]{background:var(--accent-tint,#fdede4);color:var(--accent-ink,#b23f0b)}.ds-chip:focus-visible{outline:2px solid var(--accent,#ef5a1c);outline-offset:2px}"
+    },
+    {
+      "name": "Endpoint Input",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "주소·좌표 입력. 모노, 진한 헤어라인 테두리.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"http://127.0.0.1:8000\">",
+      "css": ".ds-input{width:280px;padding:10px 12px;border:1px solid var(--line-strong,#d4d0c7);border-radius:8px;background:var(--surface,#fdfdfc);color:var(--ink,#1f1d1a);font:14px ui-monospace,Consolas,monospace}.ds-input:focus-visible{outline:2px solid var(--accent,#ef5a1c);outline-offset:2px}"
+    },
+    {
+      "name": "Side Navigation",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "사이드바 항목. 활성은 주황 틴트, 개수는 모노.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item active\" href=\"#\">사진 검사</a><a class=\"ds-nav-item\" href=\"#\">탐지 대상<span class=\"ds-count\">9</span></a><a class=\"ds-nav-item\" href=\"#\">이용 안내</a></nav>",
+      "css": ".ds-nav{display:grid;gap:2px;width:208px;padding:12px;background:var(--bg,#f7f6f3)}.ds-nav-item{display:flex;align-items:center;height:40px;padding:0 12px;border-radius:8px;font-size:14px;font-weight:500;color:var(--ink-2,#4a4741);text-decoration:none}.ds-nav-item:hover{background:var(--surface-2,#f0efeb);color:var(--ink,#1f1d1a)}.ds-nav-item.active{background:var(--accent-tint,#fdede4);color:var(--accent-ink,#b23f0b)}.ds-nav-item:focus-visible{outline:2px solid var(--accent,#ef5a1c);outline-offset:2px}.ds-count{margin-left:auto;font:12px ui-monospace,Consolas,monospace;color:var(--muted,#6b675f)}"
+    },
+    {
+      "name": "Bracket Status Tag",
+      "kind": "chip",
+      "refersTo": "risk-tag",
+      "description": "제목 옆 같은 줄에 붙는 모노 대괄호 상태 태그.",
+      "html": "<h2 class=\"ds-h\">확인이 필요한 정보 <span class=\"ds-tag\">SAMPLE</span></h2>",
+      "css": ".ds-h{display:flex;align-items:baseline;gap:10px;margin:0;font-size:18px;font-weight:650;letter-spacing:-.02em;color:var(--ink,#1f1d1a)}.ds-tag{font:500 12px ui-monospace,Consolas,monospace;color:var(--accent-ink,#b23f0b);letter-spacing:0}.ds-tag:before{content:\"[ \"}.ds-tag:after{content:\" ]\"}"
+    },
+    {
+      "name": "Workspace Frame",
+      "kind": "card",
+      "refersTo": "workspace",
+      "description": "흰 작업 면 하나를 헤어라인으로 나누고, 분할선과 테두리가 만나는 곳에 + 표시.",
+      "html": "<div class=\"ds-frame\"><div class=\"ds-left\">사진</div><div class=\"ds-right\">결과 목록</div></div>",
+      "css": ".ds-frame{position:relative;display:grid;grid-template-columns:1fr 160px;height:160px;border:1px solid var(--line,#e6e3dd);border-radius:12px;background:var(--surface,#fdfdfc);font-size:13px;color:var(--muted,#6b675f)}.ds-frame:before,.ds-frame:after{content:\"\";position:absolute;left:calc(100% - 167px);width:13px;height:13px;background:linear-gradient(#6b675f,#6b675f) center/1px 100% no-repeat,linear-gradient(#6b675f,#6b675f) center/100% 1px no-repeat}.ds-frame:before{top:-7px}.ds-frame:after{bottom:-7px}.ds-left{padding:16px;border-right:1px solid var(--line,#e6e3dd);border-radius:12px 0 0 12px;background:radial-gradient(circle,#d6d2c9 1px,transparent 1.2px) 0 0/14px 14px,var(--bg,#f7f6f3)}.ds-right{padding:16px}"
+    },
+    {
+      "name": "Region List Row",
+      "kind": "custom",
+      "refersTo": "risk-tag",
+      "description": "번호·이름·위험 태그와 근거 문장. 선택된 행은 주황 워시.",
+      "html": "<div class=\"ds-row sel\"><div class=\"ds-top\"><input type=\"checkbox\" checked><span class=\"ds-name\"><span class=\"ds-no\">01</span>받는 사람 주소</span><span class=\"ds-risk\">주소</span></div><p class=\"ds-desc\">송장 라벨에 도로명 주소가 보여요.</p></div>",
+      "css": ".ds-row{width:340px;padding:10px 20px;border-bottom:1px solid var(--line,#e6e3dd);background:var(--surface,#fdfdfc)}.ds-row.sel,.ds-row:hover{background:var(--accent-wash,#fef6f1)}.ds-top{display:flex;align-items:flex-start;gap:10px}.ds-top input{width:16px;height:16px;margin:3px 0 0;accent-color:var(--accent,#ef5a1c)}.ds-name{flex:1;font-size:14px;font-weight:600;color:var(--ink,#1f1d1a)}.ds-no{margin-right:8px;font:12px ui-monospace,Consolas,monospace;color:var(--muted,#6b675f)}.ds-risk{padding:2px 6px;border-radius:4px;background:var(--accent-tint,#fdede4);font:12px ui-monospace,Consolas,monospace;color:var(--accent-ink,#b23f0b)}.ds-desc{margin:4px 0 0 26px;font-size:13px;line-height:1.6;color:var(--muted,#6b675f)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "검수 작업대 (The Inspection Bench)",
+    "overview": "**Creative North Star: \"검수 작업대 (The Inspection Bench)\"**\n\n사진 검사는 마케팅 페이지가 아니라 대시보드 안의 한 작업 화면입니다. 웜 오프화이트 바닥 위에 흰 작업 면 하나를 놓고, 그 면을 1px 헤어라인으로 나눠 왼쪽에는 사진, 오른쪽에는 근거 목록과 저장 버튼을 둡니다. 화면 안에서 가장 시끄러운 것은 사진 위의 주황 박스여야 하고, 그 외의 장치는 조용히 물러납니다. 시각 문법은 Firecrawl 대시보드의 스타일만 빌렸고, 이름·로고·불꽃 아이콘은 쓰지 않습니다.\n\n밀도는 데스크톱 도구 수준입니다. 본문은 13~14px, 행 높이는 34~48px, 패널 안쪽 여백은 20px 안팎으로 한 화면에 사진과 목록과 저장 버튼이 함께 들어갑니다. 숫자·좌표·파일 정보·상태는 모노 글꼴의 대괄호 라벨(`[ 가상 데이터 ]` 문법)로, 문장은 한글 산세리프로 씁니다. 깊이는 대부분 선과 면의 명도 차이로 만들고, 그림자는 실제로 떠 있는 물체(입력 막대, 사진, 대화상자, 토스트)에만 붙습니다.\n\n글꼴은 Pretendard(OFL)를 `dist/fonts/`에 자체 호스팅합니다. KS X 1001 한글 서브셋 정적 4종(400·500·600·700, 각 약 270KB)이며 외부 요청은 없습니다(CSP `default-src 'self'`). 라이선스는 `dist/fonts/LICENSE.txt`.",
+    "keyCharacteristics": [
+      "웜 오프화이트 바닥 + 흰 작업 면 하나, 1px 헤어라인 분할, 분할선이 테두리와 만나는 곳에 + 표시",
+      "주황은 주요 행동·선택·위험 표시·헤드라인의 한 단어에만",
+      "데이터와 상태는 모노 12px, 상태 태그는 대괄호로 감싼다",
+      "그림자는 떠 있는 물체에만, 패널과 목록은 평평하다",
+      "반응형은 구조만 바꾸고 글자 크기는 거의 고정"
+    ],
+    "rules": [
+      {
+        "name": "The One Signal Rule",
+        "body": "주황은 주요 행동, 선택 상태, 위험 표시, 헤드라인의 한 단어에만 씁니다. 장식용 주황 선·배경·아이콘은 없습니다. 예외는 설명 목록의 대상 아이콘(탐지 대상 표시)처럼 \"위험한 것\"을 가리키는 경우뿐입니다.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ink-on-Tint Rule",
+        "body": "주황 계열 바탕 위의 글자는 `accent-ink`, 흰 면 위에 주황을 글자로 쓸 때도 `accent-ink`입니다. `accent` 자체를 작은 글자 색으로 쓰지 않습니다(헤드라인 30px의 강조 단어만 예외).",
+        "section": "colors"
+      },
+      {
+        "name": "The Bracket Status Rule",
+        "body": "상태와 출처를 말하는 짧은 태그(`SAMPLE`, `MANUAL`, `SERVER`, `ERROR`, `시연`, `가상 데이터`)는 모노 12px에 `[ ` ` ]`를 붙여 제목과 **같은 줄 오른쪽**에 둡니다. 제목 위에 얹는 아이브로가 아닙니다.",
+        "section": "typography"
+      },
+      {
+        "name": "The Fixed Type Rule",
+        "body": "반응형은 구조를 바꾸고 글자 크기는 거의 바꾸지 않습니다. 580px 이하에서 줄어드는 것은 Display(30→22px)와 일부 13→12px뿐입니다.",
+        "section": "typography"
+      },
+      {
+        "name": "The Only-What-Floats Rule",
+        "body": "그림자는 입력 막대, 사진, 대화상자, 토스트처럼 바닥 위에 올라온 물체에만. 패널과 목록 행은 선으로 나눕니다.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** 새 화면도 `bg` 바닥 위의 `surface` 작업 면 하나로 시작하고, 칸은 1px `line` 헤어라인으로 나누세요.",
+      "**Do** 숫자·좌표·파일 정보·상태는 모노 12px tabular로 쓰고, 상태 태그는 `[ ]`로 감싸 제목과 같은 줄에 두세요.",
+      "**Do** 주황 계열 바탕 위의 글자는 `accent-ink`로 쓰세요.",
+      "**Do** 사진을 놓는 바닥에는 점 패턴을, 사진 자체에는 사진 받침 그림자를 쓰세요.",
+      "**Do** 선택 상태는 `accent-tint`(작은 컨트롤) 또는 `accent-wash` + `accent` 테두리(넓은 옵션)로 표시하세요.",
+      "**Do** `prefers-reduced-motion`에서는 모든 애니메이션과 전환을 끄세요. 움직임은 150~250ms, `cubic-bezier(.16,1,.3,1)` 감속 곡선입니다."
+    ],
+    "donts": [
+      "**Don't** 패널·목록·카드에 그림자를 넣지 마세요. 그림자는 떠 있는 물체에만 씁니다.",
+      "**Don't** 주황을 장식(배경 띠, 구분선, 아이콘 일괄 착색)으로 쓰지 마세요.",
+      "**Don't** 제목 위에 작은 대문자 라벨(아이브로·키커)을 얹지 마세요. 상태는 제목 옆 대괄호 태그로 말합니다.",
+      "**Don't** 마케팅 히어로, 떠 있는 카드 그리드, 큰 장식 일러스트를 작업 화면에 들이지 마세요.",
+      "**Don't** Firecrawl의 이름·로고·불꽃 아이콘을 쓰지 마세요. 렌즈 마크가 유일한 브랜드 표식입니다.",
+      "**Don't** 외부 글꼴·이미지·CDN을 불러오지 마세요(CSP `default-src 'self'`). 글꼴을 바꾸려면 `dist/` 안에 자체 호스팅해야 하며, 그 결정은 아직 열려 있습니다."
+    ]
+  }
+}
