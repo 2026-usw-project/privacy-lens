@@ -31,6 +31,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
 from starlette.formparsers import MultiPartParser
 
@@ -63,7 +64,9 @@ MultiPartParser.spool_max_size = MAX_BYTES + 1024 * 1024
 QUEUE = WorkQueue(max_waiting=int(os.environ.get("PL_QUEUE_MAX", "12")))
 _TICKET = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 
-WEB = Path(__file__).parent / "web"
+# 화면은 web/frontend-demo 다. dist/ 가 편집 원본이고, scripts/build.mjs 가 한 파일
+# (privacy-lens.html)로 묶는다. 글꼴만 따로 dist/fonts 에서 읽는다.
+FRONT = Path(__file__).parent / "web" / "frontend-demo"
 
 _backend = None
 _backend_lock = threading.Lock()
@@ -94,6 +97,7 @@ async def _lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Privacy Lens", lifespan=_lifespan)
+app.mount("/dist/fonts", StaticFiles(directory=FRONT / "dist" / "fonts"), name="fonts")
 
 
 def _ticket(raw: str | None) -> str:
@@ -219,7 +223,7 @@ def _preview(img: Image.Image, max_side: int = 1400) -> tuple[str, float]:
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
-    return (WEB / "index.html").read_text(encoding="utf-8")
+    return (FRONT / "privacy-lens.html").read_text(encoding="utf-8")
 
 
 @app.get("/queue")

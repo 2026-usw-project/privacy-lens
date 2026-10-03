@@ -162,3 +162,11 @@ def test_redact_accepts_outline(client):
         r = client.post("/redact/preview", files={"image": ("a.png", png())},
                         data={"boxes": json.dumps([{"x": 0, "y": 0, "w": 10, "h": 10, "poly": bad}])})
         assert r.status_code == 400, bad
+
+
+def test_serves_frontend_and_fonts(client):
+    r = client.get("/")
+    assert r.status_code == 200 and "Privacy Lens" in r.text
+    font = next(p.name for p in (server.FRONT / "dist" / "fonts").glob("*.woff2"))
+    assert client.get("/dist/fonts/" + font).status_code == 200
+    assert client.get("/dist/fonts/../../server.py").status_code == 404
