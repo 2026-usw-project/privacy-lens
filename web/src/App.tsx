@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { analyze, type ApiError } from "./api";
-import { download, renderMasked } from "./mask";
-import type { AnalyzeResponse, BBox, Finding } from "./types.gen";
+import { download, renderMasked, type Shape } from "./mask";
+import type { AnalyzeResponse, Finding } from "./types.gen";
 import Viewer from "./Viewer";
 
 const LABEL_KO: Record<string, string> = {
@@ -21,16 +21,17 @@ type State =
   | { kind: "done"; res: AnalyzeResponse; img: ImageBitmap; name: string }
   | { kind: "error"; err: ApiError };
 
-/** 마스킹 대상: 개인정보 항목 박스가 있으면 그 줄만, 없으면 영역 전체 */
-function boxesOf(f: Finding): BBox[] {
-  const b = (f.pii ?? []).flatMap((p) => (p.bbox ? [p.bbox] : []));
-  return b.length ? b : [f.bbox];
+/** 마스킹 대상: 개인정보 항목(줄 단위, 회전 사각형 포함)이 있으면 그것만, 없으면 영역 전체 */
+function shapesOf(f: Finding): Shape[] {
+  const s = (f.pii ?? []).flatMap((p) => (p.bbox ? [{ box: p.bbox, quad: p.polygon }] : []));
+  return s.length ? s : [{ box: f.bbox }];
 }
 
 export default function App() {
   const [st, setSt] = useState<State>({ kind: "idle" });
   const [masked, setMasked] = useState<Set<number>>(new Set());
   const [showMask, setShowMask] = useState(true);
+  const [fit, setFit] = useState(true);          // 기울기 맞춤 가림 (회전 사각형)
   const [active, setActive] = useState<number | null>(null);
   const [drag, setDrag] = useState(false);
 
@@ -49,8 +50,8 @@ export default function App() {
 
   const onFiles = (fl: FileList | null) => fl?.[0] && run(fl[0]);
 
-  const maskBoxes = useMemo(
-    () => (st.kind === "done" ? st.res.findings.filter((f) => masked.has(f.id)).flatMap(boxesOf) : []),
+  const maskShapes = useMemo(
+    () => (st.kind === "done" ? st.res.findings.filter((f) => masked.has(f.id)).flatMap(shapesOf) : []),
     [st, masked],
   );
 
@@ -92,7 +93,7 @@ export default function App() {
 
       {st.kind === "done" && (
         <main>
-          <Viewer img={st.img} findings={st.res.findings} maskBoxes={maskBoxes} showMask={showMask}
+          <Viewer img={st.img} findings={st.res.findings} maskShapes={maskShapes} showMask={showMask} fit={fit}
             activeId={active} onPick={setActive} />
           <aside>
             <div className={`summary lv-${st.res.summary.level}`}>
@@ -129,8 +130,11 @@ export default function App() {
             {st.res.findings.length === 0 && <div className="card"><p>검출된 영역이 없습니다.</p></div>}
 
             <div className="actions">
-              <label className="chk"><input type="checkbox" checked={showMask} onChange={(e) => setShowMask(e.target.checked)} />가림 미리보기</label>
-              <button className="btn" onClick={() => download(renderMasked(st.img, maskBoxes), `safe_${st.name.replace(/\.\w+$/, "")}.jpg`)}>
+              <div className="toggles">
+                <label className="chk"><input type="checkbox" checked={showMask} onChange={(e) => setShowMask(e.target.checked)} />가림 미리보기</label>
+                <label className="chk"><input type="checkbox" checked={fit} onChange={(e) => setFit(e.target.checked)} />기울기 맞춤</label>
+              </div>
+              <button className="btn" onClick={() => download(renderMasked(st.img, maskShapes, fit), `safe_${st.name.replace(/\.\w+$/, "")}.jpg`)}>
                 안전 버전 저장
               </button>
             </div>
