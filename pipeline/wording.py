@@ -144,6 +144,9 @@ def combined(doc: str | None, nouns: list[str]) -> str:
     )
 
 
+GPS_UNREADABLE = assert_safe("사진 파일에 위치정보 태그가 있으나 좌표를 확인하지 못했습니다")
+
+
 OCR_UNAVAILABLE = assert_safe("문자 인식 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.")
 
 
