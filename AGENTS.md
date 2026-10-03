@@ -8,14 +8,14 @@ Privacy Lens — 사진을 SNS·중고거래에 올리기 전에 배경의 개�
 
 ## 현재 구조 (2026-10-04 백엔드 교체 후)
 
-- **백엔드는 Privacy Lens 2** 를 그대로 가져온 것입니다(`pipeline/`, `server.py`, `jobqueue.py`, `run.py`, `eval/`, `samples/`, `tests/`). 기준은 이 코드와 [README.md](README.md)의 설계 원칙입니다.
+- **백엔드는 Privacy Lens 2** 를 그대로 가져온 것입니다(`pipeline/`, `server.py`, `jobqueue.py`, `run.py`, `eval/`, `samples/`, `tests/`). 기준은 이 코드와 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)의 설계 원칙입니다.
 - **화면은 `web/frontend-demo/`** 입니다. `dist/` 가 편집 원본이고 `scripts/build.mjs` 가 `privacy-lens.html` 로 묶습니다. 서버가 `/` 에서 이 파일을 내줍니다.
 - 이전의 `server/`·`reader/`·`vision/`·`schema/`·`data/`·React 앱은 삭제했습니다. [docs/DECISIONS.md](docs/DECISIONS.md)의 '교체로 사실상 정해진 것'을 먼저 봅니다.
 
 ## 작업 전에
 
 1. 사용자의 역할(1~5번)을 모르면 먼저 묻고, [docs/ROLES.md](docs/ROLES.md)에서 그 역할의 범위를 확인합니다. ROLES 의 폴더 이름은 교체 전 기준이니 지금 구조로 바꿔 읽습니다.
-2. [README.md](README.md)(실행·설계 원칙·측정·한계), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)(흐름·API), [docs/DECISIONS.md](docs/DECISIONS.md)(결정·미결)를 읽습니다.
+2. [README.md](README.md)(개요·실행), [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)(설계 원칙·측정·한계·버그 기록), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)(흐름·API), [docs/DECISIONS.md](docs/DECISIONS.md)(결정·미결)를 읽습니다.
 3. 문서끼리, 또는 문서와 코드가 다르면 임의로 한쪽에 맞추지 말고 사용자에게 알립니다.
 
 ## 규칙
