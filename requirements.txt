@@ -1,6 +1,13 @@
+# 스키마 · 서버
 pydantic>=2.6
 fastapi>=0.110
 uvicorn[standard]>=0.29
 python-multipart>=0.0.9
 pillow>=10.0
 numpy>=1.26
+# 데모 파이프라인
+easyocr>=1.7          # torch 를 함께 설치합니다 (CPU 동작 가능, GPU 있으면 PL_GPU=1)
+opencv-contrib-python-headless>=4.9   # WeChat QR 디코더 포함
+piexif>=1.1
+qrcode>=7.4           # 합성 데이터 생성기용
+pytest>=8.0
