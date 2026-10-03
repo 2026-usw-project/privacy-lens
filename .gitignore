@@ -4,32 +4,33 @@ __pycache__/
 .venv/
 venv/
 .env
+.pytest_cache/
 
 # Node
 node_modules/
 dist/
+# 화면 소스는 dist 에 있다(빌드 결과가 아니라 편집 원본)
+!web/frontend-demo/dist/
 
-# 모델 가중치 · 학습 결과
+# 모델 가중치
 *.pt
 *.onnx
 runs/
 weights/
 
+# run.py / samples/make_sample.py 가 만드는 합성 샘플
+samples/out/
+
 # 이미지 데이터 (개인정보 포함 가능 — 절대 커밋 금지)
-data/raw/
-data/real/
-data/synthetic/
-data/demo/
-data/test/
+data/
 *.jpg
 *.jpeg
 *.png
 *.heic
 !docs/**/*.png
 
-# IDE
+# IDE · 로컬 도구
 .vscode/
 .idea/
 .DS_Store
-.pytest_cache/
-*.tsbuildinfo
+.claude/
