@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#f7f6f3">
-<meta name="description" content="사진 속 개인정보를 확인하고 가려서 저장하는 프라이버시 렌즈 프론트엔드 데모. 사진은 브라우저에서만 처리합니다.">
+<meta name="description" content="사진 배경의 개인정보를 찾아 위치와 근거를 보여 주고, 가린 사본을 저장하는 프라이버시 렌즈.">
 <title>Privacy Lens · 프라이버시 렌즈</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ef5a1c'/%3E%3Ccircle cx='29' cy='29' r='14' fill='none' stroke='%23fff' stroke-width='5'/%3E%3Cpath d='m40 40 11 11' stroke='%23fff' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
@@ -53,12 +53,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   <a class="brand" href="./index.html" aria-label="프라이버시 렌즈 처음으로"><span class="brand-mark"><svg><use href="#i-lens"/></svg></span><span class="brand-name">Privacy Lens</span></a>
   <nav class="side-nav" aria-label="주 메뉴">
     <button class="nav-item active" id="workspaceNav"><svg><use href="#i-scan"/></svg><span>사진 검사</span></button>
-    <button class="nav-item" data-dialog="targetsDialog"><svg><use href="#i-grid"/></svg><span>탐지 대상</span><span class="nav-count">9</span></button>
+    <button class="nav-item" data-dialog="targetsDialog"><svg><use href="#i-grid"/></svg><span>탐지 항목</span><span class="nav-count">10</span></button>
     <button class="nav-item" data-dialog="guideDialog"><svg><use href="#i-book"/></svg><span>이용 안내</span></button>
   </nav>
   <div class="sidebar-bottom">
-    <div class="private-card"><svg><use href="#i-lock"/></svg><div><strong id="privacyTitle">이 사진은, 여기서만.</strong><p id="privacyDescription">사진은 내 브라우저에서 처리해요.</p></div></div>
-    <div class="sidebar-foot"><span id="privacyMode">로컬 처리 데모</span><span>v0.2</span></div>
+    <div class="private-card"><svg><use href="#i-lock"/></svg><div><strong>남기지 않아요.</strong><p>분석·저장할 때만 사진을 이 서버로 보내요. 디스크에 쓰지 않고 로그에도 남기지 않아요.</p></div></div>
+    <div class="sidebar-foot"><span>Privacy Lens 2</span><span>v0.3</span></div>
   </div>
 </aside>
 
@@ -70,28 +70,20 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <li id="step3"><span class="step-number">3</span><span class="step-label">가림 · 저장</span></li>
     </ol>
     <div class="topbar-right">
-      <button class="chip-button" id="demoToggle" aria-expanded="false" aria-controls="demoPanel"><svg><use href="#i-play"/></svg><span>발표 시연</span></button>
-      <button class="chip-button" id="connectionButton">데모 · 서버 미연결</button>
+      <span class="queue-badge mono-label" id="queueBadge" role="status" aria-live="polite"><i></i><span id="queueText">대기열 확인 중</span></span>
+      <label class="demo-field cond-field">판정<select id="conditionSelect" aria-label="판정 조건"><option value="full" selected>문맥·결합</option><option value="baseline">심각도표</option><option value="naive">정규식만</option></select></label>
       <button class="chip-button icon-only" data-dialog="guideDialog" aria-label="이용 안내"><svg><use href="#i-info"/></svg></button>
     </div>
   </header>
 
-  <section class="demo-panel hidden" id="demoPanel" aria-label="발표 시연 도구">
-    <div class="demo-panel-text"><strong>발표 시연</strong><span>가상 샘플로 예외 상황까지 재현합니다. 분석 결과는 미리 정한 시뮬레이션이에요.</span></div>
-    <label class="demo-field">상황<select id="scenarioSelect"><option value="normal">정상 탐지</option><option value="correction">오탐 · 미탐 수정</option><option value="partial">일부 판독 실패</option><option value="empty">탐지 결과 없음</option><option value="failed">분석 실패 · 재시도</option></select></label>
-    <button class="button ghost" id="runScenario">상황 재현</button>
-    <button class="button ghost" id="portraitSample">세로 사진</button>
-    <button class="button primary" id="startDemo"><svg><use href="#i-play"/></svg>90초 시연 시작</button>
-  </section>
 
   <main>
-    <section class="guided-demo hidden" id="guidedDemo" aria-label="발표 시연 진행"><div class="guided-heading"><strong id="demoStepLabel"></strong><span class="mono-tag">시연</span></div><ol id="demoChecklist"></ol><button class="text-button" id="endDemo">닫기</button></section>
 
     <div class="workspace" id="workspace">
       <section class="editor" aria-label="사진 편집 작업 공간">
         <div class="pane-head">
           <div class="pane-title"><svg><use href="#i-image"/></svg><h1 id="editorTitle">사진 작업 공간</h1></div>
-          <span class="mono-label" id="fileInfo">JPG · PNG · WEBP</span>
+          <span class="mono-label" id="fileInfo">JPG · PNG · WEBP · HEIC</span>
           <button class="text-button hidden" id="changePhoto"><svg><use href="#i-reset"/></svg>사진 바꾸기</button>
         </div>
 
@@ -106,7 +98,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
               <span class="drop-hint">사진을 여기로 끌어다 놓거나 선택하세요</span>
               <span class="button primary drop-action"><svg><use href="#i-upload"/></svg>사진 선택</span>
             </div>
-            <span class="mono-label">JPG · PNG · WEBP &nbsp;/&nbsp; 최대 20 MB · 24 MP</span>
+            <span class="mono-label">JPG · PNG · WEBP · HEIC &nbsp;/&nbsp; 최대 20 MB · 24 MP</span>
           </div>
           <div class="samples">
             <div class="samples-head"><h2>샘플로 체험하기</h2><span class="mono-label">[ 가상 데이터 ]</span></div>
@@ -115,7 +107,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
               <button class="sample-card" data-sample="student"><canvas id="thumb-student" width="320" height="190" aria-hidden="true"></canvas><span class="sample-text"><strong>학생증<svg><use href="#i-arrow"/></svg></strong><small>이름 · 학번 · 소속</small></span></button>
               <button class="sample-card" data-sample="mixed"><canvas id="thumb-mixed" width="320" height="190" aria-hidden="true"></canvas><span class="sample-text"><strong>복합 문서<svg><use href="#i-arrow"/></svg></strong><small>작은 정보까지 한 번에</small></span></button>
             </div>
-            <p class="fine-print">샘플은 코드로 만든 가상 문서이고, 탐지 결과는 미리 정한 시뮬레이션입니다.</p>
+            <p class="fine-print">샘플은 코드로 만든 가상 문서예요. 누르면 실제 분석 서버로 검사해요.</p>
           </div>
         </div>
 
@@ -133,10 +125,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             <button class="text-button" id="undoButton" disabled><svg><use href="#i-reset"/></svg>되돌리기</button>
             <button class="text-button" id="payloadButton"><svg><use href="#i-code"/></svg>영역 데이터</button>
             <span class="tool-hint" id="toolHint">가릴 부분을 직접 추가할 수 있어요.</span>
-            <span class="image-meta"><span class="mono-label" id="canvasCaption">ORIGINAL</span><span class="mono-label" id="imageDimensions"></span><span class="mono-label" id="sourceBadge">샘플 시뮬레이션</span><span class="mono-label net"><svg><use href="#i-lock"/></svg><span id="networkLabel">서버 전송 없음</span></span></span>
+            <span class="image-meta"><span class="mono-label" id="canvasCaption">ORIGINAL</span><span class="mono-label" id="imageDimensions"></span><span class="mono-label" id="sourceBadge">분석 전</span><span class="mono-label net"><svg><use href="#i-lock"/></svg><span id="networkLabel">서버 처리 · 저장 안 함</span></span></span>
           </div>
         </div>
-        <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp" hidden>
+        <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" hidden>
       </section>
 
       <aside class="side-pane" aria-label="검사 결과와 가림 설정">
@@ -148,15 +140,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             <li><svg><use href="#i-id"/></svg><div><strong>책상 위 학생증</strong><p>이름, 학교, 학번이 함께 보여요.</p></div></li>
             <li><svg><use href="#i-monitor"/></svg><div><strong>켜져 있는 화면</strong><p>메신저·메일의 작은 글자도 읽혀요.</p></div></li>
           </ul>
-          <button class="row-link" data-dialog="targetsDialog">탐지 대상 9종 전체 보기<svg><use href="#i-arrow"/></svg></button>
+          <button class="row-link" data-dialog="targetsDialog">탐지 항목 10가지 보기<svg><use href="#i-arrow"/></svg></button>
         </div>
 
         <div id="readyPanel" class="pane-body hidden">
           <h2 class="pane-heading">사진이 준비됐어요</h2>
           <p class="pane-sub" id="readyDescription"></p>
           <div class="ready-file"><svg><use href="#i-image"/></svg><span>원본 크기</span><strong class="mono" id="readyFileInfo"></strong></div>
-          <div class="pane-actions"><button class="button primary full" id="analyzeButton">샘플 분석 시작</button><button class="button ghost full" id="manualButton">직접 영역 지정하기</button></div>
-          <p class="fine-print">샘플의 자동 탐지는 미리 정한 시뮬레이션입니다.</p>
+          <div class="pane-actions"><button class="button primary full" id="analyzeButton">분석 시작</button><button class="button ghost full" id="manualButton">직접 영역 지정하기</button></div>
+          <p class="fine-print">글자를 읽고(OCR) 주변 문구로 개인정보인지 판정해요. 결과는 단정이 아니라 권장이에요.</p>
         </div>
 
         <div id="failurePanel" class="pane-body hidden">
@@ -167,30 +159,28 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         </div>
 
         <div id="scanningPanel" class="pane-body hidden" aria-live="polite">
-          <h2 class="pane-heading">사진을 살펴보는 중 <span class="mono-tag live" id="scanModeLabel">샘플 시뮬레이션</span></h2>
+          <h2 class="pane-heading">사진을 살펴보는 중 <span class="mono-tag live" id="scanModeLabel">문맥·결합</span></h2>
           <div class="scan-readout"><strong class="mono" id="scanPercent">0%</strong></div>
           <div class="scan-progress"><span id="scanProgress"></span></div>
-          <ol class="scan-tasks"><li id="scanTask1"><span class="mono">01</span>사진을 나눠 글자 영역 찾기</li><li id="scanTask2"><span class="mono">02</span>영역 안의 글자 읽기</li><li id="scanTask3"><span class="mono">03</span>개인정보 유형 판정</li></ol>
+          <ol class="scan-tasks"><li id="scanTask1"><span class="mono">01</span>서버 대기열에서 차례 기다리기</li><li id="scanTask2"><span class="mono">02</span>글자 찾고 읽기 (OCR)</li><li id="scanTask3"><span class="mono">03</span>주변 문구로 개인정보 판정</li></ol>
           <button class="button ghost full" id="cancelScan">분석 취소</button>
         </div>
 
         <div id="reviewPanel" class="review hidden">
           <div class="review-head">
-            <div class="review-title"><h2 id="resultTitle">확인이 필요한 정보</h2><span class="mono-tag live" id="reviewKicker">SAMPLE</span></div>
+            <div class="review-title"><h2 id="resultTitle">확인이 필요한 정보</h2><span class="mono-tag live" id="reviewKicker">문맥·결합</span></div>
             <span class="result-count mono" id="resultCount">0</span>
           </div>
           <p class="review-sub" id="reviewSubtitle"></p>
           <div class="partial-notice hidden" id="partialNotice" role="status"></div>
-          <div class="list-head"><span class="risk-summary" id="riskSummary"><svg><use href="#i-shield"/></svg><span id="riskSummaryText"></span></span><span class="list-head-right"><span class="mono-label">가림 <strong id="selectedCount">0</strong></span><button class="text-button" id="selectAll">전체 선택</button></span></div>
+          <div class="list-head"><span class="risk-summary" id="riskSummary"><svg><use href="#i-shield"/></svg><span id="riskSummaryText"></span></span><span class="list-head-right"><span class="mono-label">가림 <strong id="selectedCount">0</strong></span><button class="text-button" id="selectAll">모두 선택</button></span></div>
           <div id="regionList" class="region-list"></div>
           <div class="review-foot">
             <div class="redaction-settings">
-              <div class="style-options" role="group" aria-label="가림 방식"><button data-style="pixel" class="selected" aria-pressed="true"><span class="swatch pixel-swatch"></span>모자이크</button><button data-style="blur" aria-pressed="false"><span class="swatch blur-swatch"></span>블러</button><button data-style="solid" aria-pressed="false"><span class="swatch solid-swatch"></span>단색</button></div>
-              <div class="strength-row"><label for="strength">강도</label><input type="range" id="strength" min="40" max="100" value="80"><span class="mono" id="strengthValue">80%</span></div>
-              <p id="styleHint" class="fine-print">민감한 정보에는 완전히 덮는 단색 가림을 권장해요.</p>
+              <div class="style-options two" role="group" aria-label="가림 방식"><button data-style="blur" class="selected" aria-pressed="true"><span class="swatch blur-swatch"></span>흐리게</button><button data-style="solid" aria-pressed="false"><span class="swatch solid-swatch"></span>검은색</button></div>
+              <p id="styleHint" class="fine-print"></p>
             </div>
             <div class="metadata-box"><svg><use href="#i-pin"/></svg><div><strong>촬영 정보 없이 저장</strong><p>위치 · 기기 · 촬영 시각 등 원본 메타데이터 제외</p></div></div>
-            <p class="server-save-notice hidden" id="serverSaveNotice"></p>
             <div id="saveState" class="save-state hidden" role="status"><span id="saveStateText"></span><button id="cancelExport" class="text-button">요청 취소</button></div>
             <button class="button primary full big" id="saveButton"><svg><use href="#i-download"/></svg><span id="saveLabel">가린 사진 저장하기</span></button>
           </div>
@@ -198,15 +188,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       </aside>
     </div>
 
-    <footer class="page-footer"><span><svg><use href="#i-shield"/></svg><span id="footerPrivacy">원본 전송 없이, 내 기기에서 편집해요.</span></span><span class="mono-label">Privacy Lens · 2026 시스템보안프로젝트</span></footer>
+    <footer class="page-footer"><span><svg><use href="#i-shield"/></svg><span>사진은 분석·저장할 때만 서버로 보내고, 서버는 남기지 않아요.</span></span><span class="mono-label">Privacy Lens · 2026 시스템보안프로젝트</span></footer>
   </main>
 </div>
 
-<dialog id="targetsDialog"><div class="dialog-header"><h2>탐지 대상 9종</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><p class="dialog-intro">프로젝트가 목표로 하는 대상입니다. 송장·학생증·모니터 외 6종은 데모 구성을 위한 제안 항목이에요.</p><div class="targets-grid" id="targetsGrid"></div><div class="dialog-callout"><svg><use href="#i-info"/></svg><p>AI 탐지와 OCR은 아직 연결되지 않았어요. 샘플은 미리 정한 위험 영역을 보여 주고, 내 사진은 직접 영역을 지정해 가릴 수 있어요.</p></div></dialog>
-<dialog id="guideDialog"><div class="dialog-header"><h2>세 단계로 끝나요</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><div class="guide-step"><span class="mono">1</span><div><h3>사진 선택</h3><p>JPG·PNG·WEBP를 끌어다 놓거나 샘플을 고르세요. 데모 모드에서는 사진을 서버에 보내지 않아요. 팀 서버 모드에서는 분석·저장 때 설정한 서버로 전송해요.</p></div></div><div class="guide-step"><span class="mono">2</span><div><h3>위험 영역 확인</h3><p>목록의 이유를 읽고 가릴 영역을 고르세요. 놓친 곳은 ‘영역 추가’로 그리거나 중앙에 추가한 뒤 위치와 크기를 조절해요.</p></div></div><div class="guide-step"><span class="mono">3</span><div><h3>가림 조정 후 저장</h3><p>모자이크·블러·단색 중 고르고 전후를 비교하세요. 저장하면 원본의 위치·촬영 메타데이터가 없는 새 PNG가 만들어져요.</p></div></div><div class="dialog-callout"><svg><use href="#i-eye"/></svg><p>공유 전에 사진 전체를 한 번 더 보세요. 블러와 모자이크는 정보가 일부 드러날 수 있어요. 완전히 덮으려면 단색을 쓰세요.</p></div><button class="button primary full" data-close>사진 검사 시작하기</button></dialog>
-<dialog id="exportDialog"><div class="dialog-header"><h2>저장 전 마지막 확인</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><p id="exportOrigin" class="mono-label"></p><div class="export-preview"><img id="exportPreview" alt="가림 처리가 적용된 최종 이미지"></div><dl class="export-details"><div><dt>가림 처리</dt><dd id="exportRegionCount"></dd></div><div><dt>촬영 메타데이터</dt><dd id="exportMetadata">원본 정보 제외</dd></div><div><dt>파일 형식</dt><dd>PNG</dd></div></dl><p class="export-warning" id="exportWarning"></p><div class="export-actions"><button class="button ghost" data-close>계속 편집</button><button class="button primary" id="downloadButton"><svg><use href="#i-download"/></svg>PNG 다운로드</button></div></dialog>
-<dialog id="connectionDialog"><form id="connectionForm"><div class="dialog-header"><h2>팀 서버 연결</h2><button type="button" class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><p class="dialog-intro">API가 준비되기 전에는 데모 모드로 쓰세요. 설정을 저장하는 것만으로 사진을 보내지는 않아요.</p><label class="connection-option"><input type="radio" name="connectionMode" value="demo" checked><span><strong>브라우저 데모</strong><small>샘플 분석 시연 · 내 사진 수동 편집 · 로컬 PNG 저장</small></span></label><label class="connection-option"><input type="radio" name="connectionMode" value="server"><span><strong>팀 서버</strong><small>사진 분석과 최종 영역 처리를 팀 API에 요청</small></span></label><label class="endpoint-label" for="endpointInput">API 기본 주소</label><input id="endpointInput" type="text" placeholder="http://127.0.0.1:8000" autocomplete="off" spellcheck="false"><p class="fine-print">/api/analyze, /api/redact가 있는 기본 주소를 입력하세요. 샘플은 서버로 보내지 않아요.</p><label class="consent-option"><input type="checkbox" id="serverConsent">팀 서버 모드에서는 분석·저장 버튼을 누르면 사진과 선택 영역을 이 주소로 보낸다는 것을 확인했습니다.</label><p id="connectionError" class="form-error" role="alert"></p><button class="button primary full" type="submit">설정 적용</button></form></dialog>
-<dialog id="payloadDialog"><div class="dialog-header"><h2>최종 영역 데이터</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><p class="dialog-intro" id="payloadSummary"></p><pre id="payloadJson" tabindex="0" aria-label="최종 영역 JSON"></pre><div class="dialog-callout"><svg><use href="#i-info"/></svg><p>원본의 왼쪽 위가 (0, 0)입니다. 선택 해제·삭제한 영역은 빠져요. 팀 서버 모드에서는 이 JSON과 방향을 보정한 PNG를 함께 보냅니다.</p></div><button class="button primary full" id="downloadPayload">영역 JSON 다운로드</button></dialog>
+<dialog id="targetsDialog"><div class="dialog-header"><h2>탐지 항목</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><p class="dialog-intro">사진의 글자를 읽어(OCR) 아래 형식을 찾고, 주변 문구로 개인 정보인지 공개 정보인지 판정해요. 고객센터 번호처럼 공개된 정보는 ‘참고’로 둬요.</p><div class="targets-grid" id="targetsGrid"></div><div class="dialog-callout"><svg><use href="#i-info"/></svg><p>판정은 확정이 아니라 권장이에요. 글자를 못 읽은 영역은 내용을 지어내지 않고 ‘내용 확인 불가’로 표시해요. 놓친 곳은 직접 추가해 주세요.</p></div></dialog>
+<dialog id="guideDialog"><div class="dialog-header"><h2>세 단계로 끝나요</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><div class="guide-step"><span class="mono">1</span><div><h3>사진 선택</h3><p>JPG·PNG·WEBP·HEIC를 끌어다 놓거나 샘플을 고르세요. 분석하면 사진을 이 서버로 보내요. 서버는 사진을 디스크에 쓰지 않아요.</p></div></div><div class="guide-step"><span class="mono">2</span><div><h3>위험 영역 확인</h3><p>‘가림 권장’ ‘검토 권장’ ‘참고’와 근거를 읽고 가릴 항목을 고르세요. 기본으로는 아무것도 고르지 않아요. 놓친 곳은 ‘영역 추가’로 그려요.</p></div></div><div class="guide-step"><span class="mono">3</span><div><h3>미리 보고 저장</h3><p>‘가림 결과’·‘전후 비교’로 서버가 실제로 가린 모습을 확인하고 저장하세요. 저장한 파일은 서버가 다시 검사하고, 위치·촬영 정보는 빠져요.</p></div></div><div class="dialog-callout"><svg><use href="#i-eye"/></svg><p>‘흐리게’는 글자 위에 블러를 거는 게 아니라 주변 색으로 먼저 지운 뒤 흐리게 해서 원래 글자를 되살릴 수 없어요. 공유 전에 사진 전체를 한 번 더 보세요.</p></div><button class="button primary full" data-close>사진 검사 시작하기</button></dialog>
+<dialog id="exportDialog"><div class="dialog-header"><h2>저장 전 마지막 확인</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><p id="exportOrigin" class="mono-label"></p><div class="export-preview"><img id="exportPreview" alt="가림 처리가 적용된 최종 이미지"></div><dl class="export-details"><div><dt>가림 처리</dt><dd id="exportRegionCount"></dd></div><div><dt>촬영 메타데이터</dt><dd id="exportMetadata">원본 정보 제외</dd></div><div><dt>파일 형식</dt><dd>JPEG</dd></div></dl><div class="export-warning" id="exportWarning"></div><div class="export-actions"><button class="button ghost" data-close>계속 편집</button><button class="button primary" id="downloadButton"><svg><use href="#i-download"/></svg>다운로드</button></div></dialog>
+<dialog id="payloadDialog"><div class="dialog-header"><h2>최종 영역 데이터</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><p class="dialog-intro" id="payloadSummary"></p><pre id="payloadJson" tabindex="0" aria-label="최종 영역 JSON"></pre><div class="dialog-callout"><svg><use href="#i-info"/></svg><p>방향을 보정한 원본의 왼쪽 위가 (0, 0)입니다. 선택 해제·삭제한 영역은 빠져요. 저장할 때 이 영역(기울어진 글자는 외곽선 poly 포함)과 원본 사진을 서버로 보내요.</p></div><button class="button primary full" id="downloadPayload">영역 JSON 다운로드</button></dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"><svg><use href="#i-check"/></svg><span id="toastText"></span></div>
 </body>

@@ -1,23 +1,30 @@
 'use strict';
 (() => {
+  // 화면 동작. 분석·판정·가림·검증은 전부 Privacy Lens 서버가 한다(api.js).
+  // 이 파일은 사진 표시, 결과 목록, 영역 편집, 대기열 표시만 맡는다.
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
   const icon = name => '<svg aria-hidden="true"><use href="#i-' + name + '"/></svg>';
   const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
   const escapeHTML = text => String(text).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const clone = value => JSON.parse(JSON.stringify(value));
-  const state = { source: null, phase: 'empty', regions: [], focused: null, history: [], mode: 'original', style: 'pixel', strength: 80, compare: 50, drawing: false, sample: false, sampleKey: null, width: 0, height: 0, name: '', bytes: 0, metadata: null, timer: null, loadToken: 0, exportToken: 0, exportUrl: null, nextId: 1, toastTimer: null };
+  const Core=PrivacyLensCore, Api=PrivacyLensAPI, api=Api.client();
+  const state = { source:null, file:null, phase:'empty', regions:[], focused:null, editing:null, history:[], mode:'original', style:'blur', compare:50, drawing:false,
+    sample:false, sampleKey:null, width:0, height:0, name:'', bytes:0, serverImage:false, condition:'full', analysisStatus:'idle', groups:[], gps:[], issues:[],
+    backend:'', elapsedMs:0, zoom:1, loadToken:0, exportToken:0, exportUrl:null, nextId:1, toastTimer:null,
+    requestController:null, requestSerial:0, saving:false, saveError:'', ticket:null, previewState:'none', previewSeq:0 };
+  try { const saved=localStorage.getItem('pl.maskStyle'); if(Core.STYLES.includes(saved)) state.style=saved; } catch(_) {}
   const canvas = $('#photoCanvas');
   const ctx = canvas.getContext('2d');
-  const protectedCanvas = document.createElement('canvas');
+  const protectedCanvas = document.createElement('canvas');   // 서버가 그려 준 가림 미리보기
   const protectedContext = protectedCanvas.getContext('2d');
-  let protectedDirty = true;
-  let gesture = null;
-  let downloadBlob = null;
-  let dialogReturnFocus = null;
+  let gesture = null, downloadBlob = null, dialogReturnFocus = null, previewTimer = null, queueTimer = null;
   const fixtures = new Map();
-  const Core=PrivacyLensCore;
-  Object.assign(state,{connection:'demo',endpoint:'',analysisStatus:'idle',analysisId:null,scenario:'normal',zoom:1,guided:false,demoProgress:{},issues:[],requestController:null,requestSerial:0,saving:false,saveError:'',editing:null});
+  // 이미지 불러오기. img.decode() 는 탭이 가려져 있으면 끝나지 않는다(Chromium).
+  // 미리보기를 만드는 동안 다른 탭으로 가면 화면이 멈춰서 onload 로 기다린다.
+  function loadImage(src) {
+    return new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>reject(new Error('decode'));image.src=src;});
+  }
 
   function notify(message, error = false) {
     clearTimeout(state.toastTimer);
@@ -46,15 +53,16 @@
     dialog.close();
     if (dialogReturnFocus && document.contains(dialogReturnFocus)) dialogReturnFocus.focus();
   }
-  function invalidate() { protectedDirty = true; state.exportToken++; if (state.source && state.phase === 'review') setStep(2); }
+  // 영역이 바뀌면 가림 미리보기를 다시 받아야 한다.
+  function invalidate() {
+    state.previewState='stale'; state.exportToken++;
+    if (state.source && state.phase === 'review') setStep(2);
+    if (state.mode !== 'original') schedulePreview();
+  }
   function pushHistory() {
     state.history.push(clone(state.regions));
     if (state.history.length > 35) state.history.shift();
     $('#undoButton').disabled = false;
-  }
-  function stopScan() {
-    if (state.timer) clearInterval(state.timer);
-    state.timer = null;
   }
   function releaseExport() {
     state.exportToken++;
@@ -64,36 +72,22 @@
     $('#exportPreview').removeAttribute('src');
   }
   function reset() {
-    stopScan();cancelRequests();state.zoom=1;state.analysisStatus='idle';state.guided=false;state.issues=[];
-    state.loadToken++;
-    state.exportToken++;
-    releaseExport();
-    state.source = null;
-    state.phase = 'empty';
-    state.regions = [];
-    state.history = [];
-    state.focused = null;
-    state.drawing = false;
-    state.sampleKey = null;
-    state.nextId = 1;
-    state.mode = 'original';
+    cancelRequests();state.zoom=1;state.analysisStatus='idle';state.issues=[];state.groups=[];state.gps=[];state.backend='';
+    state.loadToken++;state.exportToken++;releaseExport();
+    Object.assign(state,{source:null,file:null,phase:'empty',regions:[],history:[],focused:null,editing:null,drawing:false,sample:false,sampleKey:null,serverImage:false,nextId:1,mode:'original',previewState:'none'});
     gesture = null;
     canvas.width = canvas.height = 1;
     protectedCanvas.width = protectedCanvas.height = 1;
     $('#fileInput').value = '';
     $('#emptyState').classList.remove('hidden');
     $('#imageState').classList.add('hidden');
-    $('#welcomePanel').classList.remove('hidden');
-    $('#scanningPanel').classList.add('hidden');
-    $('#reviewPanel').classList.add('hidden');
     $('#changePhoto').classList.add('hidden');
     $('#fileInfo').classList.remove('hidden');
     $('#editorTitle').textContent = '사진 작업 공간';
     $('#regionLayer').replaceChildren();
     $('#undoButton').disabled = true;
-    $('#addRegion').disabled = false;
     setStep(1);
-    syncDrawing();syncPanels();updateGuide();$('#saveState').classList.add('hidden');
+    syncDrawing();syncPanels();$('#saveState').classList.add('hidden');
   }
   function normalizeRegion(region) {
     const w = clamp(Number(region.w) || .1, .008, 1);
@@ -104,8 +98,9 @@
     if (!state.source || state.phase === 'scanning') return;
     pushHistory();
     const number = state.nextId++;
-    const region = normalizeRegion({ id: 'custom-' + number, x: rect.x, y: rect.y, w: rect.w, h: rect.h, label: '직접 지정한 영역 ' + number, reason: '직접 선택한 정보예요. 크기와 위치를 조절해 충분히 가려 주세요.', text: '수동 지정', kind: 'manual', type: 'CUSTOM', ocrStatus: 'ok', enabled: true });
-    state.regions.push(region);state.demoProgress.added=true;
+    // 직접 그린 영역은 사용자가 가리겠다고 고른 것이라 바로 선택된다.
+    const region = normalizeRegion({ id: 'custom-' + number, x: rect.x, y: rect.y, w: rect.w, h: rect.h, label: '직접 지정한 영역 ' + number, reason: '직접 선택한 영역이에요. 크기와 위치를 조절해 충분히 가려 주세요.', text: '', kind: 'manual', type: 'CUSTOM', poly: null, enabled: true });
+    state.regions.push(region);
     state.focused = state.editing = region.id;
     state.drawing = false;
     invalidate();
@@ -113,9 +108,12 @@
     render();
     notify('가릴 영역을 추가했어요. 테두리를 끌어 위치를 조절할 수 있어요.');
   }
+  // 영역을 옮기면 기울어진 외곽선도 같이 옮긴다. 크기를 바꾸면 외곽선은 의미가 없어 사각형이 된다.
+  function shiftPoly(region, dx, dy) {
+    if (region.poly && (dx || dy)) region.poly = region.poly.map(([x, y]) => [x + dx, y + dy]);
+  }
 
-  // Synthetic document fixtures, not real photographs or real personal information.
-  // These canvases are functional OCR/detection test documents used by the demo.
+  // 코드로 그린 가상 문서. 실제 사진이나 실제 개인정보가 아니다. 서버로 실제 분석한다.
   function rounded(c, x, y, w, h, r, fill, stroke) {
     c.beginPath();
     c.roundRect(x, y, w, h, r);
@@ -142,7 +140,7 @@
     rounded(c, 0, 0, 1050, 96, [14,14,0,0], '#314e3b');
     write(c, 'LENS DELIVERY', 35, 59, 29, '#eef7df', 700);
     write(c, '가상 택배 송장', 770, 59, 24, '#d4e4c2', 400);
-    write(c, 'DEMO-0000-2026', 35, 145, 22, '#79896e', 600);
+    write(c, '운송장번호 6012-3456-7890', 35, 145, 22, '#79896e', 600);
     barcode(c, 660, 117, 350, 39);
     c.strokeStyle = '#e3e7db'; c.beginPath(); c.moveTo(35, 177); c.lineTo(1015, 177); c.stroke();
     write(c, '받는 분', 38, 230, 22, '#7c8871');
@@ -154,7 +152,7 @@
     write(c, '프라이버시 아파트 101동 202호', 208, 359, 25, '#4b5b41');
     c.beginPath(); c.moveTo(35, 400); c.lineTo(1015, 400); c.stroke();
     write(c, '품목', 38, 454, 22, '#7c8871'); write(c, '무선 헤드폰 / 1개', 208, 454, 25, '#617053');
-    write(c, '배송 메모', 38, 513, 22, '#7c8871'); write(c, '문 앞에 놓아 주세요.', 208, 513, 24, '#617053');
+    write(c, '고객센터', 38, 513, 22, '#7c8871'); write(c, '1588-0000', 208, 513, 24, '#617053');
     write(c, 'SYNTHETIC DATA  ·  실제 수신인과 주소가 아닙니다', 38, 576, 17, '#9ba58e');
     c.restore();
   }
@@ -168,7 +166,7 @@
     rounded(c,37,146,154,193,10,'#e9efdf');
     write(c,'DEMO',61,234,30,'#a0b68b',700);
     write(c,'가상 학생',73,268,15,'#9aac88');
-    write(c,'이안심',235,195,39,'#29482f',700);
+    write(c,'성명 이안심',235,195,39,'#29482f',700);
     write(c,'학번  2026000123',235,252,25,'#647b52');
     write(c,'정보보안학과',235,297,25,'#647b52');
     barcode(c,236,340,406,31);
@@ -189,40 +187,18 @@
   }
   function makeFixture(key) {
     if (fixtures.has(key)) return fixtures.get(key);
-    if(key==='portrait'){const base=makeFixture('parcel');const image=document.createElement('canvas');image.width=900;image.height=1400;const c=image.getContext('2d');c.fillStyle='#e8eddf';c.fillRect(0,0,900,1400);write(c,'PORTRAIT SAMPLE',42,88,30,'#657a53',600);write(c,'세로 이미지 · 좌표 확인용',42,137,24,'#879a75');c.drawImage(base.image,30,260,840,840*1000/1440);const regions=base.regions.map(r=>({...r,id:'portrait-'+r.id,x:(30+r.x*840)/900,y:(260+r.y*840*1000/1440)/1400,w:r.w*840/900,h:r.h*840*1000/1440/1400}));const fixture={image,regions};fixtures.set(key,fixture);return fixture;}
     const image = document.createElement('canvas'); image.width = 1440; image.height = 1000;
     const c = image.getContext('2d');
     c.fillStyle = key === 'student' ? '#e8eddf' : '#edece3'; c.fillRect(0,0,1440,1000);
     write(c,'PRIVACY LENS  /  SAMPLE DOCUMENT',65,75,18,'#929e83',600);
     write(c,'실제 개인정보가 없는 테스트 이미지',65,115,20,'#7e8d6f');
     write(c,'2026',1300,75,18,'#9ba68e');
-    const regions = [];
-    function region(id,label,reason,text,x,y,w,h,kind='high') {
-      regions.push({id,label,reason,text,x:x/1440,y:y/1000,w:w/1440,h:h/1000,kind,enabled:true});
-    }
-    if(key === 'parcel') {
-      parcelDocument(c,195,235);
-      region('name','받는 사람 이름','이름이 주소와 함께 노출되면 특정인을 식별할 수 있어요.','김○○',392,424,166,63);
-      region('phone','휴대전화 번호','공개된 연락처는 원치 않는 연락에 이용될 수 있어요.','010-****-0000',925,424,304,63);
-      region('address','상세 배송 주소','집 주소와 동·호수가 드러나면 거주 위치를 알 수 있어요.','가상시 안심구 · 상세 주소',392,512,813,96);
-    } else if(key === 'student') {
-      studentDocument(c,245,260,1.32);
-      region('student-name','학생 이름','이름과 소속 학교가 함께 공개될 수 있어요.','이○○',245+226*1.32,260+151*1.32,290*1.32,59*1.32);
-      region('student-id','학번 · 소속 학과','학번과 소속은 개인을 구분하는 단서가 될 수 있어요.','2026****** · 정보보안학과',245+226*1.32,260+223*1.32,414*1.32,92*1.32);
-      region('student-code','학생증 바코드','바코드에 식별 정보가 포함될 수 있어 함께 가려 주세요.','학생증 식별 코드',245+226*1.32,260+332*1.32,430*1.32,51*1.32);
-    } else {
-      parcelDocument(c,65,230,.76);
-      studentDocument(c,920,240,.62);
-      screenDocument(c,920,595,.72);
-      region('mixed-name','송장 · 이름과 연락처','작게 보이는 송장에도 수신인의 정보가 담겨 있어요.','이름 · 휴대전화',65+194*.76,230+187*.76,830*.76,63*.76);
-      region('mixed-address','송장 · 상세 주소','배경 문서의 주소도 거주 위치를 노출할 수 있어요.','가상시 안심구 · 상세 주소',65+194*.76,230+277*.76,830*.76,100*.76);
-      region('mixed-student','학생증 · 이름과 학번','학생증을 확대하면 이름과 학번을 확인할 수 있어요.','이름 · 학번 · 학과',920+219*.62,240+145*.62,454*.62,238*.62);
-      region('mixed-school','학생증 · 학교 이름','학교 이름이 개인의 소속을 드러낼 수 있어요.','가상대학교',920+28*.62,240+18*.62,420*.62,71*.62);
-      region('mixed-email','화면 문서 · 이메일','작은 화면에 적힌 이메일도 개인을 연결하는 단서예요.','l***@example.com',920+21*.72,595+130*.72,560*.72,60*.72);
-    }
+    if(key === 'parcel') parcelDocument(c,195,235);
+    else if(key === 'student') studentDocument(c,245,260,1.32);
+    else { parcelDocument(c,65,230,.76); studentDocument(c,920,240,.62); screenDocument(c,920,595,.72); }
     write(c,'SYNTHETIC DATA',65,945,16,'#a0aa93',500);
     write(c,'사진 속 위험 영역 확인을 위한 데모 문서',935,945,16,'#9ca78e');
-    const fixture = {image, regions};fixtures.set(key,fixture);return fixture;
+    const fixture = {image};fixtures.set(key,fixture);return fixture;
   }
   function initializeThumbnails() {
     ['parcel','student','mixed'].forEach(key => {
@@ -232,60 +208,23 @@
     });
   }
 
-  // Header-only metadata inspection. No location values or personal text are extracted.
-  function inspectMetadata(buffer, type) {
-    const bytes = new Uint8Array(buffer);
-    const info = { exif: false, gps: false, camera: false, date: false, status: 'unknown' };
-    if(type !== 'image/jpeg') { info.status = 'unsupported'; return info; }
-    try {
-      const view = new DataView(buffer);
-      let offset = 2;
-      while(offset + 4 <= bytes.length) {
-        if(bytes[offset] !== 255) break;
-        const marker = bytes[offset+1];
-        if(marker === 218 || marker === 217) break;
-        if(marker === 0 || marker === 255) { offset++; continue; }
-        if(marker >= 208 && marker <= 215) { offset += 2; continue; }
-        const size = view.getUint16(offset+2);
-        if(size < 2 || offset + 2 + size > bytes.length) break;
-        const start = offset + 4;
-        const end = offset + 2 + size;
-        if(marker === 225 && size >= 16 && bytes[start] === 69 && bytes[start+1] === 120 && bytes[start+2] === 105 && bytes[start+3] === 102 && bytes[start+4] === 0 && bytes[start+5] === 0) {
-          info.exif = true;
-          const base = start + 6;
-          const order = view.getUint16(base);
-          if(order !== 0x4949 && order !== 0x4d4d) { offset = end; continue; }
-          const le = order === 0x4949;
-          if(view.getUint16(base+2,le)!==42) { offset=end; continue; }
-          const visited = new Set();
-          function readIFD(relative, depth = 0) {
-            const pos = base + relative;
-            if(depth > 2 || visited.has(pos) || relative < 8 || pos + 2 > end) return;
-            visited.add(pos);
-            const count = Math.min(view.getUint16(pos,le),512);
-            for(let i=0;i<count;i++) {
-              const entry = pos + 2 + i*12;
-              if(entry+12>end) return;
-              const tag = view.getUint16(entry,le);
-              if(tag===0x8825 && view.getUint32(entry+8,le)>0) info.gps = true;
-              if(tag===0x010f || tag===0x0110) info.camera = true;
-              if(tag===0x0132 || tag===0x9003 || tag===0x9004) info.date = true;
-              if(tag===0x8769) readIFD(view.getUint32(entry+8,le),depth+1);
-            }
-          }
-          readIFD(view.getUint32(base+4,le));
-        }
-        offset = end;
-      }
-      info.status = 'checked';
-    } catch (_) { info.status = 'partial'; }
-    return info;
-  }
   function sniffType(bytes) {
     if(bytes[0]===255 && bytes[1]===216 && bytes[2]===255) return 'image/jpeg';
     if(bytes[0]===137 && bytes[1]===80 && bytes[2]===78 && bytes[3]===71 && bytes[4]===13 && bytes[5]===10 && bytes[6]===26 && bytes[7]===10) return 'image/png';
     if(bytes[0]===82 && bytes[1]===73 && bytes[2]===70 && bytes[3]===70 && bytes[8]===87 && bytes[9]===69 && bytes[10]===66 && bytes[11]===80) return 'image/webp';
+    // HEIC/HEIF: 'ftyp' 상자 + 상표. 브라우저 대부분은 못 열지만 서버는 연다(pillow-heif).
+    if(bytes[4]===102 && bytes[5]===116 && bytes[6]===121 && bytes[7]===112) {
+      const brand=String.fromCharCode(...bytes.slice(8,12));
+      if(['heic','heix','hevc','heim','heis','mif1','msf1'].includes(brand)) return 'image/heic';
+    }
     return null;
+  }
+  function placeholder() {
+    const c=document.createElement('canvas');c.width=1200;c.height=900;
+    const g=c.getContext('2d');g.fillStyle='#f0efeb';g.fillRect(0,0,1200,900);
+    write(g,'HEIC 사진',80,400,44,'#4a4741',600);
+    write(g,'이 브라우저는 미리 보지 못해요. 분석하면 서버가 만든 미리보기로 바뀌어요.',80,470,26,'#6b675f');
+    return c;
   }
   async function loadFile(file) {
     if(!file) return;
@@ -296,25 +235,28 @@
       const buffer = await file.arrayBuffer();
       if(token !== state.loadToken) return;
       const type = sniffType(new Uint8Array(buffer));
-      if(!type) throw new Error('JPG, PNG, WEBP 사진만 선택할 수 있어요.');
-      const metadata = inspectMetadata(buffer,type);
-      objectUrl = URL.createObjectURL(new Blob([buffer],{type}));
-      const image = new Image();
-      image.src = objectUrl;
-      await image.decode();
-      if(token !== state.loadToken) return;
-      if(!image.naturalWidth || !image.naturalHeight) throw new Error('사진을 읽을 수 없어요. 다른 파일을 선택해 주세요.');
-      if(image.naturalWidth*image.naturalHeight > 24e6 || image.naturalWidth > 16384 || image.naturalHeight > 16384) throw new Error('사진 크기가 너무 커요. 24 MP 이하, 한 변 16,384 px 이하로 줄여 주세요.');
-      // Freeze the decoded frame. Output has no dependency on an object URL or animation.
-      const frozen = document.createElement('canvas');
-      frozen.width=image.naturalWidth;frozen.height=image.naturalHeight;
-      frozen.getContext('2d').drawImage(image,0,0);
-      stopScan();cancelRequests();
-      state.source=frozen;state.width=frozen.width;state.height=frozen.height;
-      state.name=file.name;state.bytes=file.size;state.sample=false;state.sampleKey=null;state.metadata=metadata;
-      state.regions=[];state.history=[];state.focused=null;state.nextId=1;state.mode='original';state.phase='ready';state.drawing=false;state.zoom=1;state.analysisStatus='idle';state.analysisId=null;state.issues=[];state.guided=false;
-      releaseExport();invalidate();showImage();render();
-      setConnectionCopy();notify('사진 미리보기가 준비됐어요. 분석 또는 직접 편집을 선택하세요.');
+      if(!type) throw new Error('JPG, PNG, WEBP, HEIC 사진만 선택할 수 있어요.');
+      let frozen=null;
+      try {
+        objectUrl = URL.createObjectURL(new Blob([buffer],{type}));
+        const image = await loadImage(objectUrl);
+        if(token !== state.loadToken) return;
+        if(image.naturalWidth*image.naturalHeight > 24e6 || image.naturalWidth > 16384 || image.naturalHeight > 16384) throw new Error('사진 크기가 너무 커요. 24 MP 이하, 한 변 16,384 px 이하로 줄여 주세요.');
+        // 브라우저는 EXIF 방향을 반영해 그린다. 서버도 같은 방향으로 보정하므로 좌표가 맞는다.
+        frozen = document.createElement('canvas');
+        frozen.width=image.naturalWidth;frozen.height=image.naturalHeight;
+        frozen.getContext('2d').drawImage(image,0,0);
+      } catch(error) {
+        if(type!=='image/heic') throw error;
+        frozen=null;
+      }
+      cancelRequests();
+      const serverImage=!frozen;
+      if(serverImage) frozen=placeholder();
+      Object.assign(state,{source:frozen,file,width:frozen.width,height:frozen.height,name:file.name,bytes:file.size,sample:false,sampleKey:null,serverImage,
+        regions:[],history:[],focused:null,editing:null,nextId:1,mode:'original',phase:'ready',drawing:false,zoom:1,analysisStatus:'idle',issues:[],groups:[],gps:[],backend:'',previewState:'none'});
+      releaseExport();showImage();render();
+      notify(serverImage?'HEIC 사진이에요. 분석하면 서버가 만든 미리보기를 보여 드려요.':'사진이 준비됐어요. 분석하거나 직접 가릴 영역을 지정하세요.');
     } catch(error) {
       if(token === state.loadToken) notify(error.message && !/decode/i.test(error.message) ? error.message : '손상되었거나 지원되지 않는 사진이에요. 다른 파일을 선택해 주세요.',true);
     } finally {
@@ -322,16 +264,31 @@
       $('#fileInput').value='';
     }
   }
-  function loadSample(key, options = {}) {
-    if(!['parcel','student','mixed','portrait'].includes(key))return;
-    state.loadToken++;stopScan();cancelRequests();releaseExport();
+  function loadSample(key) {
+    if(!['parcel','student','mixed'].includes(key))return;
+    state.loadToken++;cancelRequests();releaseExport();
     const fixture=makeFixture(key);
-    state.source=fixture.image;state.width=fixture.image.width;state.height=fixture.image.height;
-    state.name={parcel:'sample_delivery.png',student:'sample_student_id.png',mixed:'sample_documents.png',portrait:'sample_portrait.png'}[key];
-    state.bytes=0;state.sample=true;state.sampleKey=key;state.metadata=null;state.regions=[];state.history=[];state.focused=null;state.nextId=1;state.mode='original';state.drawing=false;state.phase='ready';state.analysisStatus='idle';state.analysisId=null;state.issues=[];state.zoom=1;
-    state.guided=!!options.guided;state.demoProgress={};
-    invalidate();showImage();render();layoutCanvas(false);
-    if(options.auto)beginAnalysis();
+    Object.assign(state,{source:fixture.image,file:null,width:fixture.image.width,height:fixture.image.height,
+      name:{parcel:'sample_delivery.png',student:'sample_student_id.png',mixed:'sample_documents.png'}[key],bytes:0,sample:true,sampleKey:key,serverImage:false,
+      regions:[],history:[],focused:null,editing:null,nextId:1,mode:'original',drawing:false,phase:'ready',analysisStatus:'idle',issues:[],groups:[],gps:[],backend:'',zoom:1,previewState:'none'});
+    showImage();render();layoutCanvas(false);
+    beginAnalysis();
+  }
+  // 서버로 보낼 파일. 샘플은 화면에 그린 그림을 PNG 로 만든다.
+  async function uploadFile() {
+    if(state.file) return state.file;
+    const blob=await imageBlob(state.source);
+    state.file=new File([blob],state.name||'image.png',{type:'image/png'});
+    return state.file;
+  }
+  // 서버가 보정한 사진과 크기가 다르면(HEIC, 브라우저가 EXIF 방향을 반영하지 않은 경우)
+  // 서버 미리보기를 화면 사진으로 쓴다. 그래야 서버 좌표와 정확히 겹친다.
+  async function adoptServerImage(b64,width,height) {
+    const image=await loadImage('data:image/jpeg;base64,'+b64);
+    const c=document.createElement('canvas');c.width=width;c.height=height;
+    c.getContext('2d').drawImage(image,0,0,width,height);
+    Object.assign(state,{source:c,width,height,serverImage:true});
+    showImage();
   }
 
   function showImage() {
@@ -340,64 +297,72 @@
     $('#changePhoto').classList.remove('hidden');$('#fileInfo').classList.add('hidden');
     $('#editorTitle').textContent=state.name;$('#editorTitle').title=state.name;
     $('#imageDimensions').textContent=state.width.toLocaleString()+' × '+state.height.toLocaleString()+' px'+(state.bytes?' · '+(state.bytes/1024/1024).toFixed(1)+' MB':' · 가상 데이터');
-    $('#saveLabel').textContent='가린 사진 저장하기';$('#undoButton').disabled=!state.history.length;
-    syncDrawing();setConnectionCopy();syncPanels();layoutCanvas(false);
+    $('#undoButton').disabled=!state.history.length;
+    syncDrawing();syncPanels();layoutCanvas(false);
   }
 
-  function drawProtected() {
-    if(!state.source || !protectedDirty) return;
-    const c=protectedContext;
-    c.clearRect(0,0,state.width,state.height);
-    c.drawImage(state.source,0,0,state.width,state.height);
-    state.regions.filter(r=>r.enabled).forEach(r=>{
-      const {x,y,width:w,height:h}=Core.toPixels(r,state.width,state.height);
-      if(w<=0 || h<=0) return;
-      if(state.style==='solid') { c.fillStyle='#1f1d1a';c.fillRect(x,y,w,h);return; }
-      if(state.style==='blur' && 'filter' in c) {
-        c.save();c.beginPath();c.rect(x,y,w,h);c.clip();
-        c.filter='blur('+Math.max(12,Math.round(Math.min(state.width,state.height)*(.015+state.strength*.00045)))+'px)';
-        c.drawImage(state.source,0,0,state.width,state.height);c.restore();return;
-      }
-      const block=Math.max(10,Math.round(Math.min(state.width,state.height)*(.012+state.strength*.00035)));
-      const small=document.createElement('canvas');
-      small.width=Math.max(1,Math.ceil(w/block));small.height=Math.max(1,Math.ceil(h/block));
-      const sc=small.getContext('2d');sc.drawImage(state.source,x,y,w,h,0,0,small.width,small.height);
-      c.save();c.imageSmoothingEnabled=false;c.drawImage(small,0,0,small.width,small.height,x,y,w,h);c.restore();
-    });
-    protectedDirty=false;
+  /* ---------- 가림 미리보기 ----------
+     서버가 저장할 때와 같은 함수로 가린 축소본을 받아 '가림 결과'·'전후 비교'에 쓴다.
+     화면에서 따로 흉내 내면 미리 본 것과 저장된 것이 달라질 수 있다. */
+  function schedulePreview() {
+    clearTimeout(previewTimer);
+    previewTimer=setTimeout(renderPreview,250);
+  }
+  async function renderPreview() {
+    if(!state.source || state.phase!=='review') return;
+    const seq=++state.previewSeq;
+    state.previewState='loading';renderImage();
+    try {
+      const file=await uploadFile();
+      const data=await api.preview(file,Core.boxes(state),state.style);
+      if(seq!==state.previewSeq) return;
+      const image=await loadImage('data:image/jpeg;base64,'+data.preview);
+      if(seq!==state.previewSeq) return;
+      protectedContext.clearRect(0,0,state.width,state.height);
+      protectedContext.drawImage(image,0,0,state.width,state.height);
+      state.previewState='ready';
+    } catch(error) {
+      if(seq!==state.previewSeq) return;
+      state.previewState='error';notify('가림 미리보기를 만들지 못했어요. '+(error.message||''),true);
+    }
+    renderImage();
   }
   function renderImage() {
     if(!state.source) return;
     ctx.clearRect(0,0,state.width,state.height);
-    if(state.mode==='original') {
-      ctx.drawImage(state.source,0,0,state.width,state.height);
-    } else {
-      drawProtected();
-      ctx.drawImage(protectedCanvas,0,0);
-      if(state.mode==='compare') {
-        const split=state.width*state.compare/100;
-        ctx.save();ctx.beginPath();ctx.rect(0,0,split,state.height);ctx.clip();ctx.drawImage(state.source,0,0,state.width,state.height);ctx.restore();
-        ctx.fillStyle='#fff';ctx.fillRect(split-1.5,0,3,state.height);
-        ctx.beginPath();ctx.arc(split,state.height/2,Math.max(10,state.width*.018),0,Math.PI*2);ctx.fill();
-        const s=Math.max(4,state.width*.004);ctx.strokeStyle='#ef5a1c';ctx.lineWidth=Math.max(2,state.width*.0012);
-        ctx.beginPath();ctx.moveTo(split-s,state.height/2-s);ctx.lineTo(split-s,state.height/2+s);ctx.moveTo(split+s,state.height/2-s);ctx.lineTo(split+s,state.height/2+s);ctx.stroke();
-      }
+    const showProtected=state.mode!=='original'&&state.previewState==='ready';
+    ctx.drawImage(showProtected?protectedCanvas:state.source,0,0,state.width,state.height);
+    if(showProtected && state.mode==='compare') {
+      const split=state.width*state.compare/100;
+      ctx.save();ctx.beginPath();ctx.rect(0,0,split,state.height);ctx.clip();ctx.drawImage(state.source,0,0,state.width,state.height);ctx.restore();
+      ctx.fillStyle='#fff';ctx.fillRect(split-1.5,0,3,state.height);
+      ctx.beginPath();ctx.arc(split,state.height/2,Math.max(10,state.width*.018),0,Math.PI*2);ctx.fill();
+      const s=Math.max(4,state.width*.004);ctx.strokeStyle='#ef5a1c';ctx.lineWidth=Math.max(2,state.width*.0012);
+      ctx.beginPath();ctx.moveTo(split-s,state.height/2-s);ctx.lineTo(split-s,state.height/2+s);ctx.moveTo(split+s,state.height/2-s);ctx.lineTo(split+s,state.height/2+s);ctx.stroke();
     }
-    $('#canvasCaption').textContent={original:'ORIGINAL · 위험 영역',protected:'PROTECTED · 가림 결과',compare:'BEFORE / AFTER'}[state.mode];
+    const waiting=state.mode!=='original'&&state.previewState!=='ready';
+    $('#canvasCaption').textContent=state.mode==='original'?'ORIGINAL · 위험 영역':waiting?(state.previewState==='error'?'PREVIEW · 만들지 못했어요':'PREVIEW · 서버에서 만드는 중'):state.mode==='protected'?'PROTECTED · 저장될 모습':'BEFORE / AFTER';
     $('#regionLayer').classList.toggle('hidden',state.mode!=='original' || state.phase==='scanning');
     $('#compareControl').classList.toggle('hidden',state.mode!=='compare');
-    $$('[data-view]').forEach(button=>{const active=button.dataset.view===state.mode;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));button.disabled=state.phase==='scanning';});
+    $$('[data-view]').forEach(button=>{const active=button.dataset.view===state.mode;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));button.disabled=state.phase!=='review';});
   }
   function renderBoxes() {
     const layer=$('#regionLayer');layer.replaceChildren();
     state.regions.forEach((r,i)=>{
       const box=document.createElement('button');
-      box.className='region-box'+(!r.enabled?' unselected':'')+(state.focused===r.id?' focused':'');
+      box.className='region-box'+(!r.enabled?' unselected':'')+(state.focused===r.id?' focused':'')+(r.severity?' sev-'+r.severity:'')+(r.certainty&&r.certainty!=='read'?' cert-'+r.certainty:'')+(r.poly?' poly':'');
       box.dataset.id=r.id;
       box.setAttribute('aria-pressed',String(state.focused===r.id));
       box.setAttribute('aria-label',r.label+' 영역. 방향키로 이동, Alt와 방향키로 크기 조절');
       box.title=r.label+' · 끌어서 이동, 모서리를 끌어 크기 조절';
       box.style.left=(r.x*100)+'%';box.style.top=(r.y*100)+'%';box.style.width=(r.w*100)+'%';box.style.height=(r.h*100)+'%';
+      if(r.poly) {
+        // 기울어진 글자는 실제 외곽선을 그린다. 가릴 때도 이 모양을 쓴다.
+        const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg'),poly=document.createElementNS(ns,'polygon');
+        svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('preserveAspectRatio','none');svg.setAttribute('aria-hidden','true');
+        poly.setAttribute('points',r.poly.map(([x,y])=>((x-r.x)/r.w*100).toFixed(2)+','+((y-r.y)/r.h*100).toFixed(2)).join(' '));
+        svg.append(poly);box.append(svg);
+      }
       const label=document.createElement('span'),num=document.createElement('b'),name=document.createElement('span');num.textContent=String(i+1).padStart(2,'0');name.className='name';name.textContent=r.label;label.append(num,name);box.append(label);
       const handle=document.createElement('i');handle.className='resize-handle';handle.dataset.resize='true';box.append(handle);
       layer.append(box);
@@ -405,12 +370,13 @@
   }
   function metadataText() {
     if(state.sample) return '샘플 문서 · 촬영 메타데이터 없음';
-    const m=state.metadata;
-    if(!m || m.status==='unsupported') return '이 형식의 원본 메타데이터는 검사하지 않았어요. 저장 시 새 이미지로 변환해요.';
-    if(m.status==='partial') return '일부 메타데이터를 읽지 못했어요. 저장 파일에는 원본 정보를 복사하지 않아요.';
-    if(!m.exif) return 'JPEG EXIF 태그가 확인되지 않았어요. 다른 종류의 숨은 정보는 검사하지 않아요.';
-    const tags=[m.gps?'위치 태그':null,m.camera?'기기 태그':null,m.date?'촬영 시각 태그':null].filter(Boolean);
-    return '원본 EXIF 감지'+(tags.length?' · '+tags.join(' · '):'')+' — 저장 시 제외';
+    if(state.gps.length) return state.gps[0].message+' — 저장하면 자동으로 제거돼요.';
+    if(state.analysisStatus==='idle'||state.analysisStatus==='manual') return '저장할 때 위치·기기·촬영 시각 등 원본 메타데이터를 모두 빼요.';
+    return '사진 파일에서 위치정보가 발견되지 않았어요. 저장할 때 다른 메타데이터도 모두 빼요.';
+  }
+  function severityTag(r) {
+    if(r.kind==='manual') return '<span class="risk-tag manual">직접 추가</span>';
+    return '<span class="risk-tag sev-'+escapeHTML(r.severity)+'">'+escapeHTML(Core.SEVERITY[r.severity]||'검토 권장')+'</span>';
   }
   function renderList() {
     const list=$('#regionList'),active=document.activeElement;
@@ -420,10 +386,11 @@
     }
     list.innerHTML=state.regions.map((r,index)=>{
       const focused=state.focused===r.id,detail=state.editing===r.id,title=escapeHTML(r.label),px=Core.toPixels(r,state.width,state.height);
+      const cert=r.kind==='manual'?'':'<span class="cert-label">'+escapeHTML(r.certaintyLabel||'')+'</span>';
       return '<div class="region-item'+(focused?' selected-detail':'')+(detail?' editing':'')+'" data-region="'+escapeHTML(r.id)+'">'+
-        '<div class="region-item-top"><input type="checkbox" data-action="toggle" '+(r.enabled?'checked ':'')+'aria-label="'+title+' 가리기"><button class="region-item-name" data-action="focus" aria-pressed="'+focused+'"><span class="row-number">'+String(index+1).padStart(2,'0')+'</span>'+title+'</button><span class="risk-tag'+(r.kind==='manual'?' manual':'')+'">'+(r.ocrStatus==='failed'?'판독 실패':r.kind==='manual'?'직접 추가':Core.TYPES[r.type]||'문서')+'</span></div>'+
-        '<p class="region-item-description">'+escapeHTML(r.reason)+'</p><div class="region-item-meta"><code>'+escapeHTML(r.text)+'</code><span class="region-actions"><button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'유형 · 좌표 수정')+'</button><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span></div>'+
-        (detail?'<div class="region-detail"><label class="type-label">개인정보 유형<select data-region-type="true" aria-label="'+title+' 개인정보 유형">'+Object.entries(Core.TYPES).map(([key,label])=>'<option value="'+key+'" '+(r.type===key?'selected':'')+'>'+label+'</option>').join('')+'</select></label><div class="coordinate-title">원본 좌표 <span>'+state.width+' × '+state.height+' px</span></div><div class="coordinate-editor" aria-label="원본 픽셀 좌표">'+[['x','왼쪽',px.x],['y','위쪽',px.y],['w','너비',px.width],['h','높이',px.height]].map(([key,label,value])=>'<label>'+label+'<input type="number" min="'+(['w','h'].includes(key)?1:0)+'" max="'+(['x','w'].includes(key)?state.width:state.height)+'" step="1" value="'+value+'" data-coordinate="'+key+'" aria-label="'+title+' '+label+' 픽셀">px</label>').join('')+'</div></div>':'')+'</div>';
+        '<div class="region-item-top"><input type="checkbox" data-action="toggle" '+(r.enabled?'checked ':'')+'aria-label="'+title+' 가리기"><button class="region-item-name" data-action="focus" aria-pressed="'+focused+'"><span class="row-number">'+String(index+1).padStart(2,'0')+'</span>'+title+'</button>'+severityTag(r)+'</div>'+
+        '<p class="region-item-description">'+escapeHTML(r.reason)+'</p><div class="region-item-meta">'+(r.text?'<code>'+escapeHTML(r.text)+'</code>':'<span></span>')+cert+'<span class="region-actions"><button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'유형 · 좌표 수정')+'</button><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span></div>'+
+        (detail?'<div class="region-detail"><label class="type-label">개인정보 유형<select data-region-type="true" aria-label="'+title+' 개인정보 유형">'+Object.entries(Core.TYPES).map(([key,label])=>'<option value="'+key+'" '+(r.type===key?'selected':'')+'>'+label+'</option>').join('')+'</select></label><div class="coordinate-title">원본 좌표 <span>'+state.width+' × '+state.height+' px'+(r.poly?' · 기울어진 외곽선':'')+'</span></div><div class="coordinate-editor" aria-label="원본 픽셀 좌표">'+[['x','왼쪽',px.x],['y','위쪽',px.y],['w','너비',px.width],['h','높이',px.height]].map(([key,label,value])=>'<label>'+label+'<input type="number" min="'+(['w','h'].includes(key)?1:0)+'" max="'+(['x','w'].includes(key)?state.width:state.height)+'" step="1" value="'+value+'" data-coordinate="'+key+'" aria-label="'+title+' '+label+' 픽셀">px</label>').join('')+'</div></div>':'')+'</div>';
     }).join('');
     if(focusId) {
       const row=Array.from(list.children).find(el=>el.dataset.region===focusId);
@@ -434,26 +401,25 @@
 
   function renderReview() {
     const count=state.regions.length,selected=state.regions.filter(r=>r.enabled).length;
+    const serious=state.regions.filter(r=>r.severity==='cover'||r.severity==='review').length;
     $('#resultCount').textContent=count;$('#selectedCount').textContent=selected;
-    $('#resultTitle').textContent=state.analysisStatus==='partial'?'일부 정보를 확인해 주세요':state.analysisStatus==='empty'?'탐지된 영역이 없어요':state.analysisStatus==='manual'?'직접 가릴 정보를 선택해요':'확인이 필요한 정보';
-    $('#reviewKicker').textContent=state.sample?'SAMPLE':state.analysisStatus==='manual'?'MANUAL':'SERVER';
-    $('#reviewSubtitle').textContent=state.analysisStatus==='manual'?'직접 추가한 영역만 가려집니다. 사진 전체를 확인해 주세요.':state.sample?'샘플 시뮬레이션 결과예요. 번호로 사진 속 박스를 찾아요.':'팀 서버의 분석 결과예요. 놓치거나 잘못 분류한 정보가 있다면 수정해 주세요.';
+    $('#resultTitle').textContent=state.analysisStatus==='empty'?'탐지된 영역이 없어요':state.analysisStatus==='manual'?'직접 가릴 정보를 선택해요':state.analysisStatus==='partial'?'일부 정보를 확인해 주세요':'확인이 필요한 정보';
+    $('#reviewKicker').textContent=state.analysisStatus==='manual'?'MANUAL':Core.CONDITIONS[state.condition]||'';
+    $('#reviewSubtitle').textContent=state.analysisStatus==='manual'?'직접 추가한 영역만 가려집니다. 사진 전체를 확인해 주세요.':'가림 권장 · 검토 권장 '+serious+'건. 기본으로 아무것도 고르지 않았어요. 가릴 항목을 고르세요.';
     $('#riskSummary').classList.toggle('safe',count>0&&selected===count);
-    $('#riskSummaryText').textContent=count===0?'탐지 결과가 없어도 개인정보가 없다는 뜻은 아니에요.':selected===count?selected+'개 영역을 가리도록 선택했어요.':(count-selected)+'개 영역이 가림에서 제외되어 있어요.';
-    $('#selectAll').textContent=count>0&&selected===count?'전체 해제':'전체 선택';$('#selectAll').disabled=count===0||state.saving;
-    $('#saveLabel').textContent=state.connection==='server'&&!state.sample?'최종 영역 전송 · 저장':selected?'가린 사진 저장하기':'촬영 정보 없이 저장하기';
+    $('#riskSummaryText').textContent=count===0?'탐지 결과가 없어도 개인정보가 없다는 뜻은 아니에요.':selected===count?selected+'개 영역을 가리도록 선택했어요.':selected?(count-selected)+'개 영역은 가리지 않아요.':'아직 가릴 영역을 고르지 않았어요.';
+    $('#selectAll').textContent=count>0&&selected===count?'모두 해제':'모두 선택';$('#selectAll').disabled=count===0||state.saving;
+    $('#saveLabel').textContent=selected?'선택한 '+selected+'곳 가리고 저장':'위치정보 등 메타데이터만 지우고 저장';
     $('#undoButton').disabled=!state.history.length||state.phase!=='review';
-    $('#strength').disabled=state.style==='solid';$('#strengthValue').textContent=state.style==='solid'?'완전 가림':state.strength+'%';
-    $$('.style-options button').forEach(button=>{const selected=button.dataset.style===state.style;button.classList.toggle('selected',selected);button.setAttribute('aria-pressed',String(selected));});
-    $('#styleHint').textContent=state.style==='solid'?'선택한 영역을 불투명한 색으로 완전히 덮어요.':'민감한 정보에는 완전히 덮는 단색 가림을 권장해요.';
+    $$('.style-options button').forEach(button=>{const on=button.dataset.style===state.style;button.classList.toggle('selected',on);button.setAttribute('aria-pressed',String(on));});
+    $('#styleHint').textContent=state.style==='solid'?'선택한 영역을 검은색으로 완전히 덮어요.':'흐린 유리처럼 덮어요. 글자 위에 블러를 거는 게 아니라 주변 색으로 먼저 지운 뒤 흐리게 해서, 원래 글자를 되살릴 수 없어요.';
     $('.metadata-box p').textContent=metadataText();
-    $('#partialNotice').classList.toggle('hidden',!state.issues.length);$('#partialNotice').textContent=state.issues.join(' ');
-    $('#serverSaveNotice').classList.toggle('hidden',state.connection!=='server'||state.sample);
-    $('#serverSaveNotice').textContent='사진과 최종 선택 영역을 '+state.endpoint+' 로 전송합니다.';
+    const notices=state.groups.map(g=>'함께 노출됨 · '+g).concat(state.issues);
+    $('#partialNotice').classList.toggle('hidden',!notices.length);$('#partialNotice').replaceChildren(...notices.map(text=>{const p=document.createElement('p');p.textContent=text;return p;}));
     renderList();
   }
 
-  function render() { renderImage();renderBoxes();renderReview();syncPanels();updateGuide(); }
+  function render() { renderImage();renderBoxes();renderReview();syncPanels(); }
 
   function syncDrawing() {
     $('#canvasWrap').classList.toggle('drawing',state.drawing);
@@ -463,7 +429,7 @@
     if(state.drawing) {
       state.mode='original';renderImage();
       $('#toolHint').textContent='사진을 드래그해서 가릴 부분을 선택하세요.';
-    } else $('#toolHint').textContent='가릴 부분을 직접 추가할 수 있어요.';
+    } else $('#toolHint').textContent='놓친 곳은 직접 추가할 수 있어요.';
   }
   function point(event) { return Core.screenPoint(event.clientX,event.clientY,$('#canvasWrap').getBoundingClientRect()); }
 
@@ -479,11 +445,10 @@
       const dx=p.x-gesture.start.x,dy=p.y-gesture.start.y;
       if(Math.abs(dx)+Math.abs(dy)>.003 && !gesture.changed) {pushHistory();gesture.changed=true;}
       if(!gesture.changed)return;
-      if(gesture.type==='resize') {r.w=clamp(gesture.original.w+dx,.008,1-r.x);r.h=clamp(gesture.original.h+dy,.008,1-r.y);}
-      else {r.x=clamp(gesture.original.x+dx,0,1-r.w);r.y=clamp(gesture.original.y+dy,0,1-r.h);}
+      if(gesture.type==='resize') {r.w=clamp(gesture.original.w+dx,.008,1-r.x);r.h=clamp(gesture.original.h+dy,.008,1-r.y);r.poly=null;}
+      else {const bx=r.x,by=r.y;r.x=clamp(gesture.original.x+dx,0,1-r.w);r.y=clamp(gesture.original.y+dy,0,1-r.h);shiftPoly(r,r.x-bx,r.y-by);}
       invalidate();
-      const box=$$('.region-box').find(b=>b.dataset.id===r.id);
-      if(box)Object.assign(box.style,{left:r.x*100+'%',top:r.y*100+'%',width:r.w*100+'%',height:r.h*100+'%'});
+      renderBoxes();
     }
   }
   function endGesture(event,cancelled=false) {
@@ -501,39 +466,77 @@
       render();if(!g.changed)focusRegion(g.id,'photo');
     }
   }
+
+  /* ---------- 대기열 ----------
+     OCR 은 서버에서 한 번에 하나씩 돈다. 분석·저장 요청마다 번호표를 붙여 보내고,
+     기다리는 동안 '앞에 몇 건, 약 몇 초'를 보여 준다. 다른 사진을 넣거나 취소하거나
+     창을 닫으면 기다리던 요청을 뺀다. */
+  function renderQueue(s) {
+    const badge=$('#queueBadge');badge.classList.remove('busy','ready');
+    if(!s.engine_ready){$('#queueText').textContent='OCR 엔진 준비 중';badge.classList.add('busy');}
+    else if(s.running+s.waiting===0){$('#queueText').textContent='대기열 비어 있음';badge.classList.add('ready');}
+    else {$('#queueText').textContent='처리 중 '+s.running+' · 대기 '+s.waiting;badge.classList.add('busy');}
+    if(!state.ticket || !s.state) return;
+    const eta=s.eta_s!=null?' · 약 '+s.eta_s+'초':'';
+    const text=s.state==='waiting'?'대기 '+s.ahead+'건'+eta:s.state==='running'?(s.engine_ready?(state.saving?'가리고 다시 검사하는 중':'검사하는 중'):'OCR 엔진 준비 중 (서버를 켠 뒤 처음 한 번, 1~2분)'):'사진을 올리는 중';
+    if(state.phase==='scanning') {
+      $('#scanPercent').textContent=s.state==='waiting'?'대기 '+s.ahead+'건':s.state==='running'?'검사 중':'올리는 중';
+      $('#scanModeLabel').textContent=text;
+      $('#scanTask1').classList.add('active');
+      $('#scanTask2').classList.toggle('active',s.state==='running');
+    }
+    if(state.saving) $('#saveStateText').textContent=s.state==='waiting'?'대기 중 — 앞에 '+s.ahead+'건'+eta:text;
+  }
+  async function pollQueue() {
+    clearTimeout(queueTimer);
+    try { renderQueue(await api.queue(state.ticket)); } catch(_) { /* 다음 차례에 다시 묻는다 */ }
+    if(state.ticket || document.visibilityState==='visible') queueTimer=setTimeout(pollQueue,state.ticket?1000:4000);
+  }
+  const pollSoon=()=>{clearTimeout(queueTimer);queueTimer=setTimeout(pollQueue,150);};
+
   async function prepareExport() {
     if(!state.source||state.phase!=='review'||state.saving)return;
     const token=++state.exportToken,serial=++state.requestSerial;
-    state.saving=true;state.saveError='';state.lastPayload=Core.payload(state);$('#cancelExport').classList.remove('hidden');
-    $('#saveState').classList.remove('hidden');$('#saveStateText').textContent=state.connection==='server'&&!state.sample?'최종 영역을 서버에 전송하고 있어요…':'저장할 PNG를 만들고 있어요…';syncPanels();
+    state.saving=true;state.saveError='';$('#cancelExport').classList.remove('hidden');
+    $('#saveState').classList.remove('hidden');$('#saveStateText').textContent='사진을 올리는 중';syncPanels();
+    const boxes=Core.boxes(state),ticket=Api.newTicket();
+    state.ticket=ticket;state.requestController=new AbortController();pollSoon();
     let candidateUrl;
     try {
-      let blob;
-      if(state.connection==='server'&&!state.sample) {
-        state.requestController=new AbortController();
-        const input=await imageBlob(state.source);
-        if(serial!==state.requestSerial)return;
-        blob=await PrivacyLensAPI.client(state.endpoint).redact(input,state.lastPayload,{signal:state.requestController.signal});
-      } else {drawProtected();blob=await imageBlob(protectedCanvas);}
+      const file=await uploadFile();
+      if(serial!==state.requestSerial)return;
+      const data=await api.redact(file,boxes,state.style,{ticket,signal:state.requestController.signal});
       if(token!==state.exportToken||serial!==state.requestSerial)return;
+      const bytes=Uint8Array.from(atob(data.file),c=>c.charCodeAt(0));
+      const blob=new Blob([bytes],{type:'image/jpeg'});
       candidateUrl=URL.createObjectURL(blob);
-      const check=new Image();check.src=candidateUrl;await check.decode();
-      if(check.naturalWidth!==state.width||check.naturalHeight!==state.height)throw new Error('저장 이미지의 크기가 원본과 달라요. 서버의 좌표·출력 크기를 확인해 주세요.');
+      const check=await loadImage(candidateUrl);
+      if(check.naturalWidth!==state.width||check.naturalHeight!==state.height)throw new Error('저장된 사진의 크기가 원본과 달라요. 다시 시도해 주세요.');
       if(token!==state.exportToken||serial!==state.requestSerial)return;
       if(state.exportUrl)URL.revokeObjectURL(state.exportUrl);
       downloadBlob=blob;state.exportUrl=candidateUrl;candidateUrl=null;$('#exportPreview').src=state.exportUrl;
-      const selected=state.lastPayload.regions.length,excluded=state.regions.length-selected;
-      $('#exportRegionCount').textContent=selected+'개 영역';
-      $('#exportOrigin').textContent=state.connection==='server'&&!state.sample?'팀 서버 처리 파일':'브라우저 처리 파일';
-      $('#exportMetadata').textContent=state.connection==='server'&&!state.sample?'서버에 제거 요청':'원본 정보 제외';
-      $('#exportWarning').textContent=!selected?'가림 영역이 없어 사진 내용이 그대로 저장됩니다. 촬영 메타데이터만 제외합니다.':(excluded?excluded+'개 영역은 가리지 않아요. ':'')+(state.style==='solid'?'선택한 부분을 단색으로 덮었어요. ':'블러·모자이크는 일부 정보가 드러날 수 있어요. ')+'공유 전에 사진 전체를 확인해 주세요.';
-      showDialog('exportDialog');state.demoProgress.preview=true;updateGuide();
+      showVerdict(data.verification,boxes.length);
+      showDialog('exportDialog');
     } catch(error) {
-      if(serial===state.requestSerial && error.name!=='AbortError') {state.saveError=error.message||'저장하지 못했어요. 다시 시도해 주세요.';notify(state.saveError,true);}
+      if(serial===state.requestSerial && error.name!=='AbortError' && error.status!==409) {state.saveError=error.message||'저장하지 못했어요. 다시 시도해 주세요.';notify(state.saveError,true);}
     } finally {
       if(candidateUrl)URL.revokeObjectURL(candidateUrl);
-      if(serial===state.requestSerial){state.saving=false;state.requestController=null;$('#saveState').classList.toggle('hidden',!state.saveError);$('#saveStateText').textContent=state.saveError;$('#cancelExport').classList.toggle('hidden',!!state.saveError);syncPanels();}
+      if(serial===state.requestSerial){state.saving=false;state.requestController=null;state.ticket=null;$('#saveState').classList.toggle('hidden',!state.saveError);$('#saveStateText').textContent=state.saveError;$('#cancelExport').classList.toggle('hidden',!!state.saveError);syncPanels();pollSoon();}
     }
+  }
+  // 서버가 결과 파일을 실제로 다시 읽어 검사한 결과. 통과 기준은 '선택한 영역마다 다시
+  // 탐지되는 것이 없고 위치정보가 남지 않음'이다.
+  function showVerdict(v,selected) {
+    $('#exportOrigin').textContent='Privacy Lens 서버 처리 · 결과 파일을 다시 검사함';
+    $('#exportRegionCount').textContent=selected?selected+'개 영역 · '+(state.style==='solid'?'검은색':'흐리게'):'가린 영역 없음';
+    $('#exportMetadata').textContent=v.had_gps?(v.gps_removed?'위치정보 제거됨':'위치정보 남아 있음'):'원본 메타데이터 제외';
+    const warning=$('#exportWarning');warning.dataset.state=v.passed?'pass':'fail';
+    const rest=v.remaining_count?' 선택하지 않은 곳에 검토할 항목이 '+v.remaining_count+'건 남아 있어요.':'';
+    const lines=[];
+    if(v.passed) lines.push((selected?'가린 '+selected+'곳을 다시 검사했고 남은 내용이 없어요.':'메타데이터를 지웠어요.')+(v.had_gps?' 위치정보도 제거했어요.':'')+rest+' 공유 전에 사진 전체를 한 번 더 확인해 주세요.');
+    else if(!v.gps_removed) lines.push('결과 파일에서 위치정보가 다시 탐지됐어요. 이 파일은 올리지 마세요.');
+    else {lines.push('가린 영역 근처에서 '+v.leaked_count+'건이 다시 탐지됐어요. 영역을 더 넓게 지정해 보세요.');(v.leaked||[]).slice(0,5).forEach(f=>lines.push('· '+String(f.message||'')));}
+    warning.replaceChildren(...lines.map(t=>{const p=document.createElement('p');p.textContent=t;return p;}));
   }
 
   function download() {
@@ -541,29 +544,18 @@
     const url=URL.createObjectURL(downloadBlob);
     const a=document.createElement('a');
     const base=state.name.replace(/\.[^/.]+$/,'').replace(/[<>:"/\\|?*\x00-\x1F]/g,'_').slice(0,90) || 'photo';
-    a.href=url;a.download=base+'-privacy-lens.png';document.body.append(a);a.click();a.remove();
+    a.href=url;a.download=base+'-privacy-lens.jpg';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),30000);
-    closeDialog($('#exportDialog'));setStep(3);state.mode='protected';state.demoProgress.downloaded=true;renderImage();updateGuide();
-    notify('PNG 다운로드를 요청했어요. 브라우저의 다운로드 목록을 확인하세요.');
+    closeDialog($('#exportDialog'));setStep(3);state.mode='protected';renderImage();if(state.previewState!=='ready')schedulePreview();
+    notify('다운로드를 요청했어요. 브라우저의 다운로드 목록을 확인하세요.');
   }
 
-
   function cancelRequests() {
-    state.requestSerial++;state.requestController?.abort();state.requestController=null;state.saving=false;
+    if(state.ticket) api.cancel(state.ticket);
+    state.ticket=null;state.requestSerial++;state.requestController?.abort();state.requestController=null;state.saving=false;state.previewSeq++;clearTimeout(previewTimer);
   }
   function imageBlob(source) {
     return new Promise((resolve,reject)=>source.toBlob(blob=>blob?resolve(blob):reject(new Error('사진을 PNG로 만들지 못했어요. 더 작은 사진으로 시도해 주세요.')),'image/png'));
-  }
-  function inferType(r) {
-    const s=r.id+' '+r.label;
-    if(/email|이메일/.test(s))return 'EMAIL';
-    if(/address|주소/.test(s))return 'ADDRESS';
-    if(/phone|연락처|전화/.test(s))return 'PHONE';
-    if(/code|바코드/.test(s))return 'BARCODE';
-    if(/student-id|학번/.test(s))return 'STUDENT_ID';
-    if(/school|학교|소속/.test(s))return 'ORGANIZATION';
-    if(/name|이름/.test(s))return 'NAME';
-    return 'DOCUMENT';
   }
   function syncPanels() {
     const phase=state.phase;
@@ -575,82 +567,50 @@
     $('#saveButton').disabled=phase!=='review'||state.saving;
     $('#imageState').inert=state.saving;
     $('#regionList').inert=state.saving;$('.redaction-settings').inert=state.saving;
-    $('#connectionButton').disabled=state.saving||phase==='scanning';
     $('#payloadButton').disabled=!state.source||phase!=='review'||state.saving;
-    $('#analyzeButton').disabled=!state.sample&&state.connection!=='server';
-    $('#analyzeButton').textContent=state.sample?'샘플 분석 시작':state.connection==='server'?'팀 서버로 분석하기':'AI 서버를 연결해 주세요';
-    $('#readyDescription').textContent=state.sample?'파일 미리보기를 확인한 뒤 샘플 분석을 시작하세요. 시연 상황을 바꾸어 예외 상태도 살펴볼 수 있어요.':state.connection==='server'?'사진을 '+state.endpoint+' 에 보내 분석합니다. 원본 방향과 크기를 맞춘 PNG로 전송해요.':'AI 서버가 아직 연결되지 않았어요. 사진을 확인하고 직접 가릴 영역을 지정할 수 있어요.';
+    $('#analyzeButton').disabled=!state.source||state.saving;
+    $('#manualButton').disabled=state.serverImage&&state.analysisStatus==='idle';
+    $('#conditionSelect').disabled=phase==='scanning'||state.saving;
+    $('#readyDescription').textContent=state.serverImage&&state.analysisStatus==='idle'?'이 형식은 브라우저가 미리 보지 못해요. 분석하면 서버가 만든 미리보기로 바뀌어요.':'사진을 Privacy Lens 서버로 보내 글자를 읽고 개인정보를 판정해요. 서버는 사진을 디스크에 저장하지 않아요.';
     $('#readyFileInfo').textContent=state.width+' × '+state.height+' px';
-    $('#sourceBadge').textContent=state.sample?'샘플 시뮬레이션':state.analysisStatus==='manual'?'내 사진 · 수동 편집':state.connection==='server'?'팀 서버 모드':'파일 미리보기';
-    const text=phase==='ready'?'미리보기 준비 완료':phase==='scanning'?(state.sample?'샘플 분석 진행 중':'팀 서버 응답을 기다리는 중'):phase==='failed'?'분석 실패 · 재시도하거나 직접 편집할 수 있어요':state.analysisStatus==='partial'?'분석 완료 · 일부 글자는 직접 확인해 주세요':state.analysisStatus==='empty'?'분석 완료 · 탐지 결과 없음':state.analysisStatus==='manual'?'수동 편집 · AI 분석을 수행하지 않았어요':'분석 완료 · 결과를 확인하고 수정해 주세요';
-    $('#analysisNoticeText').textContent=text;$('#analysisNotice').dataset.state=phase==='failed'?'error':state.analysisStatus==='partial'?'warning':'normal';
-    $('#canvasCaption').textContent={original:'ORIGINAL · 위험 영역',protected:'PROTECTED · 가림 결과',compare:'BEFORE / AFTER'}[state.mode];
+    $('#sourceBadge').textContent=state.backend||(state.sample?'가상 샘플':'분석 전');
+    const text=phase==='ready'?'미리보기 준비 완료':phase==='scanning'?'서버가 사진을 검사하는 중':phase==='failed'?'분석 실패 · 재시도하거나 직접 편집할 수 있어요':state.analysisStatus==='partial'?'분석 완료 · 흐린 글자는 직접 확인해 주세요':state.analysisStatus==='empty'?'분석 완료 · 탐지 결과 없음':state.analysisStatus==='manual'?'수동 편집 · 자동 분석을 하지 않았어요':'분석 완료 · 결과를 확인하고 가릴 항목을 고르세요';
+    $('#analysisNoticeText').textContent=text+(state.elapsedMs&&phase==='review'&&state.analysisStatus!=='manual'?' · '+state.elapsedMs+'ms':'');
+    $('#analysisNotice').dataset.state=phase==='failed'?'error':state.analysisStatus==='partial'?'warning':'normal';
     if(phase==='ready')setStep(1);
     else if(phase==='scanning'||phase==='failed')setStep(2);
     $('#zoomOut').disabled=!state.source||state.zoom<=.5;$('#zoomIn').disabled=!state.source||state.zoom>=4;
-    $('#runScenario').disabled=state.saving;
-  }
-  function setConnectionCopy() {
-    const server=state.connection==='server';
-    $('#connectionButton').textContent=server?'팀 서버 연결 설정':'데모 · 서버 미연결';
-    $('#privacyTitle').textContent=server?'선택한 서버로만.':'이 사진은, 여기서만.';
-    $('#privacyDescription').textContent=server?'분석·저장 버튼을 누르면 사진을 설정한 팀 서버로 전송해요.':'사진을 서버에 보내지 않고 이 브라우저에서 처리해요.';
-    $('#privacyMode').textContent=server?'팀 서버 모드':'로컬 처리 데모';
-    $('#networkLabel').textContent=server&&!state.sample?'팀 서버 전송 모드':'서버 전송 없음';
-    $('#footerPrivacy').textContent=server?'샘플은 로컬 처리 · 내 사진은 선택한 서버로 전송':'원본 전송 없이, 내 기기에서 편집해요.';
   }
   function startManual() {
-    stopScan();cancelRequests();state.phase='review';state.analysisStatus='manual';state.issues=[];state.mode='original';
+    cancelRequests();state.phase='review';state.analysisStatus='manual';state.issues=[];state.groups=[];state.mode='original';
     invalidate();render();setStep(2);notify('직접 편집 모드예요. 가릴 부분을 추가해 주세요.');
   }
-  async function beginAnalysis(retry=false) {
+  async function beginAnalysis() {
     if(!state.source||state.saving)return;
-    stopScan();cancelRequests();state.regions=[];state.history=[];state.focused=null;state.issues=[];state.mode='original';state.phase='scanning';state.analysisStatus='running';state.drawing=false;
-    if(retry&&state.sample&&$('#scenarioSelect').value==='failed')$('#scenarioSelect').value='normal';
-    state.scenario=$('#scenarioSelect').value;invalidate();syncDrawing();render();
-    $('#scanProgress').style.width='0%';$('#scanPercent').textContent=state.sample?'0%':'분석 요청 중';
-    $('#scanningPanel').classList.toggle('server-analysis',!state.sample);
-    $('#scanModeLabel').textContent=state.sample?'샘플 시뮬레이션':'팀 서버에서 처리';
-    if(state.sample) {
-      const start=performance.now(),duration=window.matchMedia('(prefers-reduced-motion: reduce)').matches?900:2400;
-      const update=()=>{
-        const progress=clamp((performance.now()-start)/duration,0,1);
-        $('#scanProgress').style.width=progress*100+'%';$('#scanPercent').textContent=Math.round(progress*100)+'%';
-        [1,2,3].forEach(i=>$('#scanTask'+i).classList.toggle('active',progress>=(i-1)/3));
-        if(progress<1)return;
-        stopScan();
-        if(state.scenario==='failed'){analysisFailure('샘플 분석 요청 시간이 초과된 상황입니다. 재시도하면 정상 결과로 복구됩니다.');return;}
-        let regions=clone(makeFixture(state.sampleKey).regions).map(r=>({...r,type:inferType(r),ocrStatus:'ok'}));
-        state.analysisStatus='completed';
-        if(state.scenario==='empty'){regions=[];state.analysisStatus='empty';}
-        if(state.scenario==='partial') {
-          const last=regions.at(-1);last.type='UNKNOWN';last.kind='uncertain';last.ocrStatus='failed';last.text='글자 판독 실패';last.reason='영역은 찾았지만 작거나 흐린 글자를 읽지 못한 시연 상황이에요. 확대해서 확인하고 가릴지 결정해 주세요.';
-          state.analysisStatus='partial';state.issues=['일부 글자를 읽지 못했어요. ‘판독 실패’ 항목은 기본으로 가림 선택되어 있습니다. 확대해서 직접 확인해 주세요.'];
-        }
-        if(state.scenario==='correction'){
-          regions=regions.slice(0,-1);
-          regions.push({id:'demo-false-positive',type:'NAME',x:.04,y:.044,w:.62,h:.043,label:'오탐 · SAMPLE 문구',reason:'이 샘플의 제목이 이름으로 잘못 분류된 상황입니다. 개인정보가 아니므로 삭제해 보세요.',text:'SAMPLE DOCUMENT',kind:'high',ocrStatus:'ok',enabled:true});
-          state.issues=['수정 시연: SAMPLE 문구는 오탐입니다. 마지막 누락 정보는 ‘영역 추가’로 직접 지정해 보세요.'];
-        }
-        state.regions=regions;state.phase='review';state.focused=regions[0]?.id||null;invalidate();render();setStep(2);notify('샘플 분석 완료. '+regions.length+'개 영역을 확인해 주세요.');
-      };
-      state.timer=setInterval(update,40);update();return;
-    }
-    if(state.connection!=='server'){startManual();return;}
-    const serial=++state.requestSerial;state.requestController=new AbortController();
+    cancelRequests();
+    Object.assign(state,{regions:[],history:[],focused:null,editing:null,issues:[],groups:[],gps:[],mode:'original',phase:'scanning',analysisStatus:'running',drawing:false,previewState:'none'});
+    syncDrawing();render();
+    $('#scanningPanel').classList.add('server-analysis');
+    $('#scanPercent').textContent='올리는 중';$('#scanModeLabel').textContent=Core.CONDITIONS[state.condition];
+    [1,2,3].forEach(i=>$('#scanTask'+i).classList.remove('active'));
+    const serial=++state.requestSerial,ticket=Api.newTicket();
+    state.ticket=ticket;state.requestController=new AbortController();pollSoon();
     try {
-      $('#scanProgress').style.width='55%';
-      const input=await imageBlob(state.source);
+      const file=await uploadFile();
       if(serial!==state.requestSerial)return;
-      const response=await PrivacyLensAPI.client(state.endpoint).analyze(input,{signal:state.requestController.signal});
+      const data=await api.analyze(file,{mode:state.condition,ticket,signal:state.requestController.signal});
       if(serial!==state.requestSerial)return;
-      const result=Core.validateResult(response,state.width,state.height);
-      state.regions=result.regions;state.analysisId=result.analysisId;state.issues=result.warnings;
-      state.analysisStatus=result.status==='partial'?'partial':result.regions.length?'completed':'empty';
-      if(result.regions.some(r=>r.ocrStatus==='failed')) {state.analysisStatus='partial';if(!state.issues.length)state.issues=['일부 글자를 읽지 못했어요. 판독 실패 영역을 직접 확인해 주세요.'];}
-      state.phase='review';state.focused=state.regions[0]?.id||null;invalidate();render();setStep(2);notify('서버 분석 결과를 불러왔어요.');
-    } catch(error) {if(serial===state.requestSerial && error.name!=='AbortError')analysisFailure(error.message);}
-    finally {if(serial===state.requestSerial)state.requestController=null;}
+      $('#scanTask3').classList.add('active');
+      const result=Core.fromReport(data.report);
+      if(state.serverImage || result.width!==state.width || result.height!==state.height) await adoptServerImage(data.preview,result.width,result.height);
+      if(serial!==state.requestSerial)return;
+      Object.assign(state,{regions:result.regions,groups:result.groups,gps:result.gps,backend:result.backend,elapsedMs:result.elapsedMs,
+        issues:result.partial?['일부 영역은 글자가 흐려 내용을 확인하지 못했어요. 점선 영역을 확대해서 직접 확인해 주세요.']:[],
+        analysisStatus:result.regions.length?(result.partial?'partial':'completed'):'empty',phase:'review',focused:result.regions[0]?.id||null});
+      invalidate();render();setStep(2);
+      notify(result.regions.length?result.regions.length+'개 항목을 찾았어요. 가릴 항목을 고르세요.':'탐지된 항목이 없어요. 사진을 직접 확인해 주세요.');
+    } catch(error) {if(serial===state.requestSerial && error.name!=='AbortError' && error.status!==409)analysisFailure(error.message);}
+    finally {if(serial===state.requestSerial){state.requestController=null;state.ticket=null;pollSoon();}}
   }
   function analysisFailure(message) {
     state.phase='failed';state.analysisStatus='failed';$('#failureMessage').textContent=message;
@@ -675,7 +635,7 @@
   function zoomTo(value) {state.zoom=clamp(value,.5,4);layoutCanvas();}
   function focusRegion(id,origin='list') {
     const r=state.regions.find(r=>r.id===id);if(!r)return;
-    state.focused=id;state.mode='original';state.demoProgress.inspected=true;render();
+    state.focused=id;state.mode='original';render();
     if(origin==='list') {
       const box=$$('.region-box').find(el=>el.dataset.id===id),viewport=$('#canvasStage');
       if(box){const b=box.getBoundingClientRect(),v=viewport.getBoundingClientRect();viewport.scrollLeft+=b.left+b.width/2-v.left-viewport.clientWidth/2;viewport.scrollTop+=b.top+b.height/2-v.top-viewport.clientHeight/2;}
@@ -683,26 +643,16 @@
       const row=$$('.region-item').find(el=>el.dataset.region===id);
       if(row){const list=$('#regionList');list.scrollTop=row.offsetTop-list.offsetTop;}
     }
-    updateGuide();
-  }
-  function updateGuide() {
-    $('#guidedDemo').classList.toggle('hidden',!state.guided);
-    if(!state.guided)return;
-    const p=state.demoProgress;
-    const steps=[['inspected','결과와 근거 확인'],['deleted','SAMPLE 오탐 삭제'],['added','누락 이메일 추가'],['preview','전후 비교 · 미리보기'],['downloaded','PNG 다운로드']];
-    const current=steps.find(([key])=>!p[key]);
-    $('#demoStepLabel').textContent=current?current[1]:'시연 완료! 다시 시작해 반복 연습할 수 있어요.';
-    $('#demoChecklist').innerHTML=steps.map(([key,label],i)=>'<li class="'+(p[key]?'done':current?.[0]===key?'current':'')+'"><span>'+(p[key]?icon('check'):i+1)+'</span>'+label+'</li>').join('');
   }
   function openPayload() {
     if(!state.source)return;
     const payload=Core.payload(state);$('#payloadJson').textContent=JSON.stringify(payload,null,2);
-    $('#payloadSummary').textContent='선택한 '+payload.regions.length+'개 영역 · 원본 '+state.width+' × '+state.height+' px · 이미지 데이터와 OCR 원문은 JSON에 포함하지 않아요.';
+    $('#payloadSummary').textContent='선택한 '+payload.boxes.length+'개 영역 · 원본 '+state.width+' × '+state.height+' px · 이미지 데이터와 인식된 글자는 들어 있지 않아요.';
     showDialog('payloadDialog');
   }
   function savePayload() {
     const blob=new Blob([JSON.stringify(Core.payload(state),null,2)],{type:'application/json'});
-    const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='privacy-lens-regions.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);notify('최종 영역 JSON 다운로드를 요청했어요.');
+    const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='privacy-lens-regions.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);notify('영역 JSON 다운로드를 요청했어요.');
   }
 
   function applyCoordinateInput(input,commit=false) {
@@ -719,12 +669,12 @@
     const next=Core.fromPixels(box,state.width,state.height);
     if(['x','y','w','h'].some(k=>region[k]!==next[k])){
       if(!input.dataset.historySaved){pushHistory();input.dataset.historySaved='true';}
+      if(key==='w'||key==='h')region.poly=null;else shiftPoly(region,next.x-region.x,next.y-region.y);
       Object.assign(region,next);invalidate();renderImage();renderBoxes();
     }
     if(commit)renderReview();
   }
 
-  // Demo stays local. Team API calls require an explicitly chosen server mode.
   $$('[data-dialog]').forEach(button=>button.addEventListener('click',()=>showDialog(button.dataset.dialog)));
   $$('[data-close]').forEach(button=>button.addEventListener('click',()=>closeDialog(button.closest('dialog'))));
   $$('dialog').forEach(dialog=>{
@@ -742,16 +692,18 @@
   document.addEventListener('dragover',event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault();});
   document.addEventListener('drop',event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault();});
   $$('[data-sample]').forEach(button=>button.addEventListener('click',()=>loadSample(button.dataset.sample)));
-  $('#cancelScan').addEventListener('click',()=>{stopScan();cancelRequests();state.phase='ready';state.analysisStatus='cancelled';render();notify('분석 요청을 취소했어요. 다시 시작할 수 있어요.');});
-  $$('[data-view]').forEach(button=>button.addEventListener('click',()=>{state.mode=button.dataset.view;state.drawing=false;syncDrawing();renderImage();}));
+  $('#cancelScan').addEventListener('click',()=>{cancelRequests();state.phase='ready';state.analysisStatus='idle';render();notify('분석 요청을 취소했어요. 다시 시작할 수 있어요.');});
+  $$('[data-view]').forEach(button=>button.addEventListener('click',()=>{state.mode=button.dataset.view;state.drawing=false;syncDrawing();renderImage();if(state.mode!=='original'&&state.previewState!=='ready'&&state.previewState!=='loading')schedulePreview();}));
   $('#compareSlider').addEventListener('input',event=>{state.compare=Number(event.target.value);renderImage();});
-  $$('[data-style]').forEach(button=>button.addEventListener('click',()=>{state.style=button.dataset.style;state.mode='protected';state.drawing=false;syncDrawing();invalidate();render();}));
-  $('#strength').addEventListener('input',event=>{state.strength=Number(event.target.value);$('#strengthValue').textContent=state.strength+'%';state.mode='protected';state.drawing=false;syncDrawing();invalidate();renderImage();});
+  $$('[data-style]').forEach(button=>button.addEventListener('click',()=>{
+    state.style=button.dataset.style;try{localStorage.setItem('pl.maskStyle',state.style);}catch(_){}
+    state.mode='protected';state.drawing=false;syncDrawing();invalidate();render();
+  }));
   $('#selectAll').addEventListener('click',()=>{if(!state.regions.length)return;pushHistory();const all=state.regions.every(r=>r.enabled);state.regions.forEach(r=>r.enabled=!all);invalidate();render();});
   $('#regionList').addEventListener('click',event=>{
     const control=event.target.closest('[data-action]');if(!control || control.dataset.action==='toggle')return;
     const row=control.closest('[data-region]');const region=state.regions.find(r=>r.id===row.dataset.region);if(!region)return;
-    if(control.dataset.action==='delete') {if(region.id==='demo-false-positive')state.demoProgress.deleted=true;pushHistory();state.regions=state.regions.filter(r=>r.id!==region.id);if(state.focused===region.id)state.focused=null;invalidate();render();notify('영역을 삭제했어요. 되돌리기로 복원할 수 있어요.');}
+    if(control.dataset.action==='delete') {pushHistory();state.regions=state.regions.filter(r=>r.id!==region.id);if(state.focused===region.id)state.focused=null;invalidate();render();notify('영역을 삭제했어요. 되돌리기로 복원할 수 있어요.');}
     if(control.dataset.action==='focus') focusRegion(region.id);
     if(control.dataset.action==='edit') {state.editing=state.editing===region.id?null:region.id;focusRegion(region.id);}
   });
@@ -768,13 +720,13 @@
   $('#centerRegion').addEventListener('click',()=>addRegion({x:.35,y:.4,w:.3,h:.2}));
   $('#undoButton').addEventListener('click',()=>{if(!state.history.length)return;state.regions=state.history.pop();if(!state.regions.some(r=>r.id===state.focused))state.focused=null;invalidate();render();notify('이전 영역 설정으로 되돌렸어요.');});
   $('#canvasWrap').addEventListener('pointerdown',event=>{
-    if(!state.source || state.phase==='scanning' || state.mode!=='original' || event.button!==0)return;
+    if(!state.source || state.phase!=='review' || state.mode!=='original' || event.button!==0)return;
     const wrap=$('#canvasWrap'),p=point(event);
     if(state.drawing) {event.preventDefault();gesture={type:'draw',start:p,pointerId:event.pointerId};wrap.setPointerCapture(event.pointerId);return;}
     const box=event.target.closest('.region-box');if(!box)return;
     event.preventDefault();
     const region=state.regions.find(r=>r.id===box.dataset.id);if(!region)return;
-    state.focused=region.id;state.demoProgress.inspected=true;renderReview();updateGuide();
+    state.focused=region.id;renderReview();
     $$('.region-box').forEach(el=>el.classList.toggle('focused',el.dataset.id===region.id));
     gesture={type:event.target.dataset.resize?'resize':'move',id:region.id,start:p,original:clone(region),changed:false,pointerId:event.pointerId};
     wrap.setPointerCapture(event.pointerId);
@@ -789,42 +741,30 @@
     if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;
     event.preventDefault();pushHistory();
     const amount = event.shiftKey ? .001 : .01;
-    if(event.altKey){if(event.key==='ArrowLeft')r.w-=amount;if(event.key==='ArrowRight')r.w+=amount;if(event.key==='ArrowUp')r.h-=amount;if(event.key==='ArrowDown')r.h+=amount;r.w=clamp(r.w,.008,1-r.x);r.h=clamp(r.h,.008,1-r.y);}
-    else{if(event.key==='ArrowLeft')r.x-=amount;if(event.key==='ArrowRight')r.x+=amount;if(event.key==='ArrowUp')r.y-=amount;if(event.key==='ArrowDown')r.y+=amount;r.x=clamp(r.x,0,1-r.w);r.y=clamp(r.y,0,1-r.h);}
+    if(event.altKey){if(event.key==='ArrowLeft')r.w-=amount;if(event.key==='ArrowRight')r.w+=amount;if(event.key==='ArrowUp')r.h-=amount;if(event.key==='ArrowDown')r.h+=amount;r.w=clamp(r.w,.008,1-r.x);r.h=clamp(r.h,.008,1-r.y);r.poly=null;}
+    else{const bx=r.x,by=r.y;if(event.key==='ArrowLeft')r.x-=amount;if(event.key==='ArrowRight')r.x+=amount;if(event.key==='ArrowUp')r.y-=amount;if(event.key==='ArrowDown')r.y+=amount;r.x=clamp(r.x,0,1-r.w);r.y=clamp(r.y,0,1-r.h);shiftPoly(r,r.x-bx,r.y-by);}
     state.focused=r.id;invalidate();render();$$('.region-box').find(el=>el.dataset.id===r.id)?.focus({preventScroll:true});
   });
   document.addEventListener('keydown',event=>{if(event.key==='Escape' && state.drawing){state.drawing=false;gesture=null;syncDrawing();}});
   $('#saveButton').addEventListener('click',prepareExport);
   $('#downloadButton').addEventListener('click',download);
-  const targets=[['box','택배 송장','이름 · 주소 · 연락처'],['id','학생증','이름 · 학교 · 학번'],['monitor','모니터 화면','이메일 · 대화 · 문서'],['id','신분증','식별 번호 · 이름'],['file','금융 문서','계좌 · 거래 내역'],['file','의료 문서','이름 · 진료 정보'],['file','영수증','매장 · 결제 정보'],['file','명함','연락처 · 소속'],['grid','QR · 바코드','연결된 식별 정보']];
+  // 서버가 실제로 찾는 항목(pipeline/kr_patterns.py, metadata.py)
+  const targets=[['id','이름','받는분·성명 같은 라벨 바로 뒤'],['box','전화번호','휴대전화 · 유선 · 대표번호 구분'],['pin','주소','도로명주소 · 동·호수'],['lock','주민등록번호','체크섬 · 2020년 이후 형식'],['file','카드번호','Luhn 검증'],['box','운송장번호','운송장 라벨 옆 긴 숫자'],['file','차량번호','실제 번호판 글자만'],['monitor','이메일','주소 형식'],['grid','QR · 바코드','안의 내용까지 검사, 링크는 열지 않음'],['pin','위치정보','사진 파일의 GPS 좌표']];
   $('#targetsGrid').innerHTML=targets.map(([symbol,label,detail])=>'<div class="target-tile">'+icon(symbol)+'<h3>'+label+'</h3><p>'+detail+'</p></div>').join('');
 
   $('#analyzeButton').addEventListener('click',()=>beginAnalysis());
   $('#manualButton').addEventListener('click',startManual);$('#failureManual').addEventListener('click',startManual);
-  $('#retryAnalysis').addEventListener('click',()=>beginAnalysis(true));
+  $('#retryAnalysis').addEventListener('click',()=>beginAnalysis());
+  $('#conditionSelect').addEventListener('change',event=>{state.condition=event.target.value;if(state.source&&(state.phase==='review'||state.phase==='failed')&&state.analysisStatus!=='manual')beginAnalysis();});
   $('#zoomIn').addEventListener('click',()=>zoomTo(state.zoom+.25));$('#zoomOut').addEventListener('click',()=>zoomTo(state.zoom-.25));
   $('#zoomFit').addEventListener('click',()=>{state.zoom=1;layoutCanvas(false);});
   new ResizeObserver(()=>layoutCanvas()).observe($('#canvasStage'));
-  function toggleDemoPanel(open) {$('#demoPanel').classList.toggle('hidden',!open);$('#demoToggle').setAttribute('aria-expanded',String(open));}
-  $('#demoToggle').addEventListener('click',()=>toggleDemoPanel($('#demoPanel').classList.contains('hidden')));
-  $('#runScenario').addEventListener('click',()=>{toggleDemoPanel(false);loadSample(state.sampleKey||'mixed',{auto:true});});
-  $('#portraitSample').addEventListener('click',()=>{toggleDemoPanel(false);loadSample('portrait');});
-  $('#startDemo').addEventListener('click',()=>{toggleDemoPanel(false);$('#scenarioSelect').value='correction';loadSample('mixed',{auto:true,guided:true});});
-  $('#endDemo').addEventListener('click',()=>{state.guided=false;updateGuide();});
   $('#payloadButton').addEventListener('click',openPayload);$('#downloadPayload').addEventListener('click',savePayload);
-  $('#connectionButton').addEventListener('click',()=>{$('[name="connectionMode"][value="'+state.connection+'"]').checked=true;$('#endpointInput').value=state.endpoint;$('#connectionError').textContent='';showDialog('connectionDialog');});
-  $('#connectionForm').addEventListener('submit',event=>{
-    event.preventDefault();
-    try {
-      const mode=$('[name="connectionMode"]:checked').value;
-      const endpoint=mode==='server'?Core.normalizeEndpoint($('#endpointInput').value.trim()):state.endpoint;
-      if(mode==='server'&&!$('#serverConsent').checked)throw new Error('팀 서버 전송 안내를 확인해 주세요.');
-      state.connection=mode;state.endpoint=endpoint;setConnectionCopy();syncPanels();if(state.source)renderReview();closeDialog($('#connectionDialog'));notify(mode==='server'?'팀 서버 모드로 설정했어요. 아직 사진은 전송하지 않았어요.':'브라우저 데모 모드로 설정했어요.');
-    } catch(error){$('#connectionError').textContent=error.message;}
-  });
   $('#cancelExport').addEventListener('click',()=>{cancelRequests();state.exportToken++;$('#saveState').classList.add('hidden');syncPanels();notify('저장 요청을 취소했어요. 편집 내용은 유지돼요.');});
   $('.brand').addEventListener('click',event=>{event.preventDefault();reset();});
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pollSoon();});
+  window.addEventListener('pagehide',()=>{if(state.ticket)api.cancel(state.ticket);});
 
   initializeThumbnails();
-  setStep(1);setConnectionCopy();syncPanels();
+  setStep(1);syncPanels();pollQueue();
 })();

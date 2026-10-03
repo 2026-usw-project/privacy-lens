@@ -1,12 +1,10 @@
 {
   "name": "privacy-lens-demo",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Local-first frontend demo for photo privacy redaction.",
+  "description": "Privacy Lens 화면 소스(dist/)와 검사·빌드 스크립트. 실행은 저장소 루트의 python run.py.",
   "scripts": {
-    "dev": "node server.mjs",
-    "start": "node server.mjs",
     "build": "node scripts/build.mjs",
     "check": "node scripts/check.mjs && node scripts/check-contract.mjs"
   },
