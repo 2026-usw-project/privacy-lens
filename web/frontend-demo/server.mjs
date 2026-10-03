@@ -13,7 +13,10 @@ const assets = new Map([
   ['/app.js', ['app.js', 'text/javascript; charset=utf-8']],
   ['/core.js', ['core.js', 'text/javascript; charset=utf-8']],
   ['/api.js', ['api.js', 'text/javascript; charset=utf-8']],
-  ['/workspace.css', ['workspace.css', 'text/css; charset=utf-8']]
+  ['/fonts/Pretendard-Regular.subset.woff2', ['fonts/Pretendard-Regular.subset.woff2', 'font/woff2']],
+  ['/fonts/Pretendard-Medium.subset.woff2', ['fonts/Pretendard-Medium.subset.woff2', 'font/woff2']],
+  ['/fonts/Pretendard-SemiBold.subset.woff2', ['fonts/Pretendard-SemiBold.subset.woff2', 'font/woff2']],
+  ['/fonts/Pretendard-Bold.subset.woff2', ['fonts/Pretendard-Bold.subset.woff2', 'font/woff2']]
 ]);
 const server = http.createServer(async (req, res) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
