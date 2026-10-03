@@ -39,4 +39,4 @@ PL_OCR=paddleocr python -m eval.rotation   # 회전 실험
 cd web/frontend-demo && node scripts/check.mjs && node scripts/check-contract.mjs && node scripts/build.mjs
 ```
 
-PaddleOCR 를 쓰려면 `pip install paddleocr "paddlepaddle<3.3"`, 실행 시 `PL_OCR=paddleocr`.
+기본 OCR 은 PaddleOCR 입니다. `pip install paddleocr "paddlepaddle<3.3"` 로 설치합니다. Tesseract 를 쓰려면 `PL_OCR=tesseract` 를 지정합니다.

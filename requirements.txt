@@ -17,8 +17,8 @@ qrcode>=7.4
 pytest>=8.0
 httpx>=0.27
 
-# 선택: 한국어 OCR 교체 (권장)
+# 기본 OCR: 별도 설치
 #   pip install paddleocr "paddlepaddle<3.3"
 #   paddlepaddle 3.3.x 는 CPU(oneDNN) 추론이 NotImplementedError
 #   (ConvertPirAttribute2RuntimeAttribute) 로 죽는다. 3.2.2 에서 확인함.
-#   PL_OCR=paddleocr python3 server.py
+#   python server.py (PaddleOCR 기본, Tesseract 는 PL_OCR=tesseract)

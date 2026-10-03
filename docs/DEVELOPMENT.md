@@ -11,15 +11,16 @@ README 에 다 담기에는 긴 내용을 여기에 둔다. 설치 세부, 설�
 
 ```bash
 pip install -r requirements.txt
+pip install paddleocr "paddlepaddle<3.3"
 python run.py
 ```
 
-`run.py` 가 환경을 먼저 점검한다. 패키지·한글 폰트·Tesseract·한국어 데이터를
+`run.py` 가 환경을 먼저 점검한다. 패키지·한글 폰트·선택한 OCR 엔진을
 확인하고, 없으면 운영체제에 맞는 설치 방법을 알려준 뒤 멈춘다. 샘플 이미지도
 없으면 만들어준다. 통과하면 http://127.0.0.1:8000 로 서버가 뜨고, 같은 주소에서
 화면(`web/frontend-demo`)까지 나온다.
 
-PaddleOCR 를 권장한다(아래 "OCR 엔진 교체"). Tesseract 보다 한국어를 훨씬 잘 읽는다.
+PaddleOCR 가 기본이다(아래 "OCR 엔진 교체"). `PL_OCR=tesseract` 를 지정하면 Tesseract 와 한국어 데이터를 점검한다.
 
 점검만 하려면 `python run.py --check`.
 
@@ -80,12 +81,14 @@ node scripts/build.mjs            # dist → privacy-lens.html
 ```bash
 pip install paddleocr "paddlepaddle<3.3"
 
-# Windows
-set PL_OCR=paddleocr
+# 기본: 모든 운영체제
 python run.py
 
-# macOS / Linux
-PL_OCR=paddleocr python run.py
+# Tesseract 선택: Windows PowerShell
+$env:PL_OCR="tesseract"; python run.py
+
+# Tesseract 선택: macOS / Linux
+PL_OCR=tesseract python run.py
 ```
 
 `pipeline/ocr.py` 의 `PaddleBackend` 는 **2.x / 3.x 를 모두 지원한다.**

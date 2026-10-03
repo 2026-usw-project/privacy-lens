@@ -48,22 +48,18 @@
 git clone https://github.com/2026-usw-project/privacy-lens.git
 cd privacy-lens
 pip install -r requirements.txt
-pip install paddleocr "paddlepaddle<3.3"     # 권장 OCR (한국어를 훨씬 잘 읽음)
+pip install paddleocr "paddlepaddle<3.3"     # 기본 OCR
 ```
 
 ```bash
-# macOS / Linux
-PL_OCR=paddleocr python run.py
-
-# Windows (PowerShell)
-$env:PL_OCR="paddleocr"; python run.py
+python run.py                              # 모든 운영체제에서 PaddleOCR 기본 사용
 ```
 
 → **http://127.0.0.1:8000** — 화면과 API 가 한 주소에서 나옵니다.
 
 - `run.py` 가 먼저 환경을 점검하고, 빠진 것이 있으면 운영체제에 맞는 설치 방법을 알려 준 뒤 멈춥니다. 점검만: `python run.py --check`
 - **처음 켤 때 1~2분** 은 OCR 엔진을 불러오느라 걸립니다. 화면 오른쪽 위가 `OCR 엔진 준비 중` → `대기열 비어 있음` 으로 바뀌면 준비된 것입니다.
-- PaddleOCR 없이 Tesseract 로도 돕니다(설치는 [개발 노트](docs/DEVELOPMENT.md#tesseract-설치)). `paddlepaddle` 3.3.x 는 CPU 추론이 깨져 있어 3.2.x 로 고정합니다.
+- Tesseract 를 쓰려면 `PL_OCR=tesseract` 를 명시합니다(설치는 [개발 노트](docs/DEVELOPMENT.md#tesseract-설치)). `paddlepaddle` 3.3.x 는 CPU 추론이 깨져 있어 3.2.x 로 고정합니다.
 - iPhone HEIC 사진은 `pillow-heif` 가 깔려 있으면 받습니다.
 
 샘플 세 장(가상 송장·학생증·복합 문서)을 누르면 바로 실제 분석을 볼 수 있습니다.
@@ -190,7 +186,7 @@ PL_OCR=paddleocr python -m eval.rotation        # 회전 실험
 
 | 환경변수 | 기본값 | 뜻 |
 |---|---|---|
-| `PL_OCR` | `tesseract` | `paddleocr` 권장. `none` 이면 OCR 없이 EXIF·QR 만 |
+| `PL_OCR` | `paddleocr` | `tesseract` 로 변경 가능. `none` 이면 OCR 없이 EXIF·QR 만 |
 | `PL_PADDLE_DET` / `PL_PADDLE_REC` | v6 검출 / 한국어 v5 인식 | 모델 직접 지정. `PL_PADDLE_DET=auto` 면 PaddleOCR 기본(v5 검출) |
 | `PL_TESSERACT` | 자동 탐색 | Tesseract 실행 파일 경로 |
 | `PL_QUEUE_MAX` | `12` | 대기열 최대 길이. 넘으면 503 |
