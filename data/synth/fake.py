@@ -19,6 +19,22 @@ DEPTS = ["정보보호학과", "컴퓨터공학과", "경영학과", "디자인�
 ITEMS = ["의류", "도서", "생활용품", "전자기기", "식품"]
 
 
+SHOPS = ["맛나식당", "행복약국", "한빛안경", "새솔문구", "가람분식"]           # 가상의 상호
+
+
+def biz_phone(rng: random.Random) -> str:
+    """사업장 유선전화 (02-xxxx-xxxx · 031-xxx-xxxx 등) — 가상 번호"""
+    area = rng.choice(["02", "031", "032", "041"])
+    mid = rng.randint(2000, 9999) if area == "02" else rng.randint(200, 999)
+    return f"{area}-{mid}-{rng.randint(1000, 9999)}"
+
+
+def biz_address(rng: random.Random) -> str:
+    """사업장 주소 (동·호 없음)"""
+    do, si, gu = rng.choice(ADDR_SI)
+    return " ".join([do, si] + ([gu] if gu else [])) + f" {rng.choice(ROADS)} {rng.randint(1, 399)}"
+
+
 def name(rng: random.Random) -> str:
     return rng.choice(SURNAMES) + rng.choice(GIVEN) + rng.choice(GIVEN)
 
