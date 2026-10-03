@@ -256,6 +256,11 @@
       Object.assign(state,{source:frozen,file,width:frozen.width,height:frozen.height,name:file.name,bytes:file.size,sample:false,sampleKey:null,serverImage,
         regions:[],history:[],focused:null,editing:null,nextId:1,mode:'original',phase:'ready',drawing:false,zoom:1,analysisStatus:'idle',issues:[],groups:[],gps:[],backend:'',previewState:'none'});
       releaseExport();showImage();render();
+      // 사진 선택·드롭 후 다음 동작인 분석 시작 영역을 보여 준다.
+      $('#readyPanel').scrollIntoView({
+        behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',
+        block:'start',inline:'nearest'
+      });
       notify(serverImage?'HEIC 사진이에요. 분석하면 서버가 만든 미리보기를 보여 드려요.':'사진이 준비됐어요. 분석하거나 직접 가릴 영역을 지정하세요.');
     } catch(error) {
       if(token === state.loadToken) notify(error.message && !/decode/i.test(error.message) ? error.message : '손상되었거나 지원되지 않는 사진이에요. 다른 파일을 선택해 주세요.',true);
