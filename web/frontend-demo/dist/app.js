@@ -343,6 +343,7 @@
     const waiting=state.mode!=='original'&&state.previewState!=='ready';
     $('#canvasCaption').textContent=state.mode==='original'?'ORIGINAL · 위험 영역':waiting?(state.previewState==='error'?'PREVIEW · 만들지 못했어요':'PREVIEW · 서버에서 만드는 중'):state.mode==='protected'?'PROTECTED · 저장될 모습':'BEFORE / AFTER';
     $('#regionLayer').classList.toggle('hidden',state.mode!=='original' || state.phase==='scanning');
+    if(state.mode==='original')declutterTags();  // 가려져 있던 동안에는 크기를 잴 수 없었다
     $('#compareControl').classList.toggle('hidden',state.mode!=='compare');
     $$('[data-view]').forEach(button=>{const active=button.dataset.view===state.mode;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));button.disabled=state.phase!=='review';});
   }
@@ -367,6 +368,22 @@
       const handle=document.createElement('i');handle.className='resize-handle';handle.dataset.resize='true';box.append(handle);
       layer.append(box);
     });
+    declutterTags();
+  }
+  // 사진 위 번호표가 서로 겹치면 뒤에 놓일 것을 숨긴다(박스에 마우스를 올리거나 고르면 보인다).
+  // 실제 OCR 은 줄 단위 작은 상자를 촘촘히 내서, 번호표가 서로 덮여 읽을 수 없었다.
+  // 고른(focus) 박스가 먼저, 그다음 목록 순서(심각도 높은 순).
+  function declutterTags() {
+    const tags=$$('.region-box>span',$('#regionLayer'));
+    tags.forEach(t=>t.classList.remove('tag-hidden'));
+    const order=tags.slice().sort((a,b)=>Number(b.parentElement.classList.contains('focused'))-Number(a.parentElement.classList.contains('focused')));
+    const placed=[];
+    order.forEach(tag=>{
+      const r=tag.getBoundingClientRect();
+      if(!r.width)return;
+      if(placed.some(p=>r.left<p.right-1&&p.left<r.right-1&&r.top<p.bottom-1&&p.top<r.bottom-1))tag.classList.add('tag-hidden');
+      else placed.push(r);
+    });
   }
   function metadataText() {
     if(state.sample) return '샘플 문서 · 촬영 메타데이터 없음';
@@ -386,10 +403,11 @@
     }
     list.innerHTML=state.regions.map((r,index)=>{
       const focused=state.focused===r.id,detail=state.editing===r.id,title=escapeHTML(r.label),px=Core.toPixels(r,state.width,state.height);
-      const cert=r.kind==='manual'?'':'<span class="cert-label">'+escapeHTML(r.certaintyLabel||'')+'</span>';
+      // 내용을 다 읽은 항목은 인식된 문자열이 그 증거라 따로 쓰지 않는다. 박스 선 모양에도 드러난다.
+      const cert=r.kind!=='manual'&&r.certainty&&r.certainty!=='read'?'<span class="cert-label">'+escapeHTML(r.certaintyLabel||'')+'</span>':'';
       return '<div class="region-item'+(focused?' selected-detail':'')+(detail?' editing':'')+'" data-region="'+escapeHTML(r.id)+'">'+
-        '<div class="region-item-top"><input type="checkbox" data-action="toggle" '+(r.enabled?'checked ':'')+'aria-label="'+title+' 가리기"><button class="region-item-name" data-action="focus" aria-pressed="'+focused+'"><span class="row-number">'+String(index+1).padStart(2,'0')+'</span>'+title+'</button>'+severityTag(r)+'</div>'+
-        '<p class="region-item-description">'+escapeHTML(r.reason)+'</p><div class="region-item-meta">'+(r.text?'<code>'+escapeHTML(r.text)+'</code>':'<span></span>')+cert+'<span class="region-actions"><button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'유형 · 좌표 수정')+'</button><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span></div>'+
+        '<div class="region-item-top"><input type="checkbox" data-action="toggle" '+(r.enabled?'checked ':'')+'aria-label="'+title+' 가리기"><button class="region-item-name" data-action="focus" aria-pressed="'+focused+'"><span class="row-number">'+String(index+1).padStart(2,'0')+'</span>'+title+'</button>'+cert+severityTag(r)+'</div>'+
+        '<p class="region-item-description">'+escapeHTML(r.reason)+'</p><div class="region-item-meta">'+(r.text?'<code>'+escapeHTML(r.text)+'</code>':'<span></span>')+'<span class="region-actions"><button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'유형 · 좌표 수정')+'</button><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span></div>'+
         (detail?'<div class="region-detail"><label class="type-label">개인정보 유형<select data-region-type="true" aria-label="'+title+' 개인정보 유형">'+Object.entries(Core.TYPES).map(([key,label])=>'<option value="'+key+'" '+(r.type===key?'selected':'')+'>'+label+'</option>').join('')+'</select></label><div class="coordinate-title">원본 좌표 <span>'+state.width+' × '+state.height+' px'+(r.poly?' · 기울어진 외곽선':'')+'</span></div><div class="coordinate-editor" aria-label="원본 픽셀 좌표">'+[['x','왼쪽',px.x],['y','위쪽',px.y],['w','너비',px.width],['h','높이',px.height]].map(([key,label,value])=>'<label>'+label+'<input type="number" min="'+(['w','h'].includes(key)?1:0)+'" max="'+(['x','w'].includes(key)?state.width:state.height)+'" step="1" value="'+value+'" data-coordinate="'+key+'" aria-label="'+title+' '+label+' 픽셀">px</label>').join('')+'</div></div>':'')+'</div>';
     }).join('');
     if(focusId) {
@@ -476,6 +494,7 @@
     if(!s.engine_ready){$('#queueText').textContent='OCR 엔진 준비 중';badge.classList.add('busy');}
     else if(s.running+s.waiting===0){$('#queueText').textContent='대기열 비어 있음';badge.classList.add('ready');}
     else {$('#queueText').textContent='처리 중 '+s.running+' · 대기 '+s.waiting;badge.classList.add('busy');}
+    badge.title=$('#queueText').textContent;
     if(!state.ticket || !s.state) return;
     const eta=s.eta_s!=null?' · 약 '+s.eta_s+'초':'';
     const text=s.state==='waiting'?'대기 '+s.ahead+'건'+eta:s.state==='running'?(s.engine_ready?(state.saving?'가리고 다시 검사하는 중':'검사하는 중'):'OCR 엔진 준비 중 (서버를 켠 뒤 처음 한 번, 1~2분)'):'사진을 올리는 중';
@@ -574,8 +593,9 @@
     $('#readyDescription').textContent=state.serverImage&&state.analysisStatus==='idle'?'이 형식은 브라우저가 미리 보지 못해요. 분석하면 서버가 만든 미리보기로 바뀌어요.':'사진을 Privacy Lens 서버로 보내 글자를 읽고 개인정보를 판정해요. 서버는 사진을 디스크에 저장하지 않아요.';
     $('#readyFileInfo').textContent=state.width+' × '+state.height+' px';
     $('#sourceBadge').textContent=state.backend||(state.sample?'가상 샘플':'분석 전');
-    const text=phase==='ready'?'미리보기 준비 완료':phase==='scanning'?'서버가 사진을 검사하는 중':phase==='failed'?'분석 실패 · 재시도하거나 직접 편집할 수 있어요':state.analysisStatus==='partial'?'분석 완료 · 흐린 글자는 직접 확인해 주세요':state.analysisStatus==='empty'?'분석 완료 · 탐지 결과 없음':state.analysisStatus==='manual'?'수동 편집 · 자동 분석을 하지 않았어요':'분석 완료 · 결과를 확인하고 가릴 항목을 고르세요';
-    $('#analysisNoticeText').textContent=text+(state.elapsedMs&&phase==='review'&&state.analysisStatus!=='manual'?' · '+state.elapsedMs+'ms':'');
+    const text=phase==='ready'?'미리보기 준비 완료':phase==='scanning'?'서버가 검사하는 중':phase==='failed'?'분석 실패 · 다시 시도하거나 직접 편집':state.analysisStatus==='partial'?'분석 완료 · 흐린 글자 확인 필요':state.analysisStatus==='empty'?'분석 완료 · 탐지 결과 없음':state.analysisStatus==='manual'?'수동 편집 · 자동 분석 안 함':'분석 완료';
+    const took=state.elapsedMs&&phase==='review'&&state.analysisStatus!=='manual'?' · '+(state.elapsedMs/1000).toFixed(1)+'초':'';
+    $('#analysisNoticeText').textContent=text+took;$('#analysisNoticeText').title=text+took;
     $('#analysisNotice').dataset.state=phase==='failed'?'error':state.analysisStatus==='partial'?'warning':'normal';
     if(phase==='ready')setStep(1);
     else if(phase==='scanning'||phase==='failed')setStep(2);
@@ -631,6 +651,7 @@
     $('#zoomValue').textContent=Math.round(state.zoom*100)+'%';
     $('#zoomValue').title='화면 맞춤 대비 확대 비율 · 실제 원본 대비 '+Math.round(fit*state.zoom*100)+'%';
     $('#zoomOut').disabled=state.zoom<=.5;$('#zoomIn').disabled=state.zoom>=4;
+    declutterTags();
   }
   function zoomTo(value) {state.zoom=clamp(value,.5,4);layoutCanvas();}
   function focusRegion(id,origin='list') {
@@ -749,7 +770,7 @@
   $('#saveButton').addEventListener('click',prepareExport);
   $('#downloadButton').addEventListener('click',download);
   // 서버가 실제로 찾는 항목(pipeline/kr_patterns.py, metadata.py)
-  const targets=[['id','이름','받는분·성명 같은 라벨 바로 뒤'],['box','전화번호','휴대전화 · 유선 · 대표번호 구분'],['pin','주소','도로명주소 · 동·호수'],['lock','주민등록번호','체크섬 · 2020년 이후 형식'],['file','카드번호','Luhn 검증'],['box','운송장번호','운송장 라벨 옆 긴 숫자'],['file','차량번호','실제 번호판 글자만'],['monitor','이메일','주소 형식'],['grid','QR · 바코드','안의 내용까지 검사, 링크는 열지 않음'],['pin','위치정보','사진 파일의 GPS 좌표']];
+  const targets=[['id','이름','받는분·성명 같은 라벨 바로 뒤'],['box','연락처','휴대전화 · 유선 · 이메일. 대표번호는 참고로'],['pin','주소','도로명주소 · 동·호수'],['lock','주민등록번호','체크섬 · 2020년 이후 형식'],['file','카드번호','Luhn 검증'],['box','운송장번호','운송장 라벨 옆 긴 숫자'],['file','차량번호','실제 번호판 글자만'],['grid','QR · 바코드','안의 내용까지 검사, 링크는 열지 않음'],['pin','위치정보','사진 파일의 GPS 좌표']];
   $('#targetsGrid').innerHTML=targets.map(([symbol,label,detail])=>'<div class="target-tile">'+icon(symbol)+'<h3>'+label+'</h3><p>'+detail+'</p></div>').join('');
 
   $('#analyzeButton').addEventListener('click',()=>beginAnalysis());

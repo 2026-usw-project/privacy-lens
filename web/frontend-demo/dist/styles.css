@@ -399,6 +399,14 @@ dialog[open]{animation:reveal .18s cubic-bezier(.16,1,.3,1)}
 .queue-badge.ready i{background:var(--ok)}
 .cond-field select{height:36px}
 .style-options.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.segmented button{white-space:nowrap}
+/* 모델 이름(paddleocr 3.7.0 · PP-OCRv6_medium_det + …)은 길고 띄어쓰기가 적다.
+   mono-label 의 nowrap 그대로면 좁은 화면에서 페이지가 옆으로 밀린다. */
+#sourceBadge{white-space:normal;overflow-wrap:anywhere;min-width:0}
+.region-box>span.tag-hidden{opacity:0}
+.region-box:hover>span.tag-hidden,.region-box:focus-visible>span.tag-hidden{opacity:1;z-index:4}
+.region-item-top .cert-label{margin-left:auto;padding-top:2px}
+.region-item-top .cert-label+.risk-tag{margin-left:0}
 .partial-notice p+p{margin-top:4px}
 .export-warning p+p{margin-top:2px}
 .export-warning[data-state=pass]{color:var(--ok)}
@@ -458,6 +466,14 @@ dialog[open]{animation:reveal .18s cubic-bezier(.16,1,.3,1)}
   .targets-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .export-details{grid-template-columns:1fr 1fr}
   .export-actions{display:grid;grid-template-columns:1fr 1.3fr}
+  /* 판정 선택은 demo-field 를 빌려 쓰지만 머리글에서는 늘어나면 안 된다 */
+  .cond-field{flex:none;gap:0}
+  .cond-field>select{padding-right:4px}
+  .cond-field{font-size:0}
+  .cond-field select{font-size:12px}
+  /* 대기열은 점만. 글자는 title·화면 낭독기로, 분석 중에는 오른쪽 패널에 '대기 N건' */
+  .queue-badge{padding:0}
+  .queue-badge span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 }
 @media(max-width:400px){
   .drop-hint{display:none}

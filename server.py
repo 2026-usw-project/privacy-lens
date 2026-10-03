@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import mimetypes
 import os
 import re
 import threading
@@ -67,6 +68,9 @@ _TICKET = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 # 화면은 web/frontend-demo 다. dist/ 가 편집 원본이고, scripts/build.mjs 가 한 파일
 # (privacy-lens.html)로 묶는다. 글꼴만 따로 dist/fonts 에서 읽는다.
 FRONT = Path(__file__).parent / "web" / "frontend-demo"
+# Windows 의 MIME 표에는 .woff2 가 없어 text/plain 으로 나간다. 엄격한 브라우저·프록시는
+# 글꼴로 받지 않을 수 있다.
+mimetypes.add_type("font/woff2", ".woff2")
 
 _backend = None
 _backend_lock = threading.Lock()

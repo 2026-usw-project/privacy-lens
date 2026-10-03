@@ -168,5 +168,6 @@ def test_serves_frontend_and_fonts(client):
     r = client.get("/")
     assert r.status_code == 200 and "Privacy Lens" in r.text
     font = next(p.name for p in (server.FRONT / "dist" / "fonts").glob("*.woff2"))
-    assert client.get("/dist/fonts/" + font).status_code == 200
+    r = client.get("/dist/fonts/" + font)
+    assert r.status_code == 200 and r.headers["content-type"] == "font/woff2"
     assert client.get("/dist/fonts/../../server.py").status_code == 404
