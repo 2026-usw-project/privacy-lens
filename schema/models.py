@@ -27,7 +27,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-SCHEMA_VERSION = "0.1.0"
+SCHEMA_VERSION = "0.2.0"
 
 
 class _Base(BaseModel):
@@ -128,6 +128,10 @@ class OCRLine(_Base):
     text: str
     conf: float = Field(ge=0, le=1)
     bbox: BBox  # 원본 이미지 좌표로 환산해서 기록 (크롭 좌표 아님)
+    polygon: Optional[List[Point]] = Field(
+        None, min_length=4, max_length=4,
+        description="줄을 가장 작게 감싸는 회전 사각형 [좌상, 우상, 우하, 좌하]. 기울어진 글자 가림용 (v0.2.0)",
+    )
 
 
 class OCRResult(_Base):
@@ -143,6 +147,10 @@ class PIIItem(_Base):
     method: Literal["regex", "ner", "rule", "exif", "code"]
     conf: float = Field(ge=0, le=1)
     bbox: Optional[BBox] = Field(None, description="항목이 발견된 줄 위치 → 부분 마스킹에 사용")
+    polygon: Optional[List[Point]] = Field(
+        None, min_length=4, max_length=4,
+        description="항목을 감싸는 회전 사각형 [좌상, 우상, 우하, 좌하] — 있으면 bbox 대신 이 모양으로 가림 (v0.2.0)",
+    )
 
 
 class RiskFactors(_Base):

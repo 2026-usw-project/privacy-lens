@@ -348,6 +348,24 @@
         },
         "bbox": {
           "$ref": "#/$defs/BBox"
+        },
+        "polygon": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Point"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "줄을 가장 작게 감싸는 회전 사각형 [좌상, 우상, 우하, 좌하]. 기울어진 글자 가림용 (v0.2.0)",
+          "title": "Polygon"
         }
       },
       "required": [
@@ -450,6 +468,24 @@
           ],
           "default": null,
           "description": "항목이 발견된 줄 위치 → 부분 마스킹에 사용"
+        },
+        "polygon": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Point"
+              },
+              "maxItems": 4,
+              "minItems": 4,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "항목을 감싸는 회전 사각형 [좌상, 우상, 우하, 좌하] — 있으면 bbox 대신 이 모양으로 가림 (v0.2.0)",
+          "title": "Polygon"
         }
       },
       "required": [
@@ -653,7 +689,7 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": {
-      "default": "0.1.0",
+      "default": "0.2.0",
       "title": "Schema Version",
       "type": "string"
     },

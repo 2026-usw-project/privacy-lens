@@ -7,10 +7,13 @@ YOLO 박스 안의 줄만 모아 같은 판정 함수(_judge_group)를 호출하
 """
 from __future__ import annotations
 
+import math
+import re
 import statistics
 from typing import Dict, List, Sequence
 
-from schema.models import BBox, Detection, Finding, OCRLine, OCRResult, PIIItem, Risk, RiskFactors
+from schema.models import BBox, Detection, Finding, OCRLine, OCRResult, PIIItem, Point, Risk, RiskFactors
+from vision import geometry
 
 from . import rules
 
@@ -85,6 +88,60 @@ def _cluster(idxs: List[int], lines: List[OCRLine], k: float = 3.5) -> List[List
     return list(groups.values())
 
 
+def _tilted_quad(member: List[OCRLine]):
+    """여러 줄(조각 · 주소 둘째 줄 포함)을 같은 기울기로 감싸는 회전 사각형.
+    기울기는 구성 줄들의 중앙값 — 길이가 다른 두 줄을 minAreaRect 로 감싸면 각도가 틀어지기 때문."""
+    polys = [[[p.x, p.y] for p in l.polygon] for l in member if l.polygon]
+    if not polys:
+        return None
+    ang = statistics.median(geometry.angle_deg(q) for q in polys)
+    q = geometry.quad_at_angle([pt for q in polys for pt in q], ang)
+    return [Point(x=round(x, 1), y=round(y, 1)) for x, y in q]
+
+
+LABEL_ONLY = re.compile(r"^\W*(배송지|연락처|주소|전화|전화번호|품명|받는분|보내는분|성명|이름|학번|소속)\W*$")
+
+
+def _row_fragments(seed: int, lines: List[OCRLine], min_overlap: float = 0.55, max_gap: float = 1.0) -> List[int]:
+    """seed 줄과 같은 (기울어진) 행에 이어 붙은 조각 줄들을 연쇄적으로 찾음.
+
+    사진이 기울면 OCR이 한 줄을 여러 조각으로 나눠 읽고(예: '서울특별시 =' / '강남구' / '선통로 77'),
+    뒤 조각은 그것만으로는 주소처럼 보이지 않아 가림에서 빠집니다. (2026-10-03 실사 데모에서 발견)
+    조건: 세로로 min_overlap 이상 겹치고, 가로 간격이 줄 높이 × max_gap 이하. 라벨 단어(배송지 등)는 제외.
+    """
+    out, frontier = {seed}, [seed]
+    while frontier:
+        i = frontier.pop()
+        for j, l in enumerate(lines):
+            if j in out or LABEL_ONLY.match(l.text):
+                continue
+            v_overlap, gap, h = _row_relation(lines[i], l)
+            if v_overlap >= min_overlap and gap <= max_gap * h:
+                out.add(j)
+                frontier.append(j)
+    return sorted(out)
+
+
+def _row_relation(a: OCRLine, b: OCRLine):
+    """(세로 겹침 비율, 글자 방향 간격, 기준 높이).
+    두 줄 모두 회전 사각형이 있으면 a 의 기울기 좌표계에서 계산 — 기운 사진에서 축 정렬 박스는
+    위아래 줄과 크게 겹쳐 서로 다른 줄이 한 줄로 이어지는 문제를 막음 (v0.2.0)."""
+    if a.polygon and b.polygon:
+        qa = [[p.x, p.y] for p in a.polygon]
+        t = math.radians(geometry.angle_deg(qa))
+        u, v = (math.cos(t), math.sin(t)), (-math.sin(t), math.cos(t))
+        proj = lambda q, d: [p[0] * d[0] + p[1] * d[1] for p in q]
+        qb = [[p.x, p.y] for p in b.polygon]
+        au, av, bu, bv = proj(qa, u), proj(qa, v), proj(qb, u), proj(qb, v)
+        h = min(max(av) - min(av), max(bv) - min(bv)) or 1.0
+        v_overlap = (min(max(av), max(bv)) - max(min(av), min(bv))) / h
+        gap = max(min(bu) - max(au), min(au) - max(bu))
+        return v_overlap, gap, h
+    A, B = a.bbox, b.bbox
+    h = min(A.y2 - A.y1, B.y2 - B.y1) or 1
+    return (min(A.y2, B.y2) - max(A.y1, B.y1)) / h, max(B.x1 - A.x2, A.x1 - B.x2), h
+
+
 def _reason(label: str, pos: str, types: List[str], readability: float) -> str:
     names = [TYPE_KO[t] for t in ORDER if t in types]
     items = ", ".join(names)
@@ -153,13 +210,21 @@ def build_findings(W: int, H: int, lines: List[OCRLine], qr_dets: List[Detection
 
         items: List[PIIItem] = []
         for h in real:
-            b = h.bbox
+            seeds = [h.line_idx]
             if h.type == "address":   # 주소 둘째 줄(동·호)까지 마스킹 범위에 포함
-                extra = [d.bbox for d in g_hits if d.type == "address_detail" and d.line_idx == h.line_idx + 1]
-                b = _union([b] + extra)
+                seeds += [d.line_idx for d in hits if d.type == "address_detail" and d.link == h.line_idx]
+            frag: set = set()
+            if h.type not in ("url", "affiliation"):
+                for sd in seeds:
+                    frag.update(_row_fragments(sd, lines))
+            else:
+                frag.update(seeds)
+            b = _union([h.bbox] + [lines[j].bbox for j in frag])
+            bbox = _union([bbox, b])          # 영역 박스도 가림 범위를 포함하도록 확장
+            poly = _tilted_quad([lines[j] for j in frag] or [lines[h.line_idx]])
             items.append(PIIItem(type=h.type, value_masked=rules.mask(h.type, h.value),
                                  method="regex" if h.method == "regex" else "rule",
-                                 conf=round(h.conf, 3), bbox=b))
+                                 conf=round(h.conf, 3), bbox=b, polygon=poly))
         ocr = None
         if debug:
             ocr = OCRResult(engine=ocr_engine, text="\n".join(l.text for l in member),

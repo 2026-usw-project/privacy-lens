@@ -99,6 +99,10 @@ export type Text = string;
 export type Conf = number;
 export type Text1 = string;
 export type Conf1 = number;
+/**
+ * 줄을 가장 작게 감싸는 회전 사각형 [좌상, 우상, 우하, 좌하]. 기울어진 글자 가림용 (v0.2.0)
+ */
+export type Polygon1 = [Point, Point, Point, Point] | null;
 export type Lines = OCRLine[];
 /**
  * 판정 단위(항목) — B 모듈이 채움
@@ -125,6 +129,10 @@ export type PIIType =
 export type ValueMasked = string;
 export type Method = "regex" | "ner" | "rule" | "exif" | "code";
 export type Conf2 = number;
+/**
+ * 항목을 감싸는 회전 사각형 [좌상, 우상, 우하, 좌하] — 있으면 bbox 대신 이 모양으로 가림 (v0.2.0)
+ */
+export type Polygon2 = [Point, Point, Point, Point] | null;
 export type Pii = PIIItem[];
 export type Findings = Finding[];
 /**
@@ -238,6 +246,7 @@ export interface OCRLine {
   text: Text1;
   conf: Conf1;
   bbox: BBox;
+  polygon?: Polygon1;
 }
 export interface PIIItem {
   type: PIIType;
@@ -248,6 +257,7 @@ export interface PIIItem {
    * 항목이 발견된 줄 위치 → 부분 마스킹에 사용
    */
   bbox?: BBox | null;
+  polygon?: Polygon2;
 }
 export interface Summary {
   level: RiskLevel1;
