@@ -1,0 +1,23 @@
+# Local dependencies, logs and editor files
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Credentials and local settings
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local uploads and temporary files
+uploads/
+tmp/
+.cache/
+
+# 이 독립 데모의 dist는 빌드 산출물이 아니라 실행 원본입니다.
+!dist/
+!dist/**
