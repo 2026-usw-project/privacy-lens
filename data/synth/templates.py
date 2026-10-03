@@ -11,6 +11,8 @@ import random
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 
+from . import fake
+
 FONT_CANDIDATES = [
     os.environ.get("PL_FONT", ""),
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
@@ -80,6 +82,53 @@ def parcel_label(d: dict, with_qr: bool, rng: random.Random) -> tuple[Image.Imag
     if url:
         pii.append({"type": "url", "value": url})
     return im, {"label": "parcel_label", "pii": pii}
+
+
+# ── 어려운 비위험 문서 ──────────────────────────────────
+# 개인정보처럼 보이지만 사람에 대한 정보가 아닌 글자 (상호 · 대표번호 · 사업장 주소 · ISBN · 고객센터).
+# 정책 제안: 이런 정보는 개인정보로 보지 않는다 — docs/DECISIONS.md D-10 에서 팀이 확정할 것.
+def shop_sign(rng: random.Random) -> tuple[Image.Image, dict]:
+    im = Image.new("RGB", (1000, 420), (28, 84, 56))
+    g = ImageDraw.Draw(im)
+    g.text((50, 40), rng.choice(fake.SHOPS), font=font(120), fill="white")
+    g.text((50, 220), f"TEL {fake.biz_phone(rng)}", font=font(64), fill=(255, 235, 150))
+    g.text((50, 320), fake.biz_address(rng), font=font(42), fill="white")
+    return im, {"label": "document", "pii": []}
+
+
+def receipt_head(rng: random.Random) -> tuple[Image.Image, dict]:
+    im = Image.new("RGB", (640, 760), "white")
+    g = ImageDraw.Draw(im)
+    y = 30
+    for text, size in [(rng.choice(fake.SHOPS), 56),
+                       (f"사업자번호 {rng.randint(100, 999)}-{rng.randint(10, 99)}-{rng.randint(10000, 99999)}", 28),
+                       (f"대표전화 {fake.biz_phone(rng)}", 30), (fake.biz_address(rng), 28),
+                       ("-" * 34, 28), (f"합계 {rng.randint(3, 90) * 500:,}원", 40),
+                       (f"카드 4111-12**-****-{rng.randint(1000, 9999)}", 28), (f"승인번호 {rng.randint(10**7, 10**8 - 1)}", 28)]:
+        g.text((40, y), text, font=font(size), fill="black")
+        y += size + 34
+    return im, {"label": "receipt", "pii": []}
+
+
+def price_tag(rng: random.Random) -> tuple[Image.Image, dict]:
+    im = Image.new("RGB", (520, 300), (255, 250, 220))
+    g = ImageDraw.Draw(im)
+    g.text((30, 30), f"정가 {rng.randint(5, 60) * 1000:,}원", font=font(56), fill="black")
+    g.text((30, 130), f"ISBN 978-89-{rng.randint(1000, 9999)}-{rng.randint(100, 999)}-{rng.randint(0, 9)}", font=font(32), fill="black")
+    g.text((30, 200), f"품번 {rng.randint(1000, 9999)}-{rng.randint(1000, 9999)}-{rng.randint(1000, 9999)}", font=font(32), fill="black")
+    return im, {"label": "document", "pii": []}
+
+
+def notice(rng: random.Random) -> tuple[Image.Image, dict]:
+    im = Image.new("RGB", (760, 420), (240, 244, 250))
+    g = ImageDraw.Draw(im)
+    g.text((40, 40), "경기도 수원시 주민 안내", font=font(52), fill=(20, 60, 120))
+    g.text((40, 170), f"고객센터 15{rng.randint(66, 99)}-{rng.randint(1000, 9999)}", font=font(46), fill="black")
+    g.text((40, 270), f"문의 {fake.biz_phone(rng)} (평일 9시~18시)", font=font(36), fill="black")
+    return im, {"label": "document", "pii": []}
+
+
+HARD = [shop_sign, receipt_head, price_tag, notice]
 
 
 def student_id(d: dict, rng: random.Random) -> tuple[Image.Image, dict]:

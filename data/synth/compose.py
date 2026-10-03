@@ -123,10 +123,23 @@ def make_one(i: int, rng: random.Random, bg_files: list[Path], negative: bool) -
     return im, {"file": f"img_{i:03d}.jpg", "negative": negative, "has_gps": exif is not None, "objects": objects}, exif
 
 
+def make_hard(i: int, rng: random.Random, bg_files: list[Path]) -> tuple[Image.Image, dict]:
+    """어려운 비위험 사진 — 상호·대표번호·사업장 주소·ISBN·고객센터처럼 개인정보로 오인하기 쉬운 글자만 있는 사진"""
+    bg = np.array(load_background(bg_files, rng))
+    for _ in range(rng.randint(1, 2)):
+        doc, _truth = rng.choice(templates.HARD)(rng)
+        warp_paste(bg, doc, rng.randint(700, 1100), rng)
+    im = Image.fromarray(bg)
+    if rng.random() < 0.5:
+        im = im.filter(ImageFilter.GaussianBlur(rng.uniform(0.6, 1.6)))
+    return im, {"file": f"img_{i:03d}.jpg", "negative": True, "hard": True, "has_gps": False, "objects": []}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=15)
     ap.add_argument("--neg", type=int, default=3, help="개인정보 없는 사진 수 (오탐 측정용)")
+    ap.add_argument("--hard", type=int, default=0, help="어려운 비위험 사진 수 (상호·대표번호 등). 0이면 기존과 같은 사진만 만듦")
     ap.add_argument("--out", default="data/demo")
     ap.add_argument("--bg-dir", default=None)
     ap.add_argument("--seed", type=int, default=42)
@@ -150,6 +163,13 @@ def main():
                 f.write(f"{CLASSES.index(o['label'])} {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
         truths.append(t)
         print("wrote", t["file"], [o["label"] for o in t["objects"]], "GPS" if t["has_gps"] else "")
+    rng_h = random.Random(a.seed + 1000)          # 별도 난수 — --hard 를 줘도 앞쪽 사진은 그대로
+    for j in range(a.hard):
+        im, t = make_hard(a.n + a.neg + j, rng_h, bg_files)
+        im.save(out / t["file"], quality=rng_h.randint(80, 92))
+        (out / "labels" / t["file"].replace(".jpg", ".txt")).write_text("")
+        truths.append(t)
+        print("wrote", t["file"], "hard-negative")
     (out / "truth.json").write_text(json.dumps(truths, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
