@@ -62,9 +62,9 @@ def check_font() -> bool:
 def check_ocr_choice() -> str:
     import os
 
-    choice = os.environ.get("PL_OCR", "tesseract").lower()
-    if choice != "tesseract":
-        print(f"{WARN} PL_OCR={choice} — Tesseract 대신 이 백엔드를 씁니다")
+    choice = os.environ.get("PL_OCR", "paddleocr").lower()
+    if choice != "paddleocr":
+        print(f"{WARN} PL_OCR={choice} — PaddleOCR 대신 이 백엔드를 씁니다")
     return choice
 
 

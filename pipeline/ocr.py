@@ -446,7 +446,7 @@ def merge_lines(spans: list[TextSpan], gap_em: float = 1.2) -> list[TextSpan]:
 
 
 def get_backend(name: str | None = None) -> OcrBackend:
-    name = (name or os.environ.get("PL_OCR", "tesseract")).lower()
+    name = (name or os.environ.get("PL_OCR", "paddleocr")).lower()
 
     if name == "none":
         return ScriptedBackend([])
@@ -466,7 +466,7 @@ def get_backend(name: str | None = None) -> OcrBackend:
                 f"  {type(exc).__name__}: {exc}\n"
                 "  처음 실행이면 모델 가중치를 내려받는 중 네트워크 문제일 수 있습니다.\n"
                 "  'paddle_static' 오류면 추론 엔진이 없는 것입니다: pip install 'paddlepaddle<3.3'\n"
-                "  Tesseract 로 돌리려면 PL_OCR 환경변수를 지우고 다시 실행하세요."
+                "  Tesseract 로 돌리려면 PL_OCR=tesseract 로 설정하고 다시 실행하세요."
             ) from exc
 
     return TesseractBackend()
