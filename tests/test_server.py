@@ -265,3 +265,39 @@ def test_lifespan_releases_worker(monkeypatch):
     assert server._backend is None
     with pytest.raises(RuntimeError):
         worker.read(Image.new("RGB", (2, 2)))
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), 91.0])
+def test_invalid_gps_does_not_break_json(client, monkeypatch, value):
+    class Exif(dict):
+        def get_ifd(self, tag):
+            return {1: "N", 2: (value, 0, 0), 3: "E", 4: (127, 0, 0)}
+
+    img = Image.new("RGB", (300, 200), "white")
+    monkeypatch.setattr(img, "getexif", lambda: Exif({34853: 1}))
+    monkeypatch.setattr(server, "_open", lambda data: img)
+    response = client.post("/analyze", files={"image": ("a.png", png())})
+    assert response.status_code == 200
+    gps = next(f for f in response.json()["report"]["findings"] if f["kind"] == "gps")
+    assert gps["certainty"] == "region"
+    assert gps["detail"] == {}
+    response = client.post("/redact", files={"image": ("a.png", png())})
+    assert response.status_code == 200
+    assert response.json()["verification"]["had_gps"] is True
+    assert response.json()["verification"]["gps_removed"] is True
+
+
+def test_zero_denominator_gps_is_reported(client, monkeypatch):
+    from PIL.TiffImagePlugin import IFDRational
+
+    img = Image.new("RGB", (300, 200), "white")
+    class Exif(dict):
+        def get_ifd(self, tag):
+            return {1: "N", 2: (IFDRational(0, 0), 0, 0), 3: "E", 4: (127, 0, 0)}
+
+    monkeypatch.setattr(img, "getexif", lambda: Exif({34853: 1}))
+    monkeypatch.setattr(server, "_open", lambda data: img)
+    response = client.post("/analyze", files={"image": ("a.png", png())})
+    assert response.status_code == 200
+    gps = next(f for f in response.json()["report"]["findings"] if f["kind"] == "gps")
+    assert gps["certainty"] == "region" and gps["detail"] == {}

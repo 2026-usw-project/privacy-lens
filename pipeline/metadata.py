@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import math
 from urllib.parse import urlsplit
 
 import cv2
@@ -35,6 +36,8 @@ _GPS_TAG = next(k for k, v in ExifTags.TAGS.items() if v == "GPSInfo")
 
 def _to_degrees(value) -> float:
     d, m, s = (float(x) for x in value)
+    if not all(math.isfinite(x) for x in (d, m, s)) or d < 0 or not 0 <= m < 60 or not 0 <= s < 60:
+        raise ValueError("유효하지 않은 GPS 좌표")
     return d + m / 60.0 + s / 3600.0
 
 
@@ -53,8 +56,14 @@ def check_exif(image: Image.Image) -> list[Finding]:
                 lat = -lat
             if gps.get(3) == "W":
                 lon = -lon
-        except (KeyError, TypeError, ValueError):
-            return findings
+            if not math.isfinite(lat) or not math.isfinite(lon) or not -90 <= lat <= 90 or not -180 <= lon <= 180:
+                raise ValueError("GPS 좌표 범위 초과")
+        except (KeyError, TypeError, ValueError, ZeroDivisionError, OverflowError):
+            # 좌표가 손상돼도 GPS 태그 존재를 숨기지 않는다.
+            return [Finding(
+                kind="gps", box=None, certainty=Certainty.REGION_ONLY,
+                severity=Severity.COVER, message=wording.GPS_UNREADABLE,
+            )]
 
         findings.append(
             Finding(
