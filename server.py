@@ -19,6 +19,7 @@ OCR 은 대기열(jobqueue.py)을 거친다. 엔진은 한 번에 하나만 돌 
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import json
@@ -39,7 +40,8 @@ from starlette.formparsers import MultiPartParser
 from jobqueue import Cancelled, QueueFull, WorkQueue
 
 from pipeline import analyze as pl
-from pipeline import metadata, ocr, redact
+from pipeline import metadata, ocr, redact, wording
+from pipeline.worker import OcrUnavailable, ThreadBoundBackend
 from pipeline.types import Box
 
 # iPhone 기본 형식(HEIC). 패키지가 없으면 JPEG/PNG 만 받는다.
@@ -81,8 +83,16 @@ def backend():
     global _backend
     with _backend_lock:
         if _backend is None:
-            _backend = ocr.get_backend()
+            _backend = ThreadBoundBackend(ocr.get_backend)
     return _backend
+
+
+def _close_backend():
+    global _backend
+    with _backend_lock:
+        if isinstance(_backend, ThreadBoundBackend):
+            _backend.close()
+            _backend = None
 
 
 @asynccontextmanager
@@ -96,12 +106,27 @@ async def _lifespan(_app: FastAPI):
         except Exception:
             pass  # 첫 요청에서 같은 오류가 다시 나며 그때 사용자에게 보인다
 
-    threading.Thread(target=run, daemon=True).start()
-    yield
+    warmup = threading.Thread(target=run, daemon=True)
+    warmup.start()
+    try:
+        yield
+    finally:
+        # 준비 중에 종료해도 전용 스레드를 남기지 않는다.
+        await asyncio.to_thread(warmup.join)
+        await asyncio.to_thread(_close_backend)
 
 
 app = FastAPI(title="Privacy Lens", lifespan=_lifespan)
 app.mount("/dist/fonts", StaticFiles(directory=FRONT / "dist" / "fonts"), name="fonts")
+
+
+@app.exception_handler(OcrUnavailable)
+async def ocr_unavailable(_request, _exc):
+    return JSONResponse(
+        status_code=503,
+        content={"detail": wording.OCR_UNAVAILABLE},
+        headers={"Retry-After": "10"},
+    )
 
 
 def _ticket(raw: str | None) -> str:

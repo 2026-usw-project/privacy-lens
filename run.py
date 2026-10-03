@@ -175,7 +175,6 @@ def main() -> int:
         print("\n점검 완료.")
         return 0
 
-    print("\n서버를 시작합니다 — http://127.0.0.1:8000  (Ctrl+C 로 종료)\n")
     try:
         subprocess.run([sys.executable, str(ROOT / "server.py")], check=False)
     except KeyboardInterrupt:

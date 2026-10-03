@@ -171,3 +171,97 @@ def test_serves_frontend_and_fonts(client):
     r = client.get("/dist/fonts/" + font)
     assert r.status_code == 200 and r.headers["content-type"] == "font/woff2"
     assert client.get("/dist/fonts/../../server.py").status_code == 404
+
+
+def test_concurrent_requests_wait_and_recover(monkeypatch):
+    """추론 실패 중에도 FIFO·조회·초과 응답을 유지하고 다음 요청을 처리한다."""
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    from jobqueue import WorkQueue
+    from pipeline.worker import ThreadBoundBackend
+
+    started, release = threading.Event(), threading.Event()
+    owners = []
+
+    class Engine:
+        name = "가상 엔진"
+
+        def __init__(self):
+            self.owner = threading.get_ident()
+            owners.append(self.owner)
+            self.fail = len(owners) == 1
+
+        def read(self, image):
+            assert threading.get_ident() == self.owner
+            if self.fail:
+                started.set()
+                assert release.wait(5)
+                raise RuntimeError("가상 비공개 원문")
+            return []
+
+    backend = ThreadBoundBackend(Engine)
+    monkeypatch.setattr(server, "_backend", backend)
+    monkeypatch.setattr(server, "QUEUE", WorkQueue(max_waiting=1))
+    client = TestClient(server.app)
+
+    def post(ticket):
+        return client.post("/analyze", files={"image": ("a.png", png())}, data={"ticket": ticket})
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first = pool.submit(post, "ticket-first")
+            try:
+                assert started.wait(5)
+                second = pool.submit(post, "ticket-second")
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    state = client.get("/queue", params={"ticket": "ticket-second"}).json()
+                    if state["state"] == "waiting":
+                        break
+                    time.sleep(0.01)
+                assert state["state"] == "waiting" and state["ahead"] == 1
+                overflow = post("ticket-third")
+                assert overflow.status_code == 503
+                assert overflow.headers["retry-after"] == "10"
+            finally:
+                release.set()
+            failed = first.result(timeout=5)
+            assert failed.status_code == 503
+            assert failed.headers["retry-after"] == "10"
+            assert "가상 비공개 원문" not in failed.text
+            assert second.result(timeout=5).status_code == 200
+        assert server.QUEUE.status()["running"] == 0
+        assert server.QUEUE.status()["waiting"] == 0
+        assert len(owners) == 2 and owners[0] == owners[1]
+    finally:
+        release.set()
+        backend.close()
+
+
+@pytest.mark.parametrize("path", ["/analyze", "/redact"])
+def test_ocr_failure_returns_no_result(client, monkeypatch, path):
+    from pipeline.worker import OcrUnavailable
+
+    class FailedEngine:
+        name = "가상 엔진"
+
+        def read(self, image):
+            raise OcrUnavailable()
+
+    monkeypatch.setattr(server, "_backend", FailedEngine())
+    response = client.post(path, files={"image": ("a.png", png())})
+    assert response.status_code == 503
+    assert set(response.json()) == {"detail"}
+    assert server.QUEUE.status()["running"] == 0
+
+
+def test_lifespan_releases_worker(monkeypatch):
+    monkeypatch.setattr(server, "_backend", None)
+    monkeypatch.setattr(server.ocr, "get_backend", lambda: ocr.ScriptedBackend([]))
+    with TestClient(server.app) as client:
+        assert client.post("/analyze", files={"image": ("a.png", png())}).status_code == 200
+        worker = server._backend
+    assert server._backend is None
+    with pytest.raises(RuntimeError):
+        worker.read(Image.new("RGB", (2, 2)))
