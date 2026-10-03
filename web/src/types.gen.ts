@@ -1,4 +1,4 @@
-/* 자동 생성 파일 — 직접 수정 금지. schema/models.py 수정 후 재생성 */
+/* 자동 생성 파일 — 직접 수정 금지. schema/models.py 수정 후 npm run types */
 
 export type SchemaVersion = string;
 export type RequestId = string;
