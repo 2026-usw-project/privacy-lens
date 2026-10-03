@@ -482,3 +482,6 @@ dialog[open]{animation:reveal .18s cubic-bezier(.16,1,.3,1)}
   .drop-bar{justify-content:space-between}
 }
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}.scan-line{top:50%}}
+
+/* 사진 선택 후 이동한 분석 시작 영역이 고정 상단 메뉴에 가리지 않도록 한다. */
+#readyPanel{scroll-margin-top:calc(var(--topbar) + 16px)}
