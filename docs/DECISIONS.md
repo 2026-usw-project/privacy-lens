@@ -13,7 +13,7 @@
 | 팀 구성 | 5인, 역할 1~5번 | 5인 역할 분담안 → [ROLES.md](ROLES.md) |
 | 구현 방침 | OCR 우선. YOLO·NER·합성 데이터·추가 학습은 측정으로 필요가 확인될 때 도입 | 5인 역할 분담안 |
 | 개인정보 원칙 | 원본은 저장하지 않음, 가상 정보와 팀원 촬영본만 사용, 실사 이미지는 커밋 금지 | 발표안, README, `SCHEMA.md` |
-| 계약 기준 | `schema/models.py` (v0.1.0) | `SCHEMA.md` |
+| 계약 기준 | Privacy Lens 2 백엔드의 `pipeline/types.py`(`Box`·`Finding`·`Report`)와 `server.py` API. `schema/` 는 2026-10-04 삭제 | 아래 변경 이력 |
 | 협업 규칙 | `main` 직접 push 금지, `feat/<모듈>-<내용>` 브랜치 + PR + 리뷰 1인 승인 | README |
 | 성공 기준 | PRD §9. 목표이며 달성 결과가 아님 | 발표안 |
 
@@ -24,6 +24,22 @@
 | 2026-09-16 | 1차 발표: 4인(A~D), YOLO + SAHI 우선, 합성 데이터 학습 | 발표안·README·`schema/` v0.1.0이 이 전제로 작성됨 |
 | 2026-09-30 | 저장소 생성, `schema/` v0.1.0과 목업 API 추가 | |
 | 2026-10 초 | 5인 역할 분담안 공유: OCR 우선, YOLO·NER·합성 데이터는 조건부 | README·스키마·일정이 아직 이전 전제 → 아래 미결 사항 |
+| 2026-10-04 | **백엔드를 Privacy Lens 2 로 전면 교체**(브랜치 `feat/backend-pl2`). `server/`·`reader/`·`vision/`·`schema/`·`data/`·React 앱 삭제. 화면은 `web/frontend-demo` 디자인 유지, 기능은 새 백엔드에 맞춤 | 아래 '교체로 사실상 정해진 것' 참고. 팀 확인 필요 |
+
+### 교체로 사실상 정해진 것 (2026-10-04, 팀 확인 필요)
+
+PL2 백엔드를 우선한다는 결정에 따라 아래 미결 항목이 구현으로 정해졌습니다.
+다르게 가려면 이 표를 근거로 다시 논의합니다.
+
+| 항목 | 지금 구현 |
+|---|---|
+| D-01 스키마 | `schema/` 삭제. 응답은 `pipeline/types.py` 의 `Finding`(kind·box{x,y,w,h,poly}·certainty·severity·message·evidence_text)과 `Report`(findings·groups) |
+| D-02·D-03 평가 | `python -m eval.compare`(놓침·오경고, 숫자열 완전 일치), `python -m eval.rotation`(각도별). 정답은 `samples/make_sample.py` 가 만든 라벨 |
+| D-05 가림·EXIF 제거 위치 | **서버**. `/redact/preview`(미리보기), `/redact`(저장 + 결과 파일 재검사). 흐리게는 주변색으로 먼저 지운 뒤 흐리게(정보 없음), 검은색 단색 |
+| D-06 외부 OCR API | 쓰지 않음. 로컬 PaddleOCR(권장, `paddlepaddle<3.3`) 또는 Tesseract |
+| D-10 탐지 범위 | 문서 종류 9종이 아니라 글자 항목: 이름(라벨 뒤)·전화·주소·주민번호·카드·운송장·차량번호·이메일·QR·바코드·GPS |
+| D-11 위험도 | 점수 대신 가림 권장/검토 권장/참고 + 확실성(내용 확인/일부/불가). 규칙은 `pipeline/context.py` |
+| 개인정보 표시 | 이전 규칙(`value_masked` 만 응답)과 달리, 인식한 문자열을 사진 주인 화면에 그대로 보여 준다. 로그·디스크에는 남기지 않는다 |
 
 ## 3. 미결 사항
 
