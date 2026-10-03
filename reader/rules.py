@@ -51,6 +51,7 @@ class Hit:
     conf: float
     line_idx: int
     bbox: BBox
+    link: Optional[int] = None      # address_detail 이 이어지는 주소 줄의 line_idx
 
 
 def normalize_digits(t: str) -> str:
@@ -93,6 +94,7 @@ def is_address(text: str) -> bool:
 def find_pii(lines: List[OCRLine]) -> List[Hit]:
     hits: List[Hit] = []
     texts = [normalize_digits(l.text) for l in lines]
+    detail_cands: List[int] = []
 
     for i, (ln, t) in enumerate(zip(lines, texts)):
         def add(tp, val, method="regex", conf=None):
@@ -133,14 +135,28 @@ def find_pii(lines: List[OCRLine]) -> List[Hit]:
         if is_address(t):
             add("address", t, method="rule")
         elif RE_ADDR_DONG_HO.search(t) and len(t) < 20:
-            # '29동 165호' 처럼 주소 둘째 줄 — 바로 위 줄이 주소일 때만
-            if any(h.type == "address" and h.line_idx == i - 1 for h in hits):
-                prev = next(h for h in hits if h.type == "address" and h.line_idx == i - 1)
-                prev.value = f"{prev.value}, {t}"
-                add("address_detail", t, method="rule")
+            detail_cands.append(i)          # 주소 둘째 줄 후보 — 아래에서 위치로 연결
         # 소속(학교)
         for m in RE_SCHOOL.finditer(t):
             add("affiliation", m.group(0), method="rule")
+
+    # 주소 둘째 줄('29동 165호') 연결: 줄 순서가 아니라 위치로 판단
+    # 송장이 기울면 '배송지' 같은 라벨 박스가 두 줄 사이 순서로 끼어들기 때문 (2026-10-03 실사 데모에서 발견)
+    for i in detail_cands:
+        b = lines[i].bbox
+        h = b.y2 - b.y1
+        best = None
+        for a in (x for x in hits if x.type == "address"):
+            ab = a.bbox
+            gap = b.y1 - ab.y2                                  # 주소 줄 아래쪽과의 세로 간격 (기울면 음수 가능)
+            overlap = min(ab.x2, b.x2) - max(ab.x1, b.x1)       # 가로로 겹치는 폭
+            below = (b.y1 + b.y2) / 2 > (ab.y1 + ab.y2) / 2 + 0.3 * h   # 중심이 주소 줄보다 아래
+            if below and gap <= 2.0 * h and overlap > 0 and (best is None or gap < best[0]):
+                best = (gap, a)
+        if best:
+            a = best[1]
+            a.value = f"{a.value}, {texts[i]}"
+            hits.append(Hit("address_detail", texts[i], "rule", lines[i].conf, i, b, link=a.line_idx))
 
     # 성명: (a) 전화번호가 있는 줄의 앞쪽 2~4글자  (b) 키워드 줄 · 같은 행
     phone_lines = {h.line_idx for h in hits if h.type == "phone"}
