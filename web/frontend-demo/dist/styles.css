@@ -267,8 +267,9 @@ main{padding:20px 24px 16px}
 .coordinate-editor input{flex:1;min-width:0;width:100%;padding:5px 7px;border:1px solid var(--line-strong);border-radius:6px;background:var(--surface);font-family:var(--mono);font-size:13px}
 .empty-regions{display:grid;justify-items:center;gap:8px;margin:16px 20px;padding:20px;border:1px dashed var(--line-strong);border-radius:10px;text-align:center;font-size:13px;line-height:1.7;color:var(--muted)}
 .empty-regions svg{color:var(--accent)}
-.review-foot{display:grid;gap:12px;padding:14px 20px 16px;border-top:1px solid var(--line);background:var(--surface);border-radius:0 0 var(--radius) 0}
-.redaction-settings{display:grid;gap:8px}
+/* 긴 안내 문구가 저장 영역의 그리드 최소 너비를 늘리지 않도록 제한한다. */
+.review-foot{display:grid;grid-template-columns:minmax(0,1fr);min-width:0;gap:12px;padding:14px 20px 16px;border-top:1px solid var(--line);background:var(--surface);border-radius:0 0 var(--radius) 0}
+.redaction-settings{display:grid;grid-template-columns:minmax(0,1fr);min-width:0;gap:8px}
 .style-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .style-options>button{display:flex;align-items:center;justify-content:center;gap:6px;height:36px;border:1px solid var(--line);border-radius:var(--radius-sm);font-size:13px;font-weight:500;color:var(--ink-2);white-space:nowrap}
 .style-options>button:hover{border-color:var(--line-strong)}
@@ -280,12 +281,13 @@ main{padding:20px 24px 16px}
 .strength-row{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--ink-2)}
 .strength-row input{flex:1;min-width:0}
 .strength-row .mono{width:64px;text-align:right;font-size:12px;color:var(--ink)}
-.metadata-box{display:flex;align-items:center;gap:10px}
+.metadata-box{display:flex;align-items:flex-start;min-width:0;gap:10px}
 .metadata-box svg{color:var(--muted)}
-.metadata-box strong{font-size:13px;font-weight:600;margin-right:6px}
-.metadata-box>div{min-width:0}
-.metadata-box>div{display:flex;align-items:baseline;white-space:nowrap;overflow:hidden}
-.metadata-box p{font-size:12px;line-height:1.6;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+.metadata-box strong{font-size:13px;font-weight:600}
+.metadata-box>div{display:grid;gap:2px;min-width:0;overflow-wrap:anywhere}
+.metadata-box p{font-size:12px;line-height:1.6;color:var(--muted)}
+#saveButton{min-width:0;height:auto;min-height:48px;padding-top:12px;padding-bottom:12px;white-space:normal}
+#saveLabel{min-width:0;overflow-wrap:anywhere}
 /* ponytail: the export dialog already warns that blur/mosaic can leak; the inline hint cost a list row */
 #styleHint{display:none}
 .server-save-notice{padding:10px 12px;border:1px solid var(--warn-line);border-radius:var(--radius-sm);background:var(--warn-bg);font-size:13px;line-height:1.65;color:var(--warn);overflow-wrap:anywhere}

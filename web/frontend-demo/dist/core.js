@@ -66,7 +66,7 @@
       const certainty=['read','partial','region'].includes(f.certainty)?f.certainty:'region';
       const severity=Object.hasOwn(SEVERITY,f.severity)?f.severity:'review';
       const host=typeof f.detail?.host==='string'?f.detail.host.slice(0,120):'';
-      const text=f.evidence_text?String(f.evidence_text).slice(0,120):host?'링크 주소 '+host+' (열지 않았어요)':certainty==='region'?'내용을 확인하지 못했어요':'';
+      const text=f.evidence_text?String(f.evidence_text).slice(0,120):host?'링크 주소 '+host:certainty==='region'?'내용을 확인하지 못했어요':'';
       regions.push({...box,id:'f'+i,kind:'detected',finding:String(f.kind),type,label,severity,certainty,
         certaintyLabel:String(f.certainty_label||''),reason:String(f.message||'').slice(0,600),text,
         poly:polyToRatio(f.box.poly,width,height),enabled:false});
