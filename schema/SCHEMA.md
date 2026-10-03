@@ -1,4 +1,4 @@
-# Privacy Lens 데이터 스키마 v0.1.0
+# Privacy Lens 데이터 스키마 v0.2.0
 
 기준 파일은 `schema/models.py` 하나입니다. JSON Schema와 TS 타입은 여기서 자동으로 생성합니다.
 
@@ -78,4 +78,7 @@ uvicorn server.mock_app:app --reload --port 8000  # 목업 API
 ```
 
 ## 7. 변경 이력
+- 0.2.0 (2026-10-03) `OCRLine.polygon`, `PIIItem.polygon` 추가 (선택 항목, 하위 호환).
+  기울어진 글자를 가리기 위한 회전 사각형 [좌상, 우상, 우하, 좌하], 원본 픽셀 좌표.
+  있으면 프론트는 bbox 대신 이 모양으로 가리고, 없으면 기존처럼 bbox 를 씁니다.
 - 0.1.0 (2026-09-30) 초안
