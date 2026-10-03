@@ -7,7 +7,7 @@
 택배 송장, 학생증, 모니터 화면에 담긴 개인정보를 찾아<br>
 위치와 판단 근거를 보여 주고, 선택한 영역을 가린 사본을 만듭니다.
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.10%E2%80%933.13-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
 ![PaddleOCR](https://img.shields.io/badge/OCR-PaddleOCR%20%7C%20Tesseract-0062B0)
 
@@ -52,15 +52,30 @@ Privacy Lens는 SNS나 중고거래에 사진을 올리기 전, 배경에 함께
 
 ## 시작하기
 
-Python 3.10 이상이 필요합니다. 기본 OCR 엔진은 PaddleOCR이며, 처음 실행할 때 모델 가중치를 내려받습니다.
+기본 OCR 엔진은 PaddleOCR이며, 처음 실행할 때 모델 가중치를 내려받습니다. 아래 설치 안내는 **일반 CPython 3.10~3.13**을 기준으로 합니다. Linux용 PaddlePaddle 3.2.2 패키지는 이 범위의 `x86_64`·`aarch64` 환경에 제공되며, Python 3.14 이상이나 다른 환경에 그대로 적용할 수 없습니다. 패키지 제공 여부는 [공식 CPU 배포 목록](https://www.paddlepaddle.org.cn/packages/stable/cpu/paddlepaddle/)에서 확인할 수 있습니다.
 
 ### 설치 및 실행
 
 ```bash
 git clone https://github.com/2026-usw-project/privacy-lens.git
 cd privacy-lens
+```
+
+Linux에서는 사용할 Python 버전을 확인하고 가상환경을 만듭니다. 다음은 **Python 3.12와 venv가 설치된 환경**의 예시입니다. 3.10·3.11·3.13을 사용한다면 첫 명령의 실행 파일 이름을 해당 버전으로 바꾸세요.
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python --version
+```
+
+선택한 Python 환경에서 패키지를 설치합니다. PaddlePaddle은 저장소에서 동작을 확인한 3.2.2를 지정합니다.
+
+```bash
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-python -m pip install paddleocr "paddlepaddle<3.3"
+python -m pip install paddlepaddle==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+python -m pip install paddleocr
 python run.py
 ```
 
@@ -77,7 +92,30 @@ python run.py
 python run.py --check
 ```
 
-저장소에서 확인한 PaddlePaddle 3.3.x CPU 추론 오류를 피하기 위해 설치 명령에 `<3.3` 제한을 둡니다. 설치 문제와 세부 설정은 [개발 노트](docs/DEVELOPMENT.md#빠르게-실행)를 참고하세요.
+저장소에서 확인한 PaddlePaddle 3.3.x CPU 추론 오류를 피하기 위해 설치 안내는 3.2.2를 사용합니다. 설치 문제와 세부 설정은 [개발 노트](docs/DEVELOPMENT.md#빠르게-실행)를 참고하세요.
+
+<details>
+<summary><b>Linux에서 No matching distribution found가 발생할 때</b></summary>
+
+이 오류는 pip가 현재 환경과 버전 조건에 맞는 설치 파일을 찾지 못했다는 뜻입니다. 오류 문구만으로 원인을 확정할 수 없으므로 먼저 환경을 확인합니다.
+
+```bash
+python --version
+uname -m
+python -m pip --version
+```
+
+- **Python 버전:** 3.14 이상이면 위에서 안내한 3.10~3.13으로 새 가상환경을 만듭니다. 기존 가상환경의 Python 버전은 pip 업그레이드로 바뀌지 않습니다.
+- **CPU·배포판:** 32비트 환경이나 Alpine Linux처럼 musl을 사용하는 환경은 일반 Linux 패키지와 호환되지 않을 수 있습니다. [공식 Linux 설치 조건](https://www.paddlepaddle.org.cn/documentation/docs/en/install/pip/linux-pip_en.html)을 확인합니다.
+- **패키지 저장소:** 지원 환경에서도 오류가 나면 위 설치 명령처럼 공식 CPU 인덱스를 지정합니다. 앞선 로그에 연결·인증서·프록시 오류가 있는지도 확인합니다.
+
+설치 후 추론 엔진을 확인할 수 있습니다.
+
+```bash
+python -c "import paddle; paddle.utils.run_check()"
+```
+
+</details>
 
 <details>
 <summary><b>Tesseract로 실행하기</b></summary>

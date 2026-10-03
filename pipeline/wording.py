@@ -144,6 +144,9 @@ def combined(doc: str | None, nouns: list[str]) -> str:
     )
 
 
+OCR_UNAVAILABLE = assert_safe("문자 인식 처리에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+
+
 NO_FINDINGS = "추가로 탐지된 항목이 없습니다"
 
 
