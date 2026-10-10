@@ -183,6 +183,7 @@ class Report:
     elapsed_ms: int = 0
     ocr_backend: str = ""
     notes: list[str] = field(default_factory=list)
+    detector: str = ""   # 문서 검출 모델 이름. 검출을 안 썼으면 빈 문자열
 
     def sorted_findings(self) -> list[Finding]:
         return sorted(self.findings, key=lambda f: (f.severity.rank, f.kind))
@@ -195,5 +196,6 @@ class Report:
             "groups": [g.as_dict() for g in self.groups],
             "elapsed_ms": self.elapsed_ms,
             "ocr_backend": self.ocr_backend,
+            "detector": self.detector,
             "notes": self.notes,
         }

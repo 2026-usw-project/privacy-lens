@@ -271,6 +271,8 @@ python -m eval.rotation
 | `PL_PADDLE_DET` | `PP-OCRv6_medium_det` | 검출 모델. `auto`는 PaddleOCR의 언어별 기본 모델을 사용합니다. |
 | `PL_PADDLE_REC` | 언어별 기본 모델 | 한국어 기본 조합은 `korean_PP-OCRv5_mobile_rec`입니다. |
 | `PL_TESSERACT` | 자동 탐색 | Tesseract 실행 파일 경로 |
+| `PL_YOLO_WEIGHTS` | 없음 (끔) | 문서 검출 모델(`best.pt`) 경로. 지정하면 작게 찍힌 문서를 잘라 확대해 다시 읽고, 그래도 못 읽으면 영역 경고를 냅니다. `pip install -r vision/requirements.txt` 필요. 학습은 [vision/README.md](vision/README.md) |
+| `PL_YOLO_CONF` | `0.35` | 문서 검출 기준값 |
 | `PL_QUEUE_MAX` | `12` | 최대 대기 요청 수. 초과 시 HTTP 503을 반환합니다. |
 | `PORT` | `8000` | 서버 포트 |
 

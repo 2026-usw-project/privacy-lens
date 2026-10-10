@@ -33,7 +33,10 @@ multipart: `image`(원본 파일), `mode`(`full` | `baseline` | `naive`), `ticke
 ```
 
 - `kind`: name, mobile, landline, service_line, tollfree, email, rrn, rrn_unverified, card, brn,
-  plate, address_road, address_unit, tracking, long_digits, qr, barcode, gps.
+  plate, address_road, address_unit, tracking, long_digits, qr, barcode, gps,
+  document(문서 검출: 못 읽은 문서 영역), face_photo(문서 검출: 증명사진 영역).
+  문서 검출 항목은 `detail.source == "detector"` 이고 `certainty` 는 region 입니다.
+- `report.detector`: 문서 검출 모델 이름(예: `yolo:v003`). 검출을 쓰지 않았으면 빈 문자열.
 - `severity`: cover(가림 권장) · review(검토 권장) · info(참고). `certainty`: read · partial · region.
 - `evidence_text` 는 글자를 못 읽었으면 `null` 입니다. 화면은 내용을 지어내지 않습니다.
 - `box: null` 은 이미지 전체(위치정보)입니다.

@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Lens 라벨 검수</title>
+<style>
+  :root {
+    --bg: #f4f3ef; --panel: #ffffff; --line: #dcd9d1; --text: #22221f; --muted: #6d6a62;
+    --accent: #c4501d; --ok: #2f7a4a; --warn: #b3261e;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.45 "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+    border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  button:hover { border-color: #b9b5aa; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { color: var(--warn); }
+  button:disabled { opacity: .45; cursor: default; }
+  kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 4px; padding: 0 4px; background: #fbfaf7; }
+
+  #app { display: grid; grid-template-columns: 1fr 300px; grid-template-rows: auto 1fr; height: 100%; }
+  header { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; padding: 10px 14px;
+    border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; }
+  #progress { color: var(--muted); }
+  #stage { position: relative; overflow: hidden; background: #2b2a27; }
+  #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+  #empty { position: absolute; inset: 0; display: grid; place-items: center; color: #d8d5cc; text-align: center; padding: 24px; }
+  aside { border-left: 1px solid var(--line); background: var(--panel); overflow: auto; padding: 12px 14px; }
+  aside h2 { font-size: 13px; margin: 14px 0 6px; color: var(--muted); font-weight: 600; }
+  .cls { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer;
+    border: 1px solid transparent; }
+  .cls.on { border-color: var(--accent); background: #fbf1ec; }
+  .sw { width: 14px; height: 14px; border-radius: 3px; flex: none; margin-top: 3px; }
+  .cls small { display: block; color: var(--muted); font-size: 12px; }
+  #boxes .row { display: flex; justify-content: space-between; gap: 6px; padding: 3px 6px; border-radius: 4px; cursor: pointer; }
+  #boxes .row.sel { background: #fbf1ec; }
+  .keys { color: var(--muted); font-size: 12.5px; }
+  .keys div { margin: 3px 0; }
+  #msg { margin-left: auto; color: var(--muted); }
+  #msg.ok { color: var(--ok); } #msg.err { color: var(--warn); }
+  .badge { font-size: 12px; padding: 1px 6px; border-radius: 10px; background: #eceae4; color: var(--muted); }
+  .badge.done { background: #e2efe6; color: var(--ok); } .badge.skip { background: #f6e3e1; color: var(--warn); }
+  @media (max-width: 800px) { #app { grid-template-columns: 1fr; grid-template-rows: auto 60vh auto; } aside { border-left: 0; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Privacy Lens 라벨 검수</h1>
+    <button id="open" class="primary">폴더 열기</button>
+    <button id="prev" disabled>◀ 이전</button>
+    <button id="next" disabled>다음 ▶</button>
+    <span id="progress"></span>
+    <span id="status" class="badge" hidden></span>
+    <button id="save" class="primary" disabled>검수 완료 (Enter)</button>
+    <button id="skip" class="danger" disabled>사진 제외 (X)</button>
+    <label><input type="checkbox" id="showDone"> 완료한 사진도 보기</label>
+    <span id="msg"></span>
+  </header>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="empty">
+      <div>
+        <p><b>폴더 열기</b>로 공유 폴더의 <b>review</b> 폴더(또는 그 위 PrivacyLens-YOLO 폴더)를 고르세요.</p>
+        <p>사진과 라벨은 이 컴퓨터 안에서만 읽고 씁니다. 어디로도 업로드하지 않습니다.</p>
+        <p id="unsupported" hidden style="color:#f3b0a8">이 브라우저는 폴더 쓰기를 지원하지 않습니다. 크롬이나 엣지로 여세요.</p>
+      </div>
+    </div>
+  </div>
+  <aside>
+    <h2>클래스 (숫자키로 선택)</h2>
+    <div id="classes"></div>
+    <h2>이 사진의 박스 <span id="boxCount"></span></h2>
+    <div id="boxes"></div>
+    <h2>조작</h2>
+    <div class="keys">
+      <div>빈 곳 드래그 — 새 박스 (선택한 클래스)</div>
+      <div>박스 클릭 — 선택, 드래그로 이동, 모서리로 크기</div>
+      <div><kbd>1</kbd>~<kbd>9</kbd> — 클래스 선택 / 선택한 박스 클래스 변경</div>
+      <div><kbd>Delete</kbd> <kbd>Backspace</kbd> — 선택한 박스 삭제</div>
+      <div><kbd>Enter</kbd> — 검수 완료 후 다음 사진</div>
+      <div><kbd>X</kbd> — 사진 제외 (흐림·중복·실제 개인정보 포함 등)</div>
+      <div><kbd>←</kbd> <kbd>→</kbd> 또는 <kbd>A</kbd> <kbd>D</kbd> — 이전·다음 (고친 박스는 저장됨)</div>
+      <div>휠 — 확대·축소, <kbd>Space</kbd>+드래그 또는 오른쪽 드래그 — 이동, <kbd>F</kbd> — 화면 맞춤</div>
+      <div><kbd>Ctrl</kbd>+<kbd>Z</kbd> — 되돌리기</div>
+    </div>
+    <h2>기준</h2>
+    <div class="keys">
+      <div>물체가 하나도 없는 사진도 <b>그대로 검수 완료</b>합니다. 오탐을 줄이는 데 쓰입니다.</div>
+      <div>일부가 가려지거나 잘린 물체도 보이는 부분만큼 박스를 칩니다.</div>
+      <div>실제 타인의 개인정보가 찍혀 있으면 <b>제외</b>하세요.</div>
+    </div>
+  </aside>
+</div>
+<script>
+"use strict";
+const COLORS = ["#e4572e", "#2e86de", "#17a589", "#f1c40f", "#c0398b", "#7f8c8d", "#8e44ad", "#d35400", "#16a085"];
+const FALLBACK_CLASSES = [
+  { id: 0, name: "waybill", label: "송장", guide: "" }, { id: 1, name: "id_card", label: "학생증·카드", guide: "" },
+  { id: 2, name: "name_tag", label: "명찰", guide: "" }, { id: 3, name: "screen", label: "화면", guide: "" },
+  { id: 4, name: "face_photo", label: "증명사진", guide: "" }, { id: 5, name: "barcode", label: "바코드·QR", guide: "" },
+];
+const HANDLE = 7, MIN_BOX = 4;
+
+const S = {
+  dir: null, images: null, labels: null, done: null,
+  classes: FALLBACK_CLASSES, items: [], index: -1, state: {},   // state[id] = "ok" | "skip"
+  img: null, boxes: [], sel: -1, cls: 0, dirty: false, undo: [],
+  view: { scale: 1, x: 0, y: 0 }, drag: null, space: false,
+};
+const $ = (id) => document.getElementById(id);
+const cv = $("cv"), ctx = cv.getContext("2d");
+
+if (!("showDirectoryPicker" in window)) { $("unsupported").hidden = false; $("open").disabled = true; }
+
+function say(text, kind = "") { const m = $("msg"); m.textContent = text; m.className = kind; }
+
+// ------------------------------------------------------------------ 폴더
+async function openFolder(handle) {
+  let dir = handle;
+  try { dir = await handle.getDirectoryHandle("review"); } catch { /* 이미 review 폴더 */ }
+  let images;
+  try { images = await dir.getDirectoryHandle("images"); }
+  catch { say("images 폴더가 없습니다. review 폴더를 골랐는지 확인하세요.", "err"); return; }
+  S.dir = dir; S.images = images;
+  S.labels = await dir.getDirectoryHandle("labels", { create: true });
+  S.done = await dir.getDirectoryHandle("done", { create: true });
+  try {
+    const f = await (await dir.getFileHandle("classes.json")).getFile();
+    S.classes = JSON.parse(await f.text());
+  } catch { S.classes = FALLBACK_CLASSES; }
+  renderClasses();
+  await rescan();
+}
+
+async function rescan() {
+  const names = [];
+  for await (const [name, h] of S.images.entries()) {
+    if (h.kind === "file" && /\.(jpe?g|png|webp)$/i.test(name)) names.push(name);
+  }
+  names.sort();
+  S.state = {};
+  for await (const [name] of S.done.entries()) {
+    const m = name.match(/^(.*)\.(ok|skip)$/);
+    if (m) S.state[m[1]] = m[2];
+  }
+  const showDone = $("showDone").checked;
+  S.items = names.filter((n) => showDone || !S.state[stem(n)]);
+  $("empty").hidden = S.items.length > 0;
+  if (!S.items.length) {
+    $("empty").querySelector("div").innerHTML = "<p>검수할 사진이 없습니다. 👍</p><p>팀원이 inbox 에 사진을 넣고 <code>python -m vision ingest</code> 를 돌리면 여기 나타납니다.</p>";
+  }
+  await go(Math.min(Math.max(S.index, 0), S.items.length - 1), false);
+}
+
+const stem = (n) => n.replace(/\.[^.]+$/, "");
+
+async function readLabel(id) {
+  try {
+    const f = await (await S.labels.getFileHandle(id + ".txt")).getFile();
+    return (await f.text()).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
+      const [c, x, y, w, h] = l.split(/\s+/).map(Number);
+      return { c, x, y, w, h };   // 정규화 cx cy w h
+    }).filter((b) => [b.c, b.x, b.y, b.w, b.h].every(Number.isFinite));
+  } catch { return []; }
+}
+
+async function writeText(dirHandle, name, text) {
+  const fh = await dirHandle.getFileHandle(name, { create: true });
+  const w = await fh.createWritable();
+  await w.write(text); await w.close();
+}
+
+async function removeEntry(dirHandle, name) { try { await dirHandle.removeEntry(name); } catch {} }
+
+function labelText() {
+  const W = S.img.naturalWidth, H = S.img.naturalHeight;
+  return S.boxes.map((b) => {
+    // 픽셀 → 정규화, 이미지 밖은 자른다
+    const x1 = clamp(b.x1, 0, W), x2 = clamp(b.x2, 0, W), y1 = clamp(b.y1, 0, H), y2 = clamp(b.y2, 0, H);
+    if (x2 - x1 < 1 || y2 - y1 < 1) return null;
+    const f = (v) => v.toFixed(6);
+    return `${b.c} ${f((x1 + x2) / 2 / W)} ${f((y1 + y2) / 2 / H)} ${f((x2 - x1) / W)} ${f((y2 - y1) / H)}`;
+  }).filter(Boolean).join("\n") + (S.boxes.length ? "\n" : "");
+}
+
+async function saveLabels() {
+  if (!S.img || !S.dirty) return;
+  await writeText(S.labels, current() + ".txt", labelText());
+  S.dirty = false;
+}
+
+const current = () => stem(S.items[S.index]);
+
+// ------------------------------------------------------------------ 이동
+async function go(i, save = true) {
+  if (save) await saveLabels();
+  if (i < 0 || i >= S.items.length) { S.index = -1; S.img = null; draw(); updateUi(); return; }
+  S.index = i;
+  const name = S.items[i];
+  const file = await (await S.images.getFileHandle(name)).getFile();
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  await new Promise((ok, bad) => { img.onload = ok; img.onerror = bad; img.src = url; });
+  if (S.img && S.img._url) URL.revokeObjectURL(S.img._url);
+  img._url = url;
+  S.img = img;
+  const W = img.naturalWidth, H = img.naturalHeight;
+  S.boxes = (await readLabel(stem(name))).map((b) => ({
+    c: b.c, x1: (b.x - b.w / 2) * W, y1: (b.y - b.h / 2) * H, x2: (b.x + b.w / 2) * W, y2: (b.y + b.h / 2) * H,
+  }));
+  S.sel = -1; S.dirty = false; S.undo = [];
+  fit(); updateUi(); say("");
+}
+
+async function finish(kind) {
+  if (!S.img) return;
+  const id = current();
+  if (kind === "ok") { S.dirty = true; await saveLabels(); }
+  await removeEntry(S.done, id + (kind === "ok" ? ".skip" : ".ok"));
+  await writeText(S.done, id + "." + kind, "");
+  S.state[id] = kind;
+  say(kind === "ok" ? `저장했습니다 (${S.boxes.length}개)` : "제외로 표시했습니다", "ok");
+  if (!$("showDone").checked) {
+    S.items.splice(S.index, 1);
+    $("empty").hidden = S.items.length > 0;
+    await go(Math.min(S.index, S.items.length - 1), false);
+  } else {
+    await go(Math.min(S.index + 1, S.items.length - 1), false);
+  }
+}
+
+// ------------------------------------------------------------------ 화면
+function updateUi() {
+  const has = !!S.img;
+  for (const id of ["prev", "next", "save", "skip"]) $(id).disabled = !has;
+  const total = S.items.length, left = S.items.filter((n) => !S.state[stem(n)]).length;
+  $("progress").textContent = has ? `${S.index + 1} / ${total}  ·  남은 사진 ${left}장  ·  ${S.items[S.index]}` : "";
+  const st = has ? S.state[current()] : null;
+  $("status").hidden = !st;
+  $("status").textContent = st === "ok" ? "검수 완료" : st === "skip" ? "제외됨" : "";
+  $("status").className = "badge " + (st === "ok" ? "done" : st === "skip" ? "skip" : "");
+  renderBoxes(); draw();
+}
+
+function renderClasses() {
+  const el = $("classes"); el.innerHTML = "";
+  S.classes.forEach((c, i) => {
+    const d = document.createElement("div");
+    d.className = "cls" + (i === S.cls ? " on" : "");
+    d.innerHTML = `<span class="sw" style="background:${COLORS[i % COLORS.length]}"></span>
+      <span><b>${i + 1}. ${esc(c.label)}</b> <span class="keys">${esc(c.name)}</span><small>${esc(c.guide || "")}</small></span>`;
+    d.onclick = () => pickClass(i);
+    el.appendChild(d);
+  });
+}
+
+function renderBoxes() {
+  const el = $("boxes"); el.innerHTML = "";
+  $("boxCount").textContent = S.img ? `(${S.boxes.length})` : "";
+  S.boxes.forEach((b, i) => {
+    const d = document.createElement("div");
+    d.className = "row" + (i === S.sel ? " sel" : "");
+    const c = S.classes[b.c];
+    d.innerHTML = `<span><span class="sw" style="display:inline-block;vertical-align:-2px;background:${COLORS[b.c % COLORS.length]}"></span> ${esc(c ? c.label : "클래스 " + b.c)}</span>
+      <span class="keys">${Math.round(b.x2 - b.x1)}×${Math.round(b.y2 - b.y1)}</span>`;
+    d.onclick = () => { S.sel = i; updateUi(); };
+    el.appendChild(d);
+  });
+}
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+function fit() {
+  if (!S.img) return;
+  const r = cv.getBoundingClientRect();
+  const s = Math.min(r.width / S.img.naturalWidth, r.height / S.img.naturalHeight) * 0.96;
+  S.view = { scale: s, x: (r.width - S.img.naturalWidth * s) / 2, y: (r.height - S.img.naturalHeight * s) / 2 };
+}
+
+function draw() {
+  const dpr = window.devicePixelRatio || 1, r = cv.getBoundingClientRect();
+  if (cv.width !== Math.round(r.width * dpr) || cv.height !== Math.round(r.height * dpr)) {
+    cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, r.width, r.height);
+  if (!S.img) return;
+  const v = S.view;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(S.img, v.x, v.y, S.img.naturalWidth * v.scale, S.img.naturalHeight * v.scale);
+  const all = S.drag && S.drag.mode === "new" ? [...S.boxes, S.drag.box] : S.boxes;
+  all.forEach((b, i) => {
+    const [x1, y1] = toScreen(b.x1, b.y1), [x2, y2] = toScreen(b.x2, b.y2);
+    const col = COLORS[b.c % COLORS.length], sel = i === S.sel;
+    ctx.lineWidth = sel ? 3 : 2; ctx.strokeStyle = col;
+    ctx.fillStyle = col + (sel ? "33" : "18");
+    ctx.fillRect(x1, y1, x2 - x1, y2 - y1); ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+    const c = S.classes[b.c], text = c ? c.label : String(b.c);
+    ctx.font = "600 12px system-ui, sans-serif";
+    const tw = ctx.measureText(text).width + 8;
+    ctx.fillStyle = col; ctx.fillRect(x1, y1 - 18 < 0 ? y1 : y1 - 18, tw, 18);
+    ctx.fillStyle = "#fff"; ctx.fillText(text, x1 + 4, (y1 - 18 < 0 ? y1 : y1 - 18) + 13);
+    if (sel) {
+      ctx.fillStyle = "#fff";
+      for (const [hx, hy] of [[x1, y1], [x2, y1], [x1, y2], [x2, y2]]) {
+        ctx.fillRect(hx - HANDLE / 2, hy - HANDLE / 2, HANDLE, HANDLE);
+        ctx.strokeRect(hx - HANDLE / 2, hy - HANDLE / 2, HANDLE, HANDLE);
+      }
+    }
+  });
+}
+
+const toScreen = (x, y) => [S.view.x + x * S.view.scale, S.view.y + y * S.view.scale];
+const toImage = (sx, sy) => [(sx - S.view.x) / S.view.scale, (sy - S.view.y) / S.view.scale];
+
+function hit(sx, sy) {
+  // 선택한 박스의 모서리 먼저
+  if (S.sel >= 0) {
+    const b = S.boxes[S.sel];
+    const corners = { nw: [b.x1, b.y1], ne: [b.x2, b.y1], sw: [b.x1, b.y2], se: [b.x2, b.y2] };
+    for (const [k, [x, y]] of Object.entries(corners)) {
+      const [px, py] = toScreen(x, y);
+      if (Math.abs(px - sx) <= HANDLE + 2 && Math.abs(py - sy) <= HANDLE + 2) return { i: S.sel, corner: k };
+    }
+  }
+  // 작은 박스가 위에 오도록 넓이 순으로
+  const [ix, iy] = toImage(sx, sy);
+  const order = S.boxes.map((b, i) => [i, (b.x2 - b.x1) * (b.y2 - b.y1)]).sort((a, b) => a[1] - b[1]);
+  for (const [i] of order) {
+    const b = S.boxes[i];
+    if (ix >= b.x1 && ix <= b.x2 && iy >= b.y1 && iy <= b.y2) return { i };
+  }
+  return null;
+}
+
+function pushUndo() { S.undo.push(JSON.stringify(S.boxes)); if (S.undo.length > 50) S.undo.shift(); }
+function pickClass(i) {
+  if (i < 0 || i >= S.classes.length) return;
+  if (S.sel >= 0) { pushUndo(); S.boxes[S.sel].c = i; S.dirty = true; }
+  S.cls = i; renderClasses(); updateUi();
+}
+
+// ------------------------------------------------------------------ 마우스
+cv.addEventListener("contextmenu", (e) => e.preventDefault());
+cv.addEventListener("mousedown", (e) => {
+  if (!S.img) return;
+  const r = cv.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
+  if (e.button === 2 || e.button === 1 || S.space) {
+    S.drag = { mode: "pan", sx, sy, vx: S.view.x, vy: S.view.y }; return;
+  }
+  const h = hit(sx, sy);
+  const [ix, iy] = toImage(sx, sy);
+  if (h) {
+    S.sel = h.i; pushUndo();
+    const b = S.boxes[h.i];
+    S.drag = h.corner ? { mode: "resize", corner: h.corner } : { mode: "move", ix, iy, b0: { ...b } };
+  } else {
+    S.sel = -1;
+    S.drag = { mode: "new", ix, iy, box: { c: S.cls, x1: ix, y1: iy, x2: ix, y2: iy } };
+  }
+  updateUi();
+});
+window.addEventListener("mousemove", (e) => {
+  if (!S.drag) return;
+  const r = cv.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
+  const [ix, iy] = toImage(sx, sy);
+  const W = S.img.naturalWidth, H = S.img.naturalHeight;
+  const d = S.drag;
+  if (d.mode === "pan") { S.view.x = d.vx + sx - d.sx; S.view.y = d.vy + sy - d.sy; }
+  else if (d.mode === "new") {
+    d.box.x1 = Math.min(d.ix, ix); d.box.x2 = Math.max(d.ix, ix);
+    d.box.y1 = Math.min(d.iy, iy); d.box.y2 = Math.max(d.iy, iy);
+  } else if (d.mode === "move") {
+    const b = S.boxes[S.sel], w = d.b0.x2 - d.b0.x1, h = d.b0.y2 - d.b0.y1;
+    b.x1 = clamp(d.b0.x1 + ix - d.ix, 0, W - w); b.y1 = clamp(d.b0.y1 + iy - d.iy, 0, H - h);
+    b.x2 = b.x1 + w; b.y2 = b.y1 + h; S.dirty = true;
+  } else if (d.mode === "resize") {
+    const b = S.boxes[S.sel], cx = clamp(ix, 0, W), cy = clamp(iy, 0, H);
+    if (d.corner.includes("w")) b.x1 = cx; else b.x2 = cx;
+    if (d.corner.includes("n")) b.y1 = cy; else b.y2 = cy;
+    S.dirty = true;
+  }
+  draw();
+});
+window.addEventListener("mouseup", () => {
+  const d = S.drag; S.drag = null;
+  if (!d || !S.img) return;
+  if (d.mode === "new") {
+    const b = d.box, W = S.img.naturalWidth, H = S.img.naturalHeight;
+    b.x1 = clamp(b.x1, 0, W); b.x2 = clamp(b.x2, 0, W); b.y1 = clamp(b.y1, 0, H); b.y2 = clamp(b.y2, 0, H);
+    if ((b.x2 - b.x1) * S.view.scale >= MIN_BOX && (b.y2 - b.y1) * S.view.scale >= MIN_BOX) {
+      pushUndo(); S.boxes.push(b); S.sel = S.boxes.length - 1; S.dirty = true;
+    }
+  } else if (d.mode === "resize") {
+    const b = S.boxes[S.sel];
+    [b.x1, b.x2] = [Math.min(b.x1, b.x2), Math.max(b.x1, b.x2)];
+    [b.y1, b.y2] = [Math.min(b.y1, b.y2), Math.max(b.y1, b.y2)];
+  }
+  updateUi();
+});
+cv.addEventListener("wheel", (e) => {
+  if (!S.img) return;
+  e.preventDefault();
+  const r = cv.getBoundingClientRect(), sx = e.clientX - r.left, sy = e.clientY - r.top;
+  const [ix, iy] = toImage(sx, sy);
+  S.view.scale = clamp(S.view.scale * Math.exp(-e.deltaY * 0.0015), 0.02, 20);
+  S.view.x = sx - ix * S.view.scale; S.view.y = sy - iy * S.view.scale;
+  draw();
+}, { passive: false });
+
+// ------------------------------------------------------------------ 키보드
+window.addEventListener("keydown", async (e) => {
+  if (e.target.tagName === "INPUT") return;
+  if (e.code === "Space") { S.space = true; e.preventDefault(); return; }
+  if (!S.img) return;
+  const k = e.key;
+  if ((e.ctrlKey || e.metaKey) && k.toLowerCase() === "z") {
+    if (S.undo.length) { S.boxes = JSON.parse(S.undo.pop()); S.sel = -1; S.dirty = true; updateUi(); }
+    e.preventDefault(); return;
+  }
+  if (/^[1-9]$/.test(k)) { pickClass(Number(k) - 1); return; }
+  if ((k === "Delete" || k === "Backspace") && S.sel >= 0) {
+    pushUndo(); S.boxes.splice(S.sel, 1); S.sel = -1; S.dirty = true; updateUi(); e.preventDefault(); return;
+  }
+  if (k === "Enter") { e.preventDefault(); await finish("ok"); return; }
+  if (k === "x" || k === "X") { await finish("skip"); return; }
+  if (k === "ArrowRight" || k === "d" || k === "D") { await go(Math.min(S.index + 1, S.items.length - 1)); return; }
+  if (k === "ArrowLeft" || k === "a" || k === "A") { await go(Math.max(S.index - 1, 0)); return; }
+  if (k === "f" || k === "F") { fit(); draw(); return; }
+  if (k === "Escape") { S.sel = -1; updateUi(); }
+});
+window.addEventListener("keyup", (e) => { if (e.code === "Space") S.space = false; });
+window.addEventListener("resize", () => { fit(); draw(); });
+window.addEventListener("beforeunload", () => { saveLabels(); });
+
+$("open").onclick = async () => {
+  try { await openFolder(await window.showDirectoryPicker({ mode: "readwrite" })); }
+  catch (err) { if (err.name !== "AbortError") say("폴더를 열지 못했습니다: " + err.message, "err"); }
+};
+$("prev").onclick = () => go(Math.max(S.index - 1, 0));
+$("next").onclick = () => go(Math.min(S.index + 1, S.items.length - 1));
+$("save").onclick = () => finish("ok");
+$("skip").onclick = () => finish("skip");
+$("showDone").onchange = async () => { await saveLabels(); await rescan(); };
+
+renderClasses();
+window.__labelTool = { S, openFolder, finish, go };   // 자동 테스트용
+</script>
+</body>
+</html>
