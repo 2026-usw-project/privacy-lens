@@ -38,7 +38,7 @@ SKIPPED = "skipped"    # 검수 중 '사진 제외'로 빠짐
 class Row:
     id: str            # 원본 파일 내용의 해시 앞 12자리. 같은 사진을 두 번 넣으면 같은 id
     group: str         # 촬영 묶음(inbox 하위 폴더 이름). 분할 단위
-    source: str        # real(직접 촬영) | synth(합성)
+    source: str        # real(직접 촬영) | synth(합성) | public(공개 데이터셋, 학습 전용)
     split: str         # train | val | test. dataset 에 들어갈 때 정해짐
     status: str        # review | done | skipped
     added_at: str

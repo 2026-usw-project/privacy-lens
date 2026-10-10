@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from PIL import Image
 
@@ -102,3 +104,53 @@ def test_lock_blocks_second_run(ws):
                 pass
     with ws.lock("다인"):                                   # 풀린 뒤에는 된다
         pass
+
+
+# ------------------------------------------------------------ MIDV-2020 가져오기
+
+def _via(entries):
+    return {"_via_img_metadata": {f"{e['filename']}0": e for e in entries}}
+
+
+def _region(name, xs, ys):
+    return {"shape_attributes": {"name": "polygon", "all_points_x": xs, "all_points_y": ys},
+            "region_attributes": {"field_name": name}}
+
+
+def test_import_midv_converts_quad_and_face_and_handles_exif_rotation(ws, tmp_path):
+    from vision import midv
+
+    src = tmp_path / "photo"
+    (src / "images" / "alb_id").mkdir(parents=True)
+    (src / "annotations").mkdir()
+    # 00: 회전 정보 없음. 400x700
+    Image.new("RGB", (400, 700), (90, 90, 90)).save(src / "images" / "alb_id" / "00.jpg")
+    # 01: 저장은 가로(700x400)인데 EXIF 6 = 세워서 보는 사진. 주석은 세운 기준(400x700)
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    Image.new("RGB", (700, 400), (90, 90, 90)).save(src / "images" / "alb_id" / "01.jpg", exif=exif)
+    quad = _region("doc_quad", [40, 360, 360, 40], [400, 400, 600, 600])
+    face = {"shape_attributes": {"name": "rect", "x": 60, "y": 430, "width": 50, "height": 60},
+            "region_attributes": {"field_name": "face"}}
+    (src / "annotations" / "alb_id.json").write_text(json.dumps(_via([
+        {"filename": "00.jpg", "regions": [quad, face]},
+        {"filename": "01.jpg", "regions": [quad]},
+        {"filename": "없음.jpg", "regions": [quad]},          # 사진 없는 주석은 무시
+    ])), encoding="utf-8")
+
+    midv.run(ws, str(src))
+
+    rows = [r for r in ws.load().values() if r.source == "public"]
+    assert len(rows) == 2 and all(r.split == "train" and r.status == DONE for r in rows)
+    by_name = {r.orig_name: r for r in rows}
+    lab0 = (ws.dataset / "labels" / f"{by_name['images/alb_id/00'].id}.txt").read_text().split("\n")
+    c, x, y, w, h = lab0[0].split()
+    assert c == "1" and abs(float(x) - 0.5) < 1e-3 and abs(float(y) - 500 / 700) < 1e-3
+    assert lab0[1].split()[0] == "4" and float(lab0[1].split()[3]) > 50 / 400   # 얼굴 → 넓힌 증명사진
+    img1 = Image.open(ws.dataset / "images" / f"{by_name['images/alb_id/01'].id}.jpg")
+    assert img1.size == (400, 700)            # EXIF 회전을 반영해서 주석과 맞춤
+    assert not img1.info.get("exif")
+    assert "train.txt" in [p.name for p in ws.dataset.iterdir()]
+
+    midv.run(ws, str(src))                    # 다시 돌려도 중복으로 안 들어감
+    assert len([r for r in ws.load().values() if r.source == "public"]) == 2

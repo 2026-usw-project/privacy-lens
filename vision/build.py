@@ -156,8 +156,9 @@ def status(ws: Workspace, rows=None) -> None:
     split_count = Counter((r.split, r.source) for r in rows.values() if r.status == DONE)
     for sp in ("train", "val", "test"):
         real, synth = split_count.get((sp, "real"), 0), split_count.get((sp, "synth"), 0)
+        public = split_count.get((sp, "public"), 0)
         groups = len({r.group for r in rows.values() if r.status == DONE and r.split == sp})
-        print(f"    {sp:<5} 실사 {real:>4}장  합성 {synth:>4}장  묶음 {groups}개")
+        print(f"    {sp:<5} 실사 {real:>4}장  합성 {synth:>4}장  공개 {public:>4}장  묶음 {groups}개")
 
     box_count = Counter()
     for r in rows.values():

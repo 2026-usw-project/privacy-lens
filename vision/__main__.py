@@ -7,6 +7,7 @@
   python -m vision train    --root <작업폴더>   학습 → 더 나으면 current 교체
   python -m vision status   --root <작업폴더>   현황
   python -m vision synth    --root <작업폴더>   합성 사진으로 학습 데이터 채우기(첫 모델용)
+  python -m vision import-midv <폴더> --root <작업폴더>   MIDV-2020 가상 신분증 사진 가져오기
   python -m vision predict  --root <작업폴더> 사진.jpg   current 모델로 시험 삼아 검출
 
 --root 대신 환경변수 PL_YOLO_ROOT 를 써도 됩니다.
@@ -52,13 +53,16 @@ def main(argv: list[str] | None = None) -> None:
     p = add("synth")
     p.add_argument("--n", type=int, default=200)
     p.add_argument("--seed", type=int, default=0)
+    p = add("import-midv")
+    p.add_argument("src", help="MIDV-2020 photo.tar 를 푼 폴더")
+    p.add_argument("--limit", type=int, help="문서 종류마다 최대 장수")
     p = add("predict")
     p.add_argument("images", nargs="+")
     p.add_argument("--conf", type=float, default=0.25)
 
     a = ap.parse_args(argv)
     ws = Workspace(a.root)
-    if a.cmd in ("ingest", "build", "train", "synth"):
+    if a.cmd in ("ingest", "build", "train", "synth", "import-midv"):
         ws.root.mkdir(parents=True, exist_ok=True)
         with ws.lock(a.who):
             _run(a, ws)
@@ -88,6 +92,9 @@ def _run(a, ws: Workspace) -> None:
     elif a.cmd == "synth":
         from . import synth
         synth.run(ws, n=a.n, seed=a.seed)
+    elif a.cmd == "import-midv":
+        from . import midv
+        midv.run(ws, a.src, limit=a.limit)
     elif a.cmd == "predict":
         weights = ws.current_model()
         if not weights:
