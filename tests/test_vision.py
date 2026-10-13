@@ -194,3 +194,25 @@ def test_sheet_draws_one_page_per_group(ws):
 
     assert sorted(p.name for p in written) == ["review_다인_명찰A_1013_1.jpg", "review_찬영_학생증A_1013_1.jpg"]
     assert Image.open(written[0]).size[0] == sheet.COLS * sheet.THUMB
+
+
+def test_add_extra_appends_to_temporary_train_list_only(tmp_path):
+    from vision import train
+    data = tmp_path / "copy"
+    for sub in ("images", "labels"):
+        (data / sub).mkdir(parents=True)
+    (data / "train.txt").write_text("./images/a.jpg\n", encoding="utf-8")
+    extra = tmp_path / "aihub"
+    (extra / "images").mkdir(parents=True)
+    (extra / "labels").mkdir()
+    for i in range(3):
+        Image.new("RGB", (40, 30)).save(extra / "images" / f"s{i}.jpg")
+    (extra / "labels" / "s1.txt").write_text("5 0.5 0.5 0.2 0.2\n", encoding="utf-8")
+
+    assert train.add_extra(data, extra) == 3
+
+    listed = (data / "train.txt").read_text(encoding="utf-8").split()
+    assert listed == ["./images/a.jpg", "./images/extra_s0.jpg", "./images/extra_s1.jpg", "./images/extra_s2.jpg"]
+    assert (data / "labels" / "extra_s0.txt").read_text() == ""            # 라벨 없음 = 배경
+    assert (data / "labels" / "extra_s1.txt").read_text().startswith("5 ")
+    assert train.add_extra(tmp_path / "copy", extra, limit=1) == 1

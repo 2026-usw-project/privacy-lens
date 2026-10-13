@@ -16,6 +16,7 @@ import csv
 import datetime as dt
 import json
 import os
+import random
 import shutil
 import tempfile
 from pathlib import Path
@@ -57,6 +58,30 @@ def _same_classes(weights: Path) -> bool:
     return {int(k): v for k, v in names.items()} == NAMES
 
 
+def add_extra(data_dir: Path, extra: Path, limit: int | None = None, seed: int = 0) -> int:
+    """개인 폴더의 학습 전용 사진을 **임시 복사본** 데이터셋의 train 에 더한다.
+
+    AI 허브처럼 승인받은 사람만 쓸 수 있어 공유 폴더에 둘 수 없는 데이터를 학습에만
+    섞으려고 쓴다. 공유 dataset·manifest 는 건드리지 않는다.
+    extra/images/ 의 사진과 (있으면) extra/labels/<이름>.txt. 라벨이 없으면 물체 없는 배경이다.
+    """
+    extra = Path(extra)
+    imgs = sorted(p for p in (extra / "images").iterdir() if p.suffix.lower() in (".jpg", ".jpeg", ".png"))
+    if limit and len(imgs) > limit:
+        imgs = sorted(random.Random(seed).sample(imgs, limit))
+    lines = []
+    for p in imgs:
+        name = f"extra_{p.stem}"
+        shutil.copy2(p, data_dir / "images" / f"{name}{p.suffix.lower()}")
+        label = extra / "labels" / f"{p.stem}.txt"
+        (data_dir / "labels" / f"{name}.txt").write_text(
+            label.read_text(encoding="utf-8") if label.exists() else "", encoding="utf-8")
+        lines.append(f"./images/{name}{p.suffix.lower()}")
+    with (data_dir / "train.txt").open("a", encoding="utf-8") as f:
+        f.write("".join(line + "\n" for line in lines))
+    return len(lines)
+
+
 def run(
     ws: Workspace,
     *,
@@ -68,6 +93,8 @@ def run(
     who: str = "",
     force_promote: bool = False,
     copy_local: bool | None = None,
+    extra: str | None = None,
+    extra_limit: int | None = None,
 ) -> None:
     from ultralytics import YOLO
 
@@ -95,8 +122,10 @@ def run(
     print(f"사진: 학습 {n_train} · 검증 {n_val} · 시험 {n_test}")
 
     # Colab 은 드라이브 읽기가 느리다. 로컬 디스크로 복사해서 학습한다
-    copy_local = _in_colab() if copy_local is None else copy_local
+    # 개인 폴더 사진을 섞을 때는 공유 dataset 을 건드리지 않게 반드시 복사본으로 학습한다
+    copy_local = (_in_colab() if copy_local is None else copy_local) or bool(extra)
     data_dir = ws.dataset
+    n_extra = 0
     if copy_local:
         tmp = Path(tempfile.mkdtemp(prefix="pl_yolo_")) / "dataset"
         print(f"데이터를 {tmp} 로 복사하는 중…")
@@ -104,6 +133,9 @@ def run(
         from .build import write_yaml
         write_yaml(tmp, has_val=n_val > 0, has_test=n_test > 0)
         data_dir = tmp
+        if extra:
+            n_extra = add_extra(tmp, Path(extra), extra_limit)
+            print(f"개인 폴더 사진 {n_extra}장을 이번 학습에만 더했습니다(공유 폴더에는 넣지 않음).")
     data_yaml = data_dir / "data.yaml"
 
     version = ws.next_version()
@@ -144,6 +176,8 @@ def run(
         "base_version": ws.current_version() if base == str(current) else "",
         "epochs": epochs, "imgsz": imgsz,
         "images": {"train": n_train, "val": n_val, "test": n_test},
+        # 출처 표기(AI 허브 등)를 위해 어떤 개인 폴더를 몇 장 섞었는지 남긴다
+        "extra": {"folder": Path(extra).name, "images": n_extra} if n_extra else None,
         "score": new_score,
         "previous": {"version": ws.current_version(), "score": old_score} if old_score else None,
         "promoted": promoted,

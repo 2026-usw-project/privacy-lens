@@ -53,6 +53,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--device", help="0 = 첫 GPU, cpu = CPU (기본: 자동)")
     p.add_argument("--force", action="store_true", help="점수가 낮아도 current 로 교체")
     p.add_argument("--no-copy", action="store_true", help="로컬 디스크로 복사하지 않고 학습")
+    p.add_argument("--extra", help="이번 학습에만 섞을 개인 폴더(images/, 선택 labels/). AI 허브 등 공유 불가 데이터용")
+    p.add_argument("--extra-limit", type=int, help="개인 폴더에서 무작위로 고를 최대 장수")
     p = add("synth")
     p.add_argument("--n", type=int, default=200)
     p.add_argument("--seed", type=int, default=0)
@@ -94,7 +96,8 @@ def _run(a, ws: Workspace) -> None:
         from . import train
         train.run(ws, epochs=a.epochs, imgsz=a.imgsz, batch=a.batch, base=a.base,
                   device=a.device, who=a.who, force_promote=a.force,
-                  copy_local=False if a.no_copy else None)
+                  copy_local=False if a.no_copy else None,
+                  extra=a.extra, extra_limit=a.extra_limit)
     elif a.cmd == "synth":
         from . import synth
         synth.run(ws, n=a.n, seed=a.seed)
