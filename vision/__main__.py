@@ -3,6 +3,7 @@
   python -m vision init     --root <작업폴더>   폴더 구조 만들기 (처음 한 번)
   python -m vision ingest   --root <작업폴더>   inbox 새 사진 → 정리 + 초벌 라벨 → review
   (라벨링 도구 vision/label_tool.html 로 review 폴더를 열어 검수)
+  python -m vision sheet    --root <작업폴더>   1차 검수한 사진을 묶음별 한 장으로 (2차 검수용)
   python -m vision build    --root <작업폴더>   검수 끝난 사진 → dataset
   python -m vision train    --root <작업폴더>   학습 → 더 나으면 current 교체
   python -m vision status   --root <작업폴더>   현황
@@ -41,6 +42,8 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--keep", action="store_true", help="inbox 원본을 지우지 않음")
     p.add_argument("--no-prelabel", action="store_true", help="초벌 라벨 없이 넣기")
     add("build")
+    p = add("sheet")
+    p.add_argument("--dataset", action="store_true", help="이미 데이터셋에 들어간 실사 사진으로 만들기")
     add("status")
     p = add("train")
     p.add_argument("--epochs", type=int, default=60)
@@ -80,6 +83,9 @@ def _run(a, ws: Workspace) -> None:
     elif a.cmd == "build":
         from . import build
         build.run(ws)
+    elif a.cmd == "sheet":
+        from . import sheet
+        sheet.run(ws, dataset=a.dataset)
     elif a.cmd == "status":
         from . import build
         ws.init()

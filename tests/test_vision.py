@@ -154,3 +154,46 @@ def test_import_midv_converts_quad_and_face_and_handles_exif_rotation(ws, tmp_pa
 
     midv.run(ws, str(src))                    # 다시 돌려도 중복으로 안 들어감
     assert len([r for r in ws.load().values() if r.source == "public"]) == 2
+
+
+# ------------------------------------------------------------ 검수 강화
+
+def _reviewed(ws, group, label_text, marker_text):
+    """inbox → review 로 한 장 넣고, 라벨과 완료 표시를 적는다. 사진 id 를 돌려준다."""
+    (ws.inbox / group).mkdir(parents=True, exist_ok=True)
+    n = len(ws.load())  # 사진마다 크기를 달리해 중복(같은 내용)으로 걸러지지 않게
+    Image.new("RGB", (400 + n, 300), (120, 90, 90)).save(ws.inbox / group / "a.jpg")
+    ingest.run(ws, prelabel=False)
+    fid = next(r.id for r in ws.load().values() if r.group == group)
+    (ws.review / "labels" / f"{fid}.txt").write_text(label_text, encoding="utf-8")
+    (ws.review / "done" / f"{fid}.ok").write_text(marker_text, encoding="utf-8")
+    return fid
+
+
+def test_build_records_reviewer_and_blocks_obvious_box_mistakes(ws, capsys):
+    good = _reviewed(ws, "찬영_학생증A_1013",
+                     "1 0.5 0.5 0.5 0.5\n4 0.40 0.5 0.1 0.2\n", "다인\t2026-10-13T10:00:00Z\n")
+    tiny = _reviewed(ws, "다인_명찰A_1013", "2 0.5 0.5 0.005 0.5\n", "찬영\t…\n")
+    dup = _reviewed(ws, "다인_송장A_1013", "0 0.5 0.5 0.4 0.4\n0 0.501 0.5 0.4 0.4\n", "")
+    lone_face = _reviewed(ws, "찬영_화면A_1013", "4 0.2 0.2 0.1 0.1\n", "찬영\t…\n")
+
+    build.run(ws)
+
+    rows = ws.load()
+    assert rows[good].status == DONE and rows[good].reviewed_by == "다인"
+    assert rows[tiny].status == REVIEW and rows[dup].status == REVIEW   # 실수로 보이는 박스는 막는다
+    assert rows[lone_face].status == DONE                              # 일부러일 수 있으니 경고만
+    out = capsys.readouterr().out
+    assert "증명사진이 학생증·카드 박스 밖" in out
+    assert "찍은 사람이 직접 검수한 사진 1장" in out                     # 찬영_화면A 를 찬영이 검수
+
+
+def test_sheet_draws_one_page_per_group(ws):
+    from vision import sheet
+    _reviewed(ws, "찬영_학생증A_1013", "1 0.5 0.5 0.5 0.5\n", "다인\t…\n")
+    _reviewed(ws, "다인_명찰A_1013", "2 0.5 0.5 0.3 0.3\n", "찬영\t…\n")
+
+    written = sheet.run(ws)
+
+    assert sorted(p.name for p in written) == ["review_다인_명찰A_1013_1.jpg", "review_찬영_학생증A_1013_1.jpg"]
+    assert Image.open(written[0]).size[0] == sheet.COLS * sheet.THUMB
