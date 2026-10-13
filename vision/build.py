@@ -14,8 +14,14 @@ from __future__ import annotations
 
 import shutil
 
+from PIL import Image
+
 from .classes import NAMES
 from .workspace import DONE, REVIEW, SKIPPED, Workspace
+
+MIN_BOX_PX = 6     # 이보다 작은 박스는 클릭 실수로 본다
+DUP_IOU = 0.9      # 같은 클래스 박스가 이만큼 겹치면 두 번 그린 것
+_IDX = {n: i for i, n in NAMES.items()}
 
 
 def _split_of_group(group: str, rows) -> str | None:
@@ -69,6 +75,42 @@ def _check_label(path) -> list[str]:
     return problems
 
 
+def _iou(a, b) -> float:
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - ix * iy
+    return ix * iy / union if union > 0 else 0.0
+
+
+def _check_boxes(path, size) -> tuple[list[str], list[str]]:
+    """형식은 맞지만 이상한 박스를 찾는다. (막을 것, 경고만 할 것).
+
+    _check_label 을 통과한 파일만 넣는다. 막는 것은 거의 확실한 실수(클릭 실수로 생긴
+    점 같은 박스, 같은 박스를 두 번 그림)뿐이고, 일부러 그랬을 수도 있는 것은 경고만 한다.
+    """
+    W, H = size
+    boxes = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            c, cx, cy, w, h = line.split()
+            cx, cy, w, h = float(cx) * W, float(cy) * H, float(w) * W, float(h) * H
+            boxes.append((int(c), (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)))
+    problems, warnings = [], []
+    for i, (c, b) in enumerate(boxes, 1):
+        if b[2] - b[0] < MIN_BOX_PX or b[3] - b[1] < MIN_BOX_PX:
+            problems.append(f"{i}번째 박스가 {MIN_BOX_PX}px보다 작음")
+        if any(c == c2 and _iou(b, b2) >= DUP_IOU for c2, b2 in boxes[:i - 1]):
+            problems.append(f"{i}번째 박스를 두 번 그림")
+        if (b[2] - b[0]) * (b[3] - b[1]) >= 0.9 * W * H:
+            warnings.append(f"{i}번째 박스가 사진 거의 전체")
+        cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+        if c == _IDX["face_photo"] and not any(
+                c2 == _IDX["id_card"] and b2[0] <= cx <= b2[2] and b2[1] <= cy <= b2[3]
+                for c2, b2 in boxes):
+            warnings.append(f"{i}번째 증명사진이 학생증·카드 박스 밖에 있음")
+    return problems, warnings
+
+
 def run(ws: Workspace) -> None:
     ws.init()
     rows = ws.load()
@@ -96,12 +138,18 @@ def run(ws: Workspace) -> None:
                 continue
             if not label.exists():
                 label.write_text("", encoding="utf-8")  # 물체 없는 사진(배경). 오탐을 줄이는 데 쓴다
-            problems = _check_label(label)
+            problems, warnings = _check_label(label), []
+            if not problems:
+                with Image.open(img) as im:
+                    more, warnings = _check_boxes(label, im.size)
+                problems += more
             if problems:
                 print(f"  ! {fid}: 라벨 오류 {problems} → 검수 폴더에 남겨 둡니다")
                 broken += 1
                 marker.unlink()
                 continue
+            for w in warnings:
+                print(f"  ? {fid}: {w} — 맞는지 확인하세요")
             row.split = _assign(row.group, row.source, rows)
             shutil.move(str(img), ws.dataset / "images" / img.name)
             shutil.move(str(label), ws.dataset / "labels" / label.name)
@@ -114,6 +162,10 @@ def run(ws: Workspace) -> None:
     ws.save(rows)
     write_lists(ws, rows)
     print(f"\n데이터셋에 {moved}장 추가, 제외 {skipped}장, 오류 {broken}장")
+    waiting = sum(1 for r in rows.values() if r.status == REVIEW)
+    if not (moved or skipped or broken) and waiting:
+        print(f"  ? 검수 대기 {waiting}장에 완료 표시가 없습니다. 라벨 도구에서 Enter 를 눌렀는지, "
+              "데스크톱 앱이 드라이브에 다 올렸는지(동기화) 확인한 뒤 다시 실행하세요")
     status(ws, rows)
 
 
