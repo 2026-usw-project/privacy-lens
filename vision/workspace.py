@@ -44,7 +44,6 @@ class Row:
     added_at: str
     orig_name: str     # 원래 파일 이름(확인용)
     prelabel: str      # 초벌 라벨을 만든 모델 버전. 없으면 빈칸
-    reviewed_by: str = ""  # 검수 완료를 누른 사람(라벨 도구에 적은 이름)
 
 
 class Workspace:

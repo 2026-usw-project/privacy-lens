@@ -60,7 +60,6 @@
     <button id="save" class="primary" disabled>검수 완료 (Enter)</button>
     <button id="skip" class="danger" disabled>사진 제외 (X)</button>
     <label><input type="checkbox" id="showDone"> 완료한 사진도 보기</label>
-    <label>검수자 <input id="who" size="8" placeholder="이름"></label>
     <span id="msg"></span>
   </header>
   <div id="stage">
@@ -225,12 +224,10 @@ async function go(i, save = true) {
 
 async function finish(kind) {
   if (!S.img) return;
-  const who = $("who").value.trim();
-  if (!who) { say("위쪽 '검수자' 칸에 이름을 먼저 적어 주세요", "err"); $("who").focus(); return; }
   const id = current();
   if (kind === "ok") { S.dirty = true; await saveLabels(); }
   await removeEntry(S.done, id + (kind === "ok" ? ".skip" : ".ok"));
-  await writeText(S.done, id + "." + kind, `${who}\t${new Date().toISOString()}\n`);  // build 가 검수자로 기록
+  await writeText(S.done, id + "." + kind, "");
   S.state[id] = kind;
   say(kind === "ok" ? `저장했습니다 (${S.boxes.length}개)` : "제외로 표시했습니다", "ok");
   if (!$("showDone").checked) {
@@ -456,9 +453,6 @@ $("next").onclick = () => go(Math.min(S.index + 1, S.items.length - 1));
 $("save").onclick = () => finish("ok");
 $("skip").onclick = () => finish("skip");
 $("showDone").onchange = async () => { await saveLabels(); await rescan(); };
-try { $("who").value = localStorage.getItem("pl-reviewer") || ""; } catch {}
-$("who").oninput = () => { try { localStorage.setItem("pl-reviewer", $("who").value.trim()); } catch {} };
-$("who").onkeydown = (e) => { if (e.key === "Enter") e.target.blur(); };
 
 renderClasses();
 window.__labelTool = { S, openFolder, finish, go };   // 자동 테스트용

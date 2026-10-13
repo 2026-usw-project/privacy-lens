@@ -116,7 +116,7 @@ def run(ws: Workspace) -> None:
     rows = ws.load()
     done_dir = ws.review / "done"
 
-    moved = skipped = broken = no_name = self_reviewed = 0
+    moved = skipped = broken = 0
     for marker in sorted(done_dir.glob("*.*")):
         fid, kind = marker.stem, marker.suffix
         row = rows.get(fid)
@@ -150,12 +150,6 @@ def run(ws: Workspace) -> None:
                 continue
             for w in warnings:
                 print(f"  ? {fid}: {w} — 맞는지 확인하세요")
-            # 라벨 도구가 완료 표시에 '이름<TAB>시각' 을 적는다. 예전 도구는 빈 파일
-            row.reviewed_by = marker.read_text(encoding="utf-8").split("\t")[0].strip()
-            if not row.reviewed_by:
-                no_name += 1
-            elif row.group.split("_")[0] == row.reviewed_by:  # 묶음 이름 규칙: 이름_소품_날짜
-                self_reviewed += 1
             row.split = _assign(row.group, row.source, rows)
             shutil.move(str(img), ws.dataset / "images" / img.name)
             shutil.move(str(label), ws.dataset / "labels" / label.name)
@@ -172,10 +166,6 @@ def run(ws: Workspace) -> None:
     if not (moved or skipped or broken) and waiting:
         print(f"  ? 검수 대기 {waiting}장에 완료 표시가 없습니다. 라벨 도구에서 Enter 를 눌렀는지, "
               "데스크톱 앱이 드라이브에 다 올렸는지(동기화) 확인한 뒤 다시 실행하세요")
-    if no_name:
-        print(f"  ? 검수자 이름 없이 완료된 사진 {no_name}장 — 라벨 도구 위쪽에 이름을 적어 주세요")
-    if self_reviewed:
-        print(f"  ? 찍은 사람이 직접 검수한 사진 {self_reviewed}장 — 다른 팀원이 검수 시트로 한 번 더 봐 주세요")
     status(ws, rows)
 
 
