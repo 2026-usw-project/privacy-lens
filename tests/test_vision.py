@@ -216,3 +216,19 @@ def test_add_extra_appends_to_temporary_train_list_only(tmp_path):
     assert (data / "labels" / "extra_s0.txt").read_text() == ""            # 라벨 없음 = 배경
     assert (data / "labels" / "extra_s1.txt").read_text().startswith("5 ")
     assert train.add_extra(tmp_path / "copy", extra, limit=1) == 1
+
+
+def test_synth_covers_every_class_and_small_documents():
+    synth = pytest.importorskip("vision.synth", exc_type=Exception)  # 한글 폰트·OpenCV 가 없으면 건너뜀
+    from vision.classes import NAMES
+    seen, small = set(), 0
+    for s in range(40):
+        img, lines = synth.make_scene(s)
+        W, H = img.size
+        for ln in lines:
+            c, cx, cy, w, h = ln.split()
+            assert all(0 <= float(v) <= 1 for v in (cx, cy, w, h))
+            seen.add(NAMES[int(c)])
+            small += max(float(w) * W, float(h) * H) / min(W, H) < 0.2
+    assert seen == set(NAMES.values())          # 송장·학생증·명찰·화면·증명사진·바코드 모두
+    assert small > 0                            # 작게 찍힌 문서도 나온다
