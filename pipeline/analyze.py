@@ -66,6 +66,7 @@ def analyze(
         elapsed_ms=int((time.perf_counter() - started) * 1000),
         ocr_backend=backend.name,
         detector=detector.name if detector is not None else "",
+        detector_device=getattr(detector, "device", "") if detector is not None else "",
     )
 
     if not findings:

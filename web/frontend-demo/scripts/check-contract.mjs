@@ -34,6 +34,13 @@ const report={"width":400,"height":320,"findings":[
   "groups":[{"group_id":"g0","box":{"x":20,"y":77,"w":260,"h":73},"kinds":["name","mobile"],"message":"같은 영역 안에서 이름으로 보이는 문자열, 휴대전화번호가 함께 노출됨. 서로 연결할 수 있는 상태입니다","severity":"cover","severity_label":"가림 권장"}],
   "elapsed_ms":132,"ocr_backend":"paddleocr 3.7.0 · PP-OCRv6_medium_det + korean_PP-OCRv5_mobile_rec","notes":[]};
 const result=C.fromReport(report);
+await test('YOLO version and actual device shown with OCR',()=>{
+  const active=C.fromReport({...report,detector:'yolo:v004',detector_device:'cuda:0'});
+  assert.match(active.backend,/PP-OCRv6/);
+  assert.match(active.backend,/YOLO v004 \(CUDA:0\)/);
+  assert.match(C.fromReport({...report,detector:'yolo:v004',detector_device:'cpu'}).backend,/YOLO v004 \(CPU\)/);
+  assert.match(result.backend,/YOLO 꺼짐/);
+});
 const byKind=k=>result.regions.find(r=>r.finding===k);
 await test('report dimensions and backend kept',()=>{assert.equal(result.width,400);assert.equal(result.height,320);assert.match(result.backend,/PP-OCRv6/);assert.equal(result.elapsedMs,132);});
 await test('every boxed finding becomes a region, gps does not',()=>{assert.equal(result.regions.length,5);assert.ok(!result.regions.some(r=>r.finding==='gps'));});

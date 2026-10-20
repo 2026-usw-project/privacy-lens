@@ -75,7 +75,10 @@
     return {width,height,regions,gps,
       groups:report.groups.map(g=>String(g.message||'').slice(0,300)).filter(Boolean),
       notes:Array.isArray(report.notes)?report.notes.map(String):[],
-      backend:String(report.ocr_backend||'').slice(0,160),elapsedMs:Number(report.elapsed_ms)||0,
+      backend:[String(report.ocr_backend||'').slice(0,160),
+        report.detector?'YOLO '+String(report.detector).replace(/^yolo:/,'').slice(0,80)
+          +(report.detector_device?' ('+String(report.detector_device).slice(0,40).toUpperCase()+')':''):'YOLO 꺼짐'
+      ].filter(Boolean).join(' · '),elapsedMs:Number(report.elapsed_ms)||0,
       partial:regions.some(r=>r.certainty!=='read')};
   }
 

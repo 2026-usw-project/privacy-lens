@@ -184,6 +184,7 @@ class Report:
     ocr_backend: str = ""
     notes: list[str] = field(default_factory=list)
     detector: str = ""   # 문서 검출 모델 이름. 검출을 안 썼으면 빈 문자열
+    detector_device: str = ""   # 실제 추론 장치(cpu, cuda:0 등)
 
     def sorted_findings(self) -> list[Finding]:
         return sorted(self.findings, key=lambda f: (f.severity.rank, f.kind))
@@ -197,5 +198,6 @@ class Report:
             "elapsed_ms": self.elapsed_ms,
             "ocr_backend": self.ocr_backend,
             "detector": self.detector,
+            "detector_device": self.detector_device,
             "notes": self.notes,
         }

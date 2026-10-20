@@ -15,6 +15,7 @@ W, H = 2000, 1500
 
 class FakeDetector:
     name = "yolo:test"
+    device = "cpu"
 
     def __init__(self, dets):
         self.dets = dets
@@ -64,6 +65,7 @@ def test_without_detector_nothing_changes():
     backend = TwoStageBackend([span("연락처 010-2345-6789", 100, 100, 300, 30)])
     with_none = pl.analyze(IMG, backend=backend, detector=None)
     assert with_none.detector == ""
+    assert with_none.as_dict()["detector_device"] == ""
     assert [f.kind for f in with_none.findings] == ["mobile"]
     assert backend.calls == 1
 
@@ -76,6 +78,7 @@ def test_small_card_is_reread_and_mapped_back_to_original_coordinates():
 
     assert backend.calls == 2
     assert rep.detector == "yolo:test"
+    assert rep.as_dict()["detector_device"] == "cpu"
     (mobile,) = [f for f in rep.findings if f.kind == "mobile"]
     assert mobile.severity is Severity.COVER
     # 원본 좌표로 되돌아왔는지 (반올림 오차 2px 이내)
