@@ -12,10 +12,11 @@ YOLO 는 글자를 읽지 않고 '학생증 모양'을 찾는다. 그래서
   - 그래도 못 읽으면 '문서로 보이는 영역이 있으나 내용을 확인하지 못했다'는
     **영역 경고**를 낸다(2 해결). 내용은 지어내지 않는다.
 
-가중치가 없으면(PL_YOLO_WEIGHTS 미설정) 이 단계는 통째로 건너뛰고 예전과 똑같이
+가중치가 없으면 이 단계는 통째로 건너뛰고 예전과 똑같이
 동작한다. 학습은 vision/ 도구로 한다.
 
-  PL_YOLO_WEIGHTS  best.pt 경로. 없으면 끔
+  PL_YOLO_WEIGHTS  best.pt 경로. 미설정이면 models/v<최대 숫자>/best.pt,
+                   버전 폴더가 없으면 models/best.pt
   PL_YOLO_CONF     검출 기준 (기본 0.35)
   PL_YOLO_IMGSZ    입력 크기 (기본: 가중치 옆 metrics.json 의 imgsz, 없으면 1280)
 """
@@ -103,6 +104,19 @@ def _imgsz_for(weights: Path) -> int:
         return 1280
 
 
+DEFAULT_WEIGHTS = Path(__file__).resolve().parent.parent / "models" / "best.pt"
+
+
+def _default_weights() -> Path:
+    """프로젝트 models 바로 아래의 v숫자 폴더를 숫자 순서로 비교한다."""
+    models = DEFAULT_WEIGHTS.parent
+    versions = [p for p in models.iterdir()
+                if p.is_dir() and p.name.startswith("v")
+                and p.name[1:].isascii() and p.name[1:].isdigit()] if models.is_dir() else []
+    if versions:
+        return max(versions, key=lambda p: (int(p.name[1:]), p.name)) / "best.pt"
+    return DEFAULT_WEIGHTS
+
 _detector = None
 _detector_lock = threading.Lock()
 _UNSET = object()
@@ -110,7 +124,7 @@ _loaded: object = _UNSET
 
 
 def get_detector():
-    """PL_YOLO_WEIGHTS 가 있으면 검출기를 한 번만 만든다. 없거나 실패하면 None.
+    """지정 경로 또는 models 최신 버전의 best.pt 로 검출기를 한 번만 만든다.
 
     검출은 보조 단계다. 설정이 틀려도 서비스는 OCR 만으로 계속 돌아야 하므로
     예외를 던지지 않고 경고만 남긴다(사진·문자열은 남기지 않는다).
@@ -119,10 +133,13 @@ def get_detector():
     with _detector_lock:
         if _loaded is _UNSET:
             _loaded = None
-            weights = os.environ.get("PL_YOLO_WEIGHTS", "").strip()
-            if weights and os.environ.get("PL_YOLO", "on").lower() != "off":
+            configured = os.environ.get("PL_YOLO_WEIGHTS", "").strip()
+            if os.environ.get("PL_YOLO", "on").lower() != "off":
                 try:
+                    weights = Path(configured) if configured else _default_weights()
                     if not Path(weights).exists():
+                        if not configured:
+                            return None
                         raise FileNotFoundError(weights)
                     _loaded = YoloDetector(weights)
                 except Exception as exc:

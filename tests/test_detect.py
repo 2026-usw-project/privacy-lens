@@ -199,8 +199,58 @@ def fresh_detector_state(monkeypatch):
     detect._loaded = detect._UNSET
 
 
-def test_no_weights_means_no_detector(fresh_detector_state, monkeypatch):
+def test_no_weights_means_no_detector(fresh_detector_state, monkeypatch, tmp_path):
     monkeypatch.delenv("PL_YOLO_WEIGHTS", raising=False)
+    monkeypatch.setattr(detect, "DEFAULT_WEIGHTS", tmp_path / "models" / "best.pt")
+    assert detect.get_detector() is None
+
+
+@pytest.mark.parametrize("versions,expected", [
+    ([], "best.pt"),
+    (["v001", "v004", "v003"], "v004/best.pt"),
+    (["v9", "v10", "v002", "vbackup", "other"], "v10/best.pt"),
+])
+def test_default_weights_selects_numeric_version(monkeypatch, tmp_path, versions, expected):
+    monkeypatch.setattr(detect, "DEFAULT_WEIGHTS", tmp_path / "best.pt")
+    (tmp_path / "best.pt").touch()
+    for version in versions:
+        folder = tmp_path / version
+        folder.mkdir()
+        (folder / "best.pt").touch()
+    (tmp_path / "v999").touch()  # 버전 이름이어도 파일이면 무시한다
+    assert detect._default_weights() == tmp_path / expected
+
+
+def test_auto_weights_loads_once_and_can_be_overridden(fresh_detector_state, monkeypatch, tmp_path):
+    monkeypatch.delenv("PL_YOLO_WEIGHTS", raising=False)
+    monkeypatch.delenv("PL_YOLO", raising=False)
+    monkeypatch.setattr(detect, "DEFAULT_WEIGHTS", tmp_path / "best.pt")
+    latest = tmp_path / "v004" / "best.pt"
+    latest.parent.mkdir()
+    latest.touch()
+    loaded = []
+    monkeypatch.setattr(detect, "YoloDetector", lambda path: loaded.append(path) or object())
+    first = detect.get_detector()
+    assert detect.get_detector() is first
+    assert loaded == [latest]
+    explicit = tmp_path / "custom.pt"
+    explicit.touch()
+    monkeypatch.setenv("PL_YOLO_WEIGHTS", str(explicit))
+    monkeypatch.setattr(detect, "_loaded", detect._UNSET)
+    detect.get_detector()
+    assert loaded == [latest, explicit]
+    monkeypatch.setenv("PL_YOLO", "off")
+    monkeypatch.setattr(detect, "_loaded", detect._UNSET)
+    assert detect.get_detector() is None
+    assert loaded == [latest, explicit]
+
+
+def test_missing_latest_weights_does_not_load_older_model(fresh_detector_state, monkeypatch, tmp_path):
+    monkeypatch.delenv("PL_YOLO_WEIGHTS", raising=False)
+    monkeypatch.delenv("PL_YOLO", raising=False)
+    monkeypatch.setattr(detect, "DEFAULT_WEIGHTS", tmp_path / "best.pt")
+    (tmp_path / "best.pt").touch()
+    (tmp_path / "v004").mkdir()
     assert detect.get_detector() is None
 
 
