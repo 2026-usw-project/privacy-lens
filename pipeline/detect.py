@@ -80,12 +80,15 @@ class YoloDetector:
         self.imgsz = imgsz or _imgsz_for(self.path)
         version = self.path.parent.name if self.path.parent.name.startswith("v") else self.path.stem
         self.name = f"yolo:{version}"
+        self.device = ""
         self._lock = threading.Lock()
 
     def detect(self, image: Image.Image) -> list[Detection]:
         with self._lock:  # 추론기는 스레드 안전하다고 가정하지 않는다
             res = self.model.predict(image.convert("RGB"), conf=self.conf,
                                      imgsz=self.imgsz, verbose=False)[0]
+            # 추론 후 실제 선택된 장치를 기록한다(CUDA 지원 여부로 추정하지 않음).
+            self.device = str(self.model.predictor.device)
         out = []
         for c, p, (x0, y0, x1, y1) in zip(res.boxes.cls.tolist(), res.boxes.conf.tolist(),
                                           res.boxes.xyxy.tolist()):
