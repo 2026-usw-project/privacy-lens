@@ -245,11 +245,19 @@ def verify(selected: list[Box], masked_bytes: bytes, analyze_fn, *, had_gps: boo
         f for f in after.findings
         if f.severity.value in ("cover", "review") and f.box is not None
     ]
+    # 문서 검출의 '영역' 경고는 종이 모양을 본 것이지 내용이 읽힌 것이 아니다.
+    # 가린 학생증도 여전히 학생증 모양이라, 선택 영역 안의 것은 누출로 세지 않는다.
     leaked = [
         f for f in serious
-        if any(_overlap(f.box, b) >= OVERLAP_RATIO for b in selected)
+        if f.kind not in ("document", "face_photo")
+        and any(_overlap(f.box, b) >= OVERLAP_RATIO for b in selected)
     ]
-    elsewhere = [f for f in serious if f not in leaked]
+    covered_shapes = [
+        f for f in serious
+        if f.kind in ("document", "face_photo")
+        and any(_overlap(f.box, b) >= OVERLAP_RATIO for b in selected)
+    ]
+    elsewhere = [f for f in serious if f not in leaked and f not in covered_shapes]
     has_gps = any(f.kind == "gps" for f in after.findings)
 
     return {

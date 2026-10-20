@@ -39,6 +39,8 @@ KIND_NOUN = {
     "qr": "QR코드",
     "barcode": "바코드",
     "gps": "촬영 위치 좌표",
+    "document": "문서 영역",
+    "face_photo": "증명사진",
 }
 
 DOC_NOUN = {
@@ -46,6 +48,8 @@ DOC_NOUN = {
     "receipt": "영수증",
     "badge": "명찰 또는 사원증",
     "student": "학생증",
+    "id_card": "학생증 또는 카드",
+    "screen": "화면",
 }
 
 
@@ -99,7 +103,7 @@ def found_public(kind: str, *, near: str | None = None) -> str:
 
 def region_only(doc: str | None = None) -> str:
     noun = DOC_NOUN.get(doc or "", "문서 또는 카드")
-    return assert_safe(f"{noun}로 추정되는 영역이 있으나 글자가 흐려 내용을 확인하지 못했습니다")
+    return assert_safe(f"{josa(noun, '으로/로')} 추정되는 영역이 있으나 글자가 흐려 내용을 확인하지 못했습니다")
 
 
 def qr_decoded(payload_kind: str) -> str:
@@ -120,6 +124,17 @@ def qr_contains(nouns: list[str]) -> str:
 
 def barcode_decoded() -> str:
     return assert_safe("바코드가 해독됨. 운송장번호 등 배송 조회에 쓰이는 번호일 수 있음")
+
+
+def document_unconfirmed(doc: str | None = None) -> str:
+    noun = DOC_NOUN.get(doc or "", "문서 또는 카드")
+    return assert_safe(
+        f"{josa(noun, '으로/로')} 추정되는 영역에서 일부 글자는 읽었으나 개인정보 항목을 확인하지 못했습니다"
+    )
+
+
+def face_photo_region() -> str:
+    return assert_safe("카드나 서류에 인쇄된 증명사진으로 보이는 영역이 있음")
 
 
 def qr_undecoded() -> str:
@@ -163,9 +178,9 @@ def all_templates() -> list[str]:
         out += [found(kind), found(kind, near="수취인"),
                 found_public(kind), found_public(kind, near="고객센터")]
     for doc in list(DOC_NOUN) + [None]:
-        out += [region_only(doc), combined(doc, ["휴대전화번호", "도로명주소"])]
+        out += [region_only(doc), document_unconfirmed(doc), combined(doc, ["휴대전화번호", "도로명주소"])]
     for kind in ("url", "vcard", "wifi", "tel", "text", "unknown"):
         out.append(qr_decoded(kind))
-    out += [qr_undecoded(), qr_contains(["휴대전화번호"]), barcode_decoded(),
+    out += [qr_undecoded(), face_photo_region(), qr_contains(["휴대전화번호"]), barcode_decoded(),
             gps_present(37.5, 127.0), NO_FINDINGS]
     return out

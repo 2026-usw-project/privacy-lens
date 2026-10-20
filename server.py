@@ -40,7 +40,7 @@ from starlette.formparsers import MultiPartParser
 from jobqueue import Cancelled, QueueFull, WorkQueue
 
 from pipeline import analyze as pl
-from pipeline import metadata, ocr, redact, wording
+from pipeline import detect, metadata, ocr, redact, wording
 from pipeline.worker import OcrUnavailable, ThreadBoundBackend
 from pipeline.types import Box
 
@@ -105,6 +105,7 @@ async def _lifespan(_app: FastAPI):
             backend()
         except Exception:
             pass  # 첫 요청에서 같은 오류가 다시 나며 그때 사용자에게 보인다
+        detect.get_detector()  # PL_YOLO_WEIGHTS 가 있을 때만. 실패하면 경고 후 OCR 만 쓴다
 
     warmup = threading.Thread(target=run, daemon=True)
     warmup.start()

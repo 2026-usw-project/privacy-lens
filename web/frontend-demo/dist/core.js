@@ -9,7 +9,8 @@
     name:['NAME','이름'],mobile:['PHONE','휴대전화번호'],landline:['PHONE','유선전화번호'],service_line:['PHONE','대표번호'],tollfree:['PHONE','무료상담번호'],
     email:['EMAIL','이메일 주소'],rrn:['RRN','주민등록번호'],rrn_unverified:['RRN','주민등록번호 형식'],card:['CARD','카드번호'],brn:['BIZ','사업자등록번호'],
     plate:['PLATE','차량번호'],address_road:['ADDRESS','도로명주소'],address_unit:['ADDRESS','동·호수'],tracking:['TRACKING','운송장번호'],
-    long_digits:['NUMBER','긴 숫자'],qr:['BARCODE','QR코드'],barcode:['BARCODE','바코드']
+    long_digits:['NUMBER','긴 숫자'],qr:['BARCODE','QR코드'],barcode:['BARCODE','바코드'],
+    document:['UNKNOWN','문서 영역'],face_photo:['UNKNOWN','증명사진']
   };
   const SEVERITY = { cover:'가림 권장',review:'검토 권장',info:'참고' };
   const CONDITIONS = { full:'문맥·결합',baseline:'심각도표',naive:'정규식만' };
