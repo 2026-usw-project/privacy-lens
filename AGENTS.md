@@ -10,7 +10,8 @@ Privacy Lens — 사진을 SNS·중고거래에 올리기 전에 배경의 개�
 
 - **백엔드는 Privacy Lens 2** 를 그대로 가져온 것입니다(`pipeline/`, `server.py`, `jobqueue.py`, `run.py`, `eval/`, `samples/`, `tests/`). 기준은 이 코드와 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)의 설계 원칙입니다.
 - **화면은 `web/frontend-demo/`** 입니다. `dist/` 가 편집 원본이고 `scripts/build.mjs` 가 `privacy-lens.html` 로 묶습니다. 서버가 `/` 에서 이 파일을 내줍니다.
-- 이전의 `server/`·`reader/`·`vision/`·`schema/`·`data/`·React 앱은 삭제했습니다. [docs/DECISIONS.md](docs/DECISIONS.md)의 '교체로 사실상 정해진 것'을 먼저 봅니다.
+- 이전의 `server/`·`reader/`·`schema/`·`data/`·React 앱은 삭제했습니다. [docs/DECISIONS.md](docs/DECISIONS.md)의 '교체로 사실상 정해진 것'을 먼저 봅니다.
+- **YOLO 문서 검출(선택)**: `pipeline/detect.py` 는 `PL_YOLO_WEIGHTS` 가 있을 때만 켜집니다(없으면 예전과 같음). 학습 도구는 새 `vision/`(예전 `vision/` 과 무관)이고, 사진·라벨·모델은 저장소가 아니라 팀 구글 드라이브 `PrivacyLens-YOLO` 에 둡니다. 사용법은 [vision/README.md](vision/README.md).
 
 ## 작업 전에
 
@@ -36,6 +37,9 @@ python run.py                              # 환경 점검 → 서버 + 화면 (
 python -m pytest tests                     # 백엔드 테스트 (OCR 불필요)
 python -m eval.compare samples/out         # 비교 실험
 PL_OCR=paddleocr python -m eval.rotation   # 회전 실험
+PL_OCR=paddleocr python -m eval.realtext run <평가 묶음>              # AI 허브 실사 평가(데이터는 승인받은 본인만)
+PL_OCR=paddleocr python -m eval.detector <폴더> --weights <best.pt>   # YOLO 전후 비교
+python -m vision status --root <PrivacyLens-YOLO>                    # YOLO 학습 도구(보통 Colab: vision/colab.ipynb)
 cd web/frontend-demo && node scripts/check.mjs && node scripts/check-contract.mjs && node scripts/build.mjs
 ```
 
