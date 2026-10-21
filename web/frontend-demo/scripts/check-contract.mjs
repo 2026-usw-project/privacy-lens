@@ -104,4 +104,20 @@ await test('request timeout surfaced',async()=>{const api=A.client('',(_,o)=>new
 await test('cancel propagates AbortError',async()=>{const c=new AbortController();const api=A.client('',(_,o)=>new Promise((res,rej)=>{if(o.signal.aborted)rej(new DOMException('cancel','AbortError'));else o.signal.addEventListener('abort',()=>rej(new DOMException('cancel','AbortError')));}));const pending=api.analyze(file,{signal:c.signal});c.abort();await assert.rejects(pending,{name:'AbortError'});});
 await test('network failure explained',async()=>{const api=A.client('',async()=>{throw new TypeError('fetch failed');});await assert.rejects(api.analyze(file),/서버에 연결할 수 없어요/);});
 await test('tickets are unique',()=>{const s=new Set(Array.from({length:50},()=>A.newTicket()));assert.equal(s.size,50);assert.ok([...s].every(t=>/^[A-Za-z0-9-]{8,64}$/.test(t)));});
+
+
+await test('raw OCR keeps all text and never becomes a redaction selection',()=>{
+  const text='<script>가상 원문</script>'+ '긴 문구'.repeat(100);
+  const raw=Array.from({length:301},()=>({text,ocr_confidence:0,box:{x:10,y:20,w:30,h:10}}));
+  const parsed=C.fromReport({...report,raw_ocr:raw,raw_ocr_note:'가상 안내'});
+  assert.equal(parsed.rawOcr.length,301);
+  assert.equal(parsed.rawOcr[0].text,text);
+  assert.equal(parsed.rawOcr[0].confidence,0);
+  assert.equal(parsed.rawOcrNote,'가상 안내');
+  assert.deepEqual(C.boxes(parsed),[]);
+  assert.deepEqual(parsed.regions,result.regions);
+  assert.equal(C.fromReport(report).rawOcr,null);
+  assert.deepEqual(C.fromReport({...report,raw_ocr:[]}).rawOcr,[]);
+});
+
 console.log('\n'+count+' geometry, report and API checks passed.');

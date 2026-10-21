@@ -37,12 +37,12 @@ def analyze(
     if detector is _AUTO:
         detector = detect.get_detector()
 
-    spans = backend.read(image)
+    spans, raw_ocr = ocr.read_with_raw(backend, image)
 
     # 문서 검출 → 작게 찍힌 문서는 잘라 확대해서 다시 읽는다
     dets = detector.detect(image) if detector is not None else []
     if dets:
-        spans, _ = detect.reread_documents(image, spans, dets, backend)
+        spans, _ = detect.reread_documents(image, spans, dets, backend, raw_ocr=raw_ocr)
 
     findings = context.evaluate(spans, use_context=use_context, naive=naive)
 
@@ -61,6 +61,7 @@ def analyze(
     report = Report(
         width=image.width,
         height=image.height,
+        raw_ocr=raw_ocr,
         findings=findings,
         groups=groups,
         elapsed_ms=int((time.perf_counter() - started) * 1000),

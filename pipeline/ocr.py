@@ -32,6 +32,15 @@ class OcrBackend(Protocol):
     def read(self, image: Image.Image) -> list[TextSpan]: ...
 
 
+def read_with_raw(backend, image: Image.Image) -> tuple[list[TextSpan], list[TextSpan]]:
+    """한 번의 추론으로 판정용 조각과 병합 전 원문을 함께 얻는다."""
+    reader = getattr(backend, "read_with_raw", None)
+    if reader is not None:
+        return reader(image)
+    spans = backend.read(image)
+    return spans, list(spans)
+
+
 _WINDOWS_TESSERACT = [
     r"C:\Program Files\Tesseract-OCR\tesseract.exe",
     r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
@@ -104,6 +113,9 @@ class TesseractBackend:
         self._checked = True
 
     def read(self, image: Image.Image) -> list[TextSpan]:
+        return self.read_with_raw(image)[0]
+
+    def read_with_raw(self, image: Image.Image) -> tuple[list[TextSpan], list[TextSpan]]:
         self._ensure()
 
         import pytesseract
@@ -139,7 +151,7 @@ class TesseractBackend:
                     ocr_confidence=conf / 100.0,
                 )
             )
-        return merge_lines(spans)
+        return merge_lines(spans), spans
 
 
 # 검출은 v6. 한국어 인식은 v6 가 없어 lang 기본값(korean_PP-OCRv5_mobile_rec)으로 채운다.
