@@ -500,7 +500,7 @@ dialog[open]{animation:reveal .18s cubic-bezier(.16,1,.3,1)}
 .raw-ocr-list{list-style:none;padding:0;margin:0;max-height:420px;overflow:auto}
 .raw-ocr-list button{display:block;text-align:left;width:100%;padding:10px;border:1px solid #ddd;background:transparent;border-radius:6px;margin-bottom:6px}
 .raw-ocr-list button[aria-pressed="true"]{border-color:#2164b5;background:#2164b510}
-.raw-ocr-list code{display:block;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}
+.raw-ocr-list code{font-family:var(--sans);display:block;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}
 .raw-ocr-list small{display:block;margin-top:6px;font-size:11px;color:#65615b;overflow-wrap:anywhere}
 .raw-ocr-layer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:hidden}
 .raw-ocr-layer polygon{stroke:#2164b5;stroke-width:1.5;fill:#2164b50c;vector-effect:non-scaling-stroke}
