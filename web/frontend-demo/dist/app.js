@@ -9,7 +9,7 @@
   const escapeHTML = text => String(text).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const clone = value => JSON.parse(JSON.stringify(value));
   const Core=PrivacyLensCore, Api=PrivacyLensAPI, api=Api.client();
-  const state = { source:null, file:null, phase:'empty', regions:[], focused:null, editing:null, history:[], mode:'original', style:'blur', compare:50, drawing:false,
+  const state = { source:null, file:null, phase:'empty', rawOcr:null, rawOcrNote:'', showRawOcr:false, rawFocused:null, regions:[], focused:null, editing:null, history:[], mode:'original', style:'blur', compare:50, drawing:false,
     sample:false, sampleKey:null, width:0, height:0, name:'', bytes:0, serverImage:false, condition:'full', analysisStatus:'idle', groups:[], gps:[], issues:[],
     backend:'', elapsedMs:0, zoom:1, loadToken:0, exportToken:0, exportUrl:null, nextId:1, toastTimer:null,
     requestController:null, requestSerial:0, saving:false, saveError:'', ticket:null, previewState:'none', previewSeq:0 };
@@ -74,7 +74,7 @@
   function reset() {
     cancelRequests();state.zoom=1;state.analysisStatus='idle';state.issues=[];state.groups=[];state.gps=[];state.backend='';
     state.loadToken++;state.exportToken++;releaseExport();
-    Object.assign(state,{source:null,file:null,phase:'empty',regions:[],history:[],focused:null,editing:null,drawing:false,sample:false,sampleKey:null,serverImage:false,nextId:1,mode:'original',previewState:'none'});
+    Object.assign(state,{source:null,file:null,phase:'empty',rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,drawing:false,sample:false,sampleKey:null,serverImage:false,nextId:1,mode:'original',previewState:'none'});
     gesture = null;
     canvas.width = canvas.height = 1;
     protectedCanvas.width = protectedCanvas.height = 1;
@@ -85,6 +85,7 @@
     $('#fileInfo').classList.remove('hidden');
     $('#editorTitle').textContent = '사진 작업 공간';
     $('#regionLayer').replaceChildren();
+    renderRawOcr();
     $('#undoButton').disabled = true;
     setStep(1);
     syncDrawing();syncPanels();$('#saveState').classList.add('hidden');
@@ -254,7 +255,7 @@
       const serverImage=!frozen;
       if(serverImage) frozen=placeholder();
       Object.assign(state,{source:frozen,file,width:frozen.width,height:frozen.height,name:file.name,bytes:file.size,sample:false,sampleKey:null,serverImage,
-        regions:[],history:[],focused:null,editing:null,nextId:1,mode:'original',phase:'ready',drawing:false,zoom:1,analysisStatus:'idle',issues:[],groups:[],gps:[],backend:'',previewState:'none'});
+        rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,nextId:1,mode:'original',phase:'ready',drawing:false,zoom:1,analysisStatus:'idle',issues:[],groups:[],gps:[],backend:'',previewState:'none'});
       releaseExport();showImage();render();
       // 사진 선택·드롭 후 다음 동작인 분석 시작 영역을 보여 준다.
       $('#readyPanel').scrollIntoView({
@@ -275,7 +276,7 @@
     const fixture=makeFixture(key);
     Object.assign(state,{source:fixture.image,file:null,width:fixture.image.width,height:fixture.image.height,
       name:{parcel:'sample_delivery.png',student:'sample_student_id.png',mixed:'sample_documents.png'}[key],bytes:0,sample:true,sampleKey:key,serverImage:false,
-      regions:[],history:[],focused:null,editing:null,nextId:1,mode:'original',drawing:false,phase:'ready',analysisStatus:'idle',issues:[],groups:[],gps:[],backend:'',zoom:1,previewState:'none'});
+      rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,nextId:1,mode:'original',drawing:false,phase:'ready',analysisStatus:'idle',issues:[],groups:[],gps:[],backend:'',zoom:1,previewState:'none'});
     showImage();render();layoutCanvas(false);
     beginAnalysis();
   }
@@ -346,8 +347,9 @@
       ctx.beginPath();ctx.moveTo(split-s,state.height/2-s);ctx.lineTo(split-s,state.height/2+s);ctx.moveTo(split+s,state.height/2-s);ctx.lineTo(split+s,state.height/2+s);ctx.stroke();
     }
     const waiting=state.mode!=='original'&&state.previewState!=='ready';
-    $('#canvasCaption').textContent=state.mode==='original'?'ORIGINAL · 위험 영역':waiting?(state.previewState==='error'?'PREVIEW · 만들지 못했어요':'PREVIEW · 서버에서 만드는 중'):state.mode==='protected'?'PROTECTED · 저장될 모습':'BEFORE / AFTER';
-    $('#regionLayer').classList.toggle('hidden',state.mode!=='original' || state.phase==='scanning');
+    $('#canvasCaption').textContent=state.mode==='original'?(state.showRawOcr?'RAW OCR · 전체 인식 결과':'ORIGINAL · 위험 영역'):waiting?(state.previewState==='error'?'PREVIEW · 만들지 못했어요':'PREVIEW · 서버에서 만드는 중'):state.mode==='protected'?'PROTECTED · 저장될 모습':'BEFORE / AFTER';
+    $('#regionLayer').classList.toggle('hidden',state.mode!=='original' || state.phase==='scanning' || state.showRawOcr);
+    $('#rawOcrLayer').classList.toggle('hidden',!state.showRawOcr || state.mode!=='original' || state.phase!=='review');
     if(state.mode==='original')declutterTags();  // 가려져 있던 동안에는 크기를 잴 수 없었다
     $('#compareControl').classList.toggle('hidden',state.mode!=='compare');
     $$('[data-view]').forEach(button=>{const active=button.dataset.view===state.mode;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));button.disabled=state.phase!=='review';});
@@ -442,7 +444,36 @@
     renderList();
   }
 
-  function render() { renderImage();renderBoxes();renderReview();syncPanels(); }
+  function render() { renderImage();renderBoxes();renderReview();renderRawOcr();syncPanels(); }
+
+  // 원문은 읽기 전용이며 가림 선택·편집 이력과 분리한다.
+  function renderRawOcr() {
+    const toggle=$('#rawOcrToggle'),panel=$('#rawOcrPanel'),list=$('#rawOcrList'),layer=$('#rawOcrLayer');
+    toggle.checked=state.showRawOcr;
+    toggle.disabled=state.phase!=='review';
+    panel.classList.toggle('hidden',!state.showRawOcr);
+    $('#regionList').classList.toggle('hidden',state.showRawOcr);
+    list.replaceChildren();layer.replaceChildren();
+    layer.classList.toggle('hidden',!state.showRawOcr || state.mode!=='original' || state.phase!=='review');
+    if(!state.showRawOcr)return;
+    $('#rawOcrNote').textContent=state.rawOcrNote;
+    $('#rawOcrCount').textContent=state.rawOcr===null?'원문 데이터가 없습니다. 서버 업데이트 후 다시 분석해 주세요.':state.rawOcr.length+'개 OCR 결과';
+    layer.setAttribute('viewBox','0 0 '+state.width+' '+state.height);
+    const ns='http://www.w3.org/2000/svg';
+    (state.rawOcr||[]).forEach((r,i)=>{
+      const item=document.createElement('li'),button=document.createElement('button'),text=document.createElement('code'),meta=document.createElement('small');
+      button.type='button';button.dataset.rawIndex=String(i);button.setAttribute('aria-pressed',String(state.rawFocused===i));
+      text.textContent=r.text;
+      const b=r.box;
+      meta.textContent='#'+(i+1)+' · OCR '+(r.confidence===null?'—':(r.confidence*100).toFixed(1)+'%')+(b?' · x '+b.x+', y '+b.y+', w '+b.w+', h '+b.h:'');
+      button.append(text,meta);item.append(button);list.append(item);
+      if(!r.ratio)return;
+      const polygon=document.createElementNS(ns,'polygon');
+      const points=r.poly?r.poly.map(([x,y])=>[x*state.width,y*state.height]):[[b.x,b.y],[b.x+b.w,b.y],[b.x+b.w,b.y+b.h],[b.x,b.y+b.h]];
+      polygon.setAttribute('points',points.map(p=>p.join(',')).join(' '));
+      polygon.classList.toggle('focused',state.rawFocused===i);layer.append(polygon);
+    });
+  }
 
   function syncDrawing() {
     $('#canvasWrap').classList.toggle('drawing',state.drawing);
@@ -450,6 +481,7 @@
     $('#drawPreview').classList.add('hidden');
     $('#addRegion').setAttribute('aria-pressed',String(state.drawing));
     if(state.drawing) {
+      state.showRawOcr=false;renderRawOcr();
       state.mode='original';renderImage();
       $('#toolHint').textContent='사진을 드래그해서 가릴 부분을 선택하세요.';
     } else $('#toolHint').textContent='놓친 곳은 직접 추가할 수 있어요.';
@@ -613,7 +645,7 @@
   async function beginAnalysis() {
     if(!state.source||state.saving)return;
     cancelRequests();
-    Object.assign(state,{regions:[],history:[],focused:null,editing:null,issues:[],groups:[],gps:[],mode:'original',phase:'scanning',analysisStatus:'running',drawing:false,previewState:'none'});
+    Object.assign(state,{rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,issues:[],groups:[],gps:[],mode:'original',phase:'scanning',analysisStatus:'running',drawing:false,previewState:'none'});
     syncDrawing();render();
     $('#scanningPanel').classList.add('server-analysis');
     $('#scanPercent').textContent='올리는 중';$('#scanModeLabel').textContent=Core.CONDITIONS[state.condition];
@@ -629,7 +661,7 @@
       const result=Core.fromReport(data.report);
       if(state.serverImage || result.width!==state.width || result.height!==state.height) await adoptServerImage(data.preview,result.width,result.height);
       if(serial!==state.requestSerial)return;
-      Object.assign(state,{regions:result.regions,groups:result.groups,gps:result.gps,backend:result.backend,elapsedMs:result.elapsedMs,
+      Object.assign(state,{rawOcr:result.rawOcr,rawOcrNote:result.rawOcrNote,regions:result.regions,groups:result.groups,gps:result.gps,backend:result.backend,elapsedMs:result.elapsedMs,
         issues:result.partial?['일부 영역은 글자가 흐려 내용을 확인하지 못했어요. 점선 영역을 확대해서 직접 확인해 주세요.']:[],
         analysisStatus:result.regions.length?(result.partial?'partial':'completed'):'empty',phase:'review',focused:result.regions[0]?.id||null});
       invalidate();render();setStep(2);
@@ -720,6 +752,16 @@
   $$('[data-sample]').forEach(button=>button.addEventListener('click',()=>loadSample(button.dataset.sample)));
   $('#cancelScan').addEventListener('click',()=>{cancelRequests();state.phase='ready';state.analysisStatus='idle';render();notify('분석 요청을 취소했어요. 다시 시작할 수 있어요.');});
   $$('[data-view]').forEach(button=>button.addEventListener('click',()=>{state.mode=button.dataset.view;state.drawing=false;syncDrawing();renderImage();if(state.mode!=='original'&&state.previewState!=='ready'&&state.previewState!=='loading')schedulePreview();}));
+  $('#rawOcrToggle').addEventListener('change',event=>{
+    state.showRawOcr=event.target.checked;
+    if(state.showRawOcr){state.mode='original';state.drawing=false;syncDrawing();}
+    renderImage();renderRawOcr();
+  });
+  $('#rawOcrList').addEventListener('click',event=>{
+    const button=event.target.closest('[data-raw-index]');if(!button)return;
+    state.rawFocused=Number(button.dataset.rawIndex);state.mode='original';renderImage();renderRawOcr();
+    $('#rawOcrList').querySelector('[data-raw-index="'+state.rawFocused+'"]').focus({preventScroll:true});
+  });
   $('#compareSlider').addEventListener('input',event=>{state.compare=Number(event.target.value);renderImage();});
   $$('[data-style]').forEach(button=>button.addEventListener('click',()=>{
     state.style=button.dataset.style;try{localStorage.setItem('pl.maskStyle',state.style);}catch(_){}

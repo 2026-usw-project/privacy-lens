@@ -113,6 +113,10 @@ class TextSpan:
     box: Box
     ocr_confidence: float  # 0.0 ~ 1.0
 
+    def as_dict(self) -> dict:
+        return {"text": self.text, "box": self.box.as_dict(),
+                "ocr_confidence": self.ocr_confidence}
+
 
 @dataclass
 class Finding:
@@ -185,11 +189,13 @@ class Report:
     notes: list[str] = field(default_factory=list)
     detector: str = ""   # 문서 검출 모델 이름. 검출을 안 썼으면 빈 문자열
     detector_device: str = ""   # 실제 추론 장치(cpu, cuda:0 등)
+    raw_ocr: list[TextSpan] = field(default_factory=list)
 
     def sorted_findings(self) -> list[Finding]:
         return sorted(self.findings, key=lambda f: (f.severity.rank, f.kind))
 
     def as_dict(self) -> dict:
+        from . import wording
         return {
             "width": self.width,
             "height": self.height,
@@ -200,4 +206,6 @@ class Report:
             "detector": self.detector,
             "detector_device": self.detector_device,
             "notes": self.notes,
+            "raw_ocr": [span.as_dict() for span in self.raw_ocr],
+            "raw_ocr_note": wording.RAW_OCR_NOTE,
         }

@@ -179,7 +179,7 @@ def _to_original(span: TextSpan, crop: Box, scale: float) -> TextSpan:
 
 
 def reread_documents(image: Image.Image, spans: list[TextSpan], dets: list[Detection],
-                     backend) -> tuple[list[TextSpan], int]:
+                     backend, *, raw_ocr: list[TextSpan] | None = None) -> tuple[list[TextSpan], int]:
     """문서 영역을 잘라 확대해서 다시 읽고, 더 잘 읽힌 쪽을 남긴다.
 
     문서 하나 안에서는 '전체 사진 OCR 결과'와 '확대 OCR 결과' 중 확실히 읽은 글자가
@@ -203,7 +203,12 @@ def reread_documents(image: Image.Image, spans: list[TextSpan], dets: list[Detec
         if scale > 1.0:
             piece = piece.resize((int(crop.w * scale), int(crop.h * scale)), Image.LANCZOS)
         reread += 1
-        again = [_to_original(s, crop, scale) for s in backend.read(piece)]
+        from .ocr import read_with_raw
+        processed, raw = read_with_raw(backend, piece)
+        if raw_ocr is not None:
+            # 판정에 채택되지 않은 재판독도 원본 좌표로 보존한다.
+            raw_ocr.extend(_to_original(s, crop, scale) for s in raw)
+        again = [_to_original(s, crop, scale) for s in processed]
         again = [s for s in again if _center_in(s.box, det.box)]
 
         if _confident_chars(again) > _confident_chars(inside):

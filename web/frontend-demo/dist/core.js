@@ -73,6 +73,12 @@
         poly:polyToRatio(f.box.poly,width,height),enabled:false});
     });
     return {width,height,regions,gps,
+      // 원문은 판정 항목의 120자/300개 제한을 적용하지 않는다.
+      rawOcr:Array.isArray(report.raw_ocr)?report.raw_ocr.map((s,i)=>({
+        id:i,text:String(s.text??''),confidence:Number.isFinite(s.ocr_confidence)?s.ocr_confidence:null,
+        box:s.box,ratio:boxToRatio(s.box,width,height),poly:polyToRatio(s.box?.poly,width,height)
+      })):null,
+      rawOcrNote:String(report.raw_ocr_note||''),
       groups:report.groups.map(g=>String(g.message||'').slice(0,300)).filter(Boolean),
       notes:Array.isArray(report.notes)?report.notes.map(String):[],
       backend:[String(report.ocr_backend||'').slice(0,160),

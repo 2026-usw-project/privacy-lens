@@ -43,6 +43,17 @@ def test_analyze(client):
     assert "mobile" in kinds
 
 
+@pytest.mark.parametrize("mode", ["full", "baseline", "naive"])
+def test_raw_ocr_returned_without_findings(client, monkeypatch, mode):
+    spans = [TextSpan("일반 문구", Box(10, 20, 60, 20), 0.0)]
+    monkeypatch.setattr(server, "_backend", ocr.ScriptedBackend(spans))
+    r = client.post("/analyze", files={"image": ("a.png", png())}, data={"mode": mode})
+    assert r.status_code == 200
+    report = r.json()["report"]
+    assert report["findings"] == []
+    assert report["raw_ocr"] == [s.as_dict() for s in spans]
+
+
 def test_non_image_is_400(client):
     r = client.post("/analyze", files={"image": ("a.txt", b"not an image")})
     assert r.status_code == 400

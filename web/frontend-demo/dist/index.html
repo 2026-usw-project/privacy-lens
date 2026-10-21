@@ -117,7 +117,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             <div id="analysisNotice" class="status-line" role="status"><span class="status-dot"></span><span id="analysisNoticeText"></span></div>
             <div class="zoom-controls" role="group" aria-label="사진 확대 축소"><button id="zoomOut" aria-label="사진 축소"><svg><use href="#i-minus"/></svg></button><output id="zoomValue">100%</output><button id="zoomIn" aria-label="사진 확대"><svg><use href="#i-plus"/></svg></button><button id="zoomFit">맞춤</button></div>
           </div>
-          <div class="canvas-stage" id="canvasStage" tabindex="0" role="region" aria-label="스크롤 가능한 사진 작업 화면"><div id="canvasSizer" class="canvas-sizer"><div class="canvas-wrap" id="canvasWrap"><canvas id="photoCanvas" aria-label="선택한 사진. 영역 추가 후 드래그하여 가릴 영역을 지정하세요."></canvas><div id="regionLayer" class="region-layer" aria-label="개인정보 영역"></div><div id="drawPreview" class="draw-preview hidden"></div><div class="scan-overlay hidden" id="scanOverlay"><div class="scan-line"></div></div></div></div></div>
+          <div class="canvas-stage" id="canvasStage" tabindex="0" role="region" aria-label="스크롤 가능한 사진 작업 화면"><div id="canvasSizer" class="canvas-sizer"><div class="canvas-wrap" id="canvasWrap"><canvas id="photoCanvas" aria-label="선택한 사진. 영역 추가 후 드래그하여 가릴 영역을 지정하세요."></canvas><div id="regionLayer" class="region-layer" aria-label="개인정보 영역"></div><svg id="rawOcrLayer" class="raw-ocr-layer hidden" aria-hidden="true" preserveAspectRatio="none"></svg><div id="drawPreview" class="draw-preview hidden"></div><div class="scan-overlay hidden" id="scanOverlay"><div class="scan-line"></div></div></div></div></div>
           <div class="compare-control hidden" id="compareControl"><span>원본</span><input type="range" min="0" max="100" value="50" id="compareSlider" aria-label="전후 비교 위치"><span>가림 결과</span></div>
           <p class="manual-hint hidden" id="drawHint">사진 위를 드래그해 가릴 영역을 그리세요. 터치도 돼요. <button class="text-button" id="centerRegion">중앙에 영역 추가</button><button class="text-button" id="cancelDraw">취소</button></p>
           <div class="editor-tools">
@@ -174,6 +174,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           <p class="review-sub" id="reviewSubtitle"></p>
           <div class="partial-notice hidden" id="partialNotice" role="status"></div>
           <div class="list-head"><span class="risk-summary" id="riskSummary"><svg><use href="#i-shield"/></svg><span id="riskSummaryText"></span></span><span class="list-head-right"><span class="mono-label">가림 <strong id="selectedCount">0</strong></span><button class="text-button" id="selectAll">모두 선택</button></span></div>
+          <div class="raw-ocr-control"><label for="rawOcrToggle">Raw OCR <input id="rawOcrToggle" type="checkbox" role="switch" aria-controls="rawOcrPanel"></label></div>
+          <section id="rawOcrPanel" class="raw-ocr-panel hidden" aria-label="OCR 원문">
+            <p id="rawOcrNote"></p><p id="rawOcrCount" role="status"></p>
+            <ol id="rawOcrList" class="raw-ocr-list"></ol>
+          </section>
           <div id="regionList" class="region-list"></div>
           <div class="review-foot">
             <div class="redaction-settings">
