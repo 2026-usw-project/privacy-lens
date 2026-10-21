@@ -3,7 +3,7 @@
   python -m vision init     --root <작업폴더>   폴더 구조 만들기 (처음 한 번)
   python -m vision ingest   --root <작업폴더>   inbox 새 사진 → 정리 + 초벌 라벨 → review
   (라벨링 도구 vision/label_tool.html 로 review 폴더를 열어 검수)
-  python -m vision sheet    --root <작업폴더>   1차 검수한 사진을 묶음별 한 장으로 (2차 검수용)
+  python -m vision sheet    --root <작업폴더>   검수한 사진을 묶음별 썸네일 한 장으로 (선택)
   python -m vision build    --root <작업폴더>   검수 끝난 사진 → dataset
   python -m vision train    --root <작업폴더>   학습 → 더 나으면 current 교체
   python -m vision status   --root <작업폴더>   현황
