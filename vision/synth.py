@@ -5,11 +5,12 @@
 쓰지 않는다(samples.make_sample 의 가로형 송장만 예전 그대로).
 
   송장    가로형(samples) · 세로형 라벨 · 소형 스티커(이름·번호 일부 가림 포함). 바코드·QR 도 박스
-  학생증  가로형·세로형, 사진 왼쪽·오른쪽, 색 여러 가지. 증명사진(실루엣)·바코드도 박스
+  학생증  가로형·세로형·밝은 카드(잔무늬·사진 오른쪽), 반사광. 증명사진(실루엣·그림 얼굴)·바코드도 박스
   명찰    가슴 명찰 · 행사 이름표 · 책상 이름표
   화면    휴대폰·모니터에 가짜 메신저·주문내역·택배 조회·메일. **화면 부분만** 박스(테두리 제외)
   방해물  송장이 아닌 한국어 서류·메모·영수증(박스 없음). 글자 있는 종이를 송장으로 착각하지 않게
   크기    40% 는 사진 짧은 변의 5~20% 로 작게. 서비스가 노리는 '배경에 작게 찍힌' 경우다
+  놓임    30% 는 기대 세운 원근, 35% 는 책등·물건에 일부 가려짐(박스는 보이는 부분만)
   배경    데이터셋에 물체 없는 실사 사진이 있으면 절반은 그 위에, 나머지는 만든 무늬 위에
 
 합성 사진은 **학습(train)에만** 들어간다. 점수는 실사 val/test 로만 잰다.
@@ -25,7 +26,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import qrcode
-from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps
 
 from .classes import NAMES
 from .workspace import DONE, Row, Workspace
@@ -34,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from samples.fonts import find_korean_font  # noqa: E402
 from samples.make_sample import GIVEN, SURNAMES, make_waybill  # noqa: E402
 
-GEN = 2  # 생성기 버전. 파일 이름에 넣어 예전 합성(syn000…)과 겹치지 않게 한다
+GEN = 3  # 생성기 버전. 파일 이름에 넣어 예전 합성(syn000…)과 겹치지 않게 한다
 FONT, FONT_BOLD = find_korean_font()
 _IDX = {n: i for i, n in NAMES.items()}
 WAYBILL, ID_CARD, NAME_TAG, SCREEN = (_IDX[n] for n in ("waybill", "id_card", "name_tag", "screen"))
@@ -141,36 +142,74 @@ def waybill_classic(rng):
     return img, WAYBILL, [(CODE, [570, 310, 688, 428])]  # make_waybill 의 QR 위치
 
 
+def _face(pw: int, ph: int, rng) -> Image.Image:
+    """증명사진 자리. 실루엣이나 단순한 그림 얼굴만 그린다(실존 인물 사진은 쓰지 않는다)."""
+    photo = Image.new("RGB", (pw, ph), rng.choice([(205, 212, 222), (230, 232, 236), (210, 225, 240), (245, 245, 245)]))
+    d = ImageDraw.Draw(photo)
+    if rng.random() < 0.4:
+        d.ellipse([pw * .3, ph * .15, pw * .7, ph * .5], fill=(150, 158, 170))
+        d.ellipse([pw * .13, ph * .55, pw * .87, ph * 1.2], fill=(150, 158, 170))  # 아래는 사진 칸에서 잘린다
+        return photo
+    skin = rng.choice([(241, 206, 175), (224, 180, 140), (198, 150, 110), (250, 220, 195)])
+    d.ellipse([pw * .12, ph * .62, pw * .88, ph * 1.25],
+              fill=rng.choice([(30, 40, 60), (240, 240, 240), (70, 70, 75), (110, 30, 40)]))  # 어깨·옷
+    d.rectangle([pw * .42, ph * .5, pw * .58, ph * .68], fill=skin)                        # 목
+    d.ellipse([pw * .28, ph * .14, pw * .72, ph * .6], fill=skin)                          # 얼굴
+    d.chord([pw * .25, ph * .06, pw * .75, ph * .46], 180, 360,
+            fill=rng.choice([(25, 20, 20), (60, 40, 30), (90, 70, 50)]))                   # 머리
+    for ex in (.38, .57):
+        d.ellipse([pw * ex, ph * .33, pw * (ex + .05), ph * .36], fill=(40, 30, 30))      # 눈
+    d.line([pw * .45, ph * .48, pw * .55, ph * .48], fill=(150, 80, 80), width=max(1, pw // 60))
+    return photo
+
+
+def _glare(img: Image.Image, rng, strength=(40, 90)) -> None:
+    """코팅·플라스틱 카드의 비스듬한 반사광."""
+    W, H = img.size
+    g = Image.new("L", (W, H), 0)
+    x, w = rng.uniform(-0.3, 0.8) * W, rng.uniform(0.1, 0.3) * W
+    ImageDraw.Draw(g).polygon([(x, 0), (x + w, 0), (x + w - 0.4 * W, H), (x - 0.4 * W, H)],
+                              fill=rng.randint(*strength))
+    img.paste(Image.new("RGB", (W, H), (255, 255, 255)), (0, 0), g.filter(ImageFilter.GaussianBlur(W * 0.03)))
+
+
 def id_card(rng):
-    vertical = rng.random() < 0.35
+    # 'light' 는 밝은 바탕·얇은 띠·잔무늬·사진 오른쪽인 신분증류 카드의 공통 모양(특정 신분증을 본뜨지 않음)
+    style = rng.choice(["band", "band", "light"])
+    vertical = style == "band" and rng.random() < 0.35
     W, H = (400, 640) if vertical else (640, 400)
     color = rng.choice(PALETTE)
-    img = Image.new("RGB", (W, H), (248, 248, 246))
+    img = Image.new("RGB", (W, H), (248, 248, 246) if style == "band" else (252, 252, 250))
     d = ImageDraw.Draw(img)
-    d.rectangle([0, 0, W, 78], fill=color)
-    d.text((24, 20), rng.choice(SCHOOLS), font=_font(28, True), fill="white")
-    d.text((W - 140, 30), "STUDENT ID", font=_font(16), fill=(230, 230, 240))
+    if style == "band":
+        d.rectangle([0, 0, W, 78], fill=color)
+        d.text((24, 20), rng.choice(SCHOOLS), font=_font(28, True), fill="white")
+        d.text((W - 140, 30), "STUDENT ID", font=_font(16), fill=(230, 230, 240))
+    else:
+        for k in range(14):  # 옅은 잔무늬
+            pts = [(x, 200 + 120 * np.sin(x / (40 + k * 7) + k)) for x in range(0, W, 8)]
+            d.line(pts, fill=tuple(min(255, c + 150) for c in color), width=1)
+        d.rectangle([0, 0, W, 10], fill=color)
+        d.text((30, 26), rng.choice(SCHOOLS + ["렌즈전자", "가람상사", "누리시청"]), font=_font(26, True), fill=color)
     if vertical:
         px, py, pw, ph = (W - 170) // 2, 105, 170, 210
         tx, ty = 40, 340
     else:
-        left = rng.random() < 0.7
-        px, py, pw, ph = (30 if left else W - 180), 105, 150, 190
-        tx, ty = (210 if left else 30), 112
-    photo = Image.new("RGB", (pw, ph), (205, 212, 222))  # 증명사진 자리: 실루엣만(실제 얼굴 안 씀)
-    pd = ImageDraw.Draw(photo)
-    pd.ellipse([pw * .3, ph * .15, pw * .7, ph * .5], fill=(150, 158, 170))
-    pd.ellipse([pw * .13, ph * .55, pw * .87, ph * 1.2], fill=(150, 158, 170))  # 아래는 사진 칸에서 잘린다
-    img.paste(photo, (px, py))
+        left = style == "band" and rng.random() < 0.7
+        px, py, pw, ph = (30 if left else W - 180), (105 if style == "band" else 80), 150, 190
+        tx, ty = (210 if left else 30), (112 if style == "band" else 95)
+    img.paste(_face(pw, ph, rng), (px, py))
     parts = [(FACE, [px, py, px + pw, py + ph])]
     for i, (label, value, size) in enumerate([("성명", _name(rng), 30), ("학과", rng.choice(DEPTS), 22),
                                               ("학번", f"20{rng.randint(19, 26)}{rng.randint(10000, 99999)}", 22)]):
         y = ty + i * 50
         d.text((tx, y + 6), label, font=_font(17), fill=(110, 110, 115))
         d.text((tx + 66, y), value, font=_font(size, size > 24), fill=(20, 20, 24))
-    if rng.random() < 0.7:
+    if rng.random() < (0.7 if style == "band" else 0.4):
         bx, by = (40, H - 90) if vertical else (tx, 300)
         parts.append((CODE, _barcode(d, rng, bx, by, min(380, W - bx - 30), 60)))
+    if rng.random() < 0.5:
+        _glare(img, rng)
     return img, ID_CARD, parts
 
 
@@ -201,6 +240,8 @@ def name_tag(rng):
         _centered(d, rng.choice(["팀장", "과장", "주임", "연구원", "조교"]), 16, W, _font(26), (90, 90, 90))
         _centered(d, name, 56, W, _font(88, True), (20, 20, 20))
     d.rectangle([0, 0, W - 1, H - 1], outline=(150, 150, 150), width=2)
+    if rng.random() < 0.3:  # 명찰 케이스 반사
+        _glare(img, rng, (30, 70))
     return img, NAME_TAG, []
 
 
@@ -320,6 +361,12 @@ def _paste(bg: np.ndarray, obj: Image.Image, rng: random.Random, scale: float):
     cy = rng.uniform(th * 0.6, H - th * 0.6)
     ang = np.deg2rad(rng.uniform(-35, 35) + (180 if rng.random() < 0.08 else 0))
     corners = np.array([[-tw / 2, -th / 2], [tw / 2, -th / 2], [tw / 2, th / 2], [-tw / 2, th / 2]])
+    if rng.random() < 0.3:  # 책장·벽에 기대 세운 모양: 윗변이 좁고 짧아 보인다
+        k = rng.uniform(0.1, 0.3)
+        corners[0, 0] += tw * k / 2
+        corners[1, 0] -= tw * k / 2
+        corners[[0, 1], 1] += th * rng.uniform(0.0, 0.3)
+        ang = np.deg2rad(rng.uniform(-12, 12))
     rot = np.array([[np.cos(ang), -np.sin(ang)], [np.sin(ang), np.cos(ang)]])
     dst = corners @ rot.T + [cx, cy]
     dst += np.array([[rng.uniform(-1, 1) * tw * 0.06, rng.uniform(-1, 1) * th * 0.06] for _ in range(4)])
@@ -344,12 +391,62 @@ def _box_from(M, rect, W, H):
     return ((xa + xb) / 2 / W, (ya + yb) / 2 / H, (xb - xa) / W, (yb - ya) / H)
 
 
+def _occlude(bg: np.ndarray, mask: np.ndarray, rng, blocked: np.ndarray) -> np.ndarray | None:
+    """물체 한쪽을 책등·물건 같은 막대로 가리고, 가린 영역(True)을 돌려준다. 최대 40% 까지만 가린다.
+
+    막대가 먼저 붙인 다른 물체(blocked)에 닿으면 그 물체의 라벨이 틀어지므로 가리지 않는다(None).
+    """
+    H, W = bg.shape[:2]
+    ys, xs = np.nonzero(mask > 8)
+    x0, x1, y0, y1 = xs.min(), xs.max(), ys.min(), ys.max()
+    w, h, f = x1 - x0, y1 - y0, rng.uniform(0.15, 0.4)
+    side = rng.choice(["left", "right", "bottom"])
+    if side == "left":
+        r = (x0 - int(w * rng.uniform(0.1, 0.6)), y0 - int(h * .3), x0 + int(w * f), y1 + int(h * .3))
+    elif side == "right":
+        r = (x1 - int(w * f), y0 - int(h * .3), x1 + int(w * rng.uniform(0.1, 0.6)), y1 + int(h * .3))
+    else:
+        r = (x0 - int(w * .3), y1 - int(h * f), x1 + int(w * .3), y1 + int(h * rng.uniform(0.1, 0.6)))
+    rx0, ry0, rx1, ry1 = max(0, r[0]), max(0, r[1]), min(W, r[2]), min(H, r[3])
+    if blocked[ry0:ry1, rx0:rx1].any():
+        return None
+    bg[ry0:ry1, rx0:rx1] = [rng.randint(20, 220) for _ in range(3)]
+    for _ in range(rng.randint(0, 3)):  # 책등 띠
+        if side == "bottom":
+            yy = rng.randint(ry0, max(ry0, ry1 - 3))
+            bg[yy:yy + 3, rx0:rx1] = [rng.randint(150, 255) for _ in range(3)]
+        else:
+            xx = rng.randint(rx0, max(rx0, rx1 - 3))
+            bg[ry0:ry1, xx:xx + 3] = [rng.randint(150, 255) for _ in range(3)]
+    occ = np.zeros((H, W), bool)
+    occ[ry0:ry1, rx0:rx1] = True
+    return occ
+
+
+def _visible_box(M, rect, occ: np.ndarray, W: int, H: int, keep: float = 0.5):
+    """가려진 물체는 **보이는 부분만** 박스. 절반 넘게 가려진 부분(증명사진·바코드)은 박스를 안 친다."""
+    x1, y1, x2, y2 = rect
+    pts = cv2.perspectiveTransform(np.float32([[[x1, y1]], [[x2, y1]], [[x2, y2]], [[x1, y2]]]), M).reshape(-1, 2)
+    region = np.zeros((H, W), np.uint8)
+    cv2.fillConvexPoly(region, np.round(pts).astype(np.int32), 1)
+    total = int(region.sum())
+    vis = region.astype(bool) & ~occ
+    if total == 0 or vis.sum() < keep * total:
+        return None
+    ys, xs = np.nonzero(vis)
+    xa, xb, ya, yb = xs.min(), xs.max() + 1, ys.min(), ys.max() + 1
+    if xb - xa < 4 or yb - ya < 4:
+        return None
+    return ((xa + xb) / 2 / W, (ya + yb) / 2 / H, (xb - xa) / W, (yb - ya) / H)
+
+
 def make_scene(seed: int, photos=()) -> tuple[Image.Image, list[str]]:
     rng = random.Random(seed)
     W, H = rng.choice([(1920, 1440), (1600, 1200), (1440, 1920), (2048, 1536)])
     bg = np.array(_background(rng, W, H, photos))
     lines: list[str] = []
     occupied = np.zeros((H, W), np.uint8)
+    placed: list[np.ndarray] = []
 
     n_obj = 0 if rng.random() < 0.15 else rng.choice([1, 1, 2, 2, 3])  # 15% 는 물체 없는 사진
     for _ in range(n_obj):
@@ -360,13 +457,22 @@ def make_scene(seed: int, photos=()) -> tuple[Image.Image, list[str]]:
         scale = target * min(W, H) / max(obj.size)
         trial = bg.copy()
         M, mask = _paste(trial, obj, rng, scale)
-        if (occupied[mask > 8] > 0).mean() > 0.05:  # 겹치면 다음
+        new = mask > 8
+        # 겹치면 다음. 새 물체 기준뿐 아니라 먼저 붙인 물체를 5% 넘게 덮어도 안 된다(그 물체 라벨이 틀어진다)
+        if (occupied[new] > 0).mean() > 0.05 or any((m & new).sum() > 0.05 * m.sum() for m in placed):
             continue
         bg = trial
-        occupied |= (mask > 8).astype(np.uint8)
+        blocked = occupied > 0
+        occupied |= new.astype(np.uint8)
+        placed.append(new)
         whole = [(cls, [0, 0, obj.width, obj.height])] if cls is not None else []
-        for c, rect in whole + parts:
-            b = _box_from(M, rect, W, H)
+        occ = _occlude(bg, mask, rng, blocked) if whole and rng.random() < 0.35 else None  # 책 사이에 꽂힘
+        if occ is not None:
+            occupied |= occ.astype(np.uint8)
+        for i, (c, rect) in enumerate(whole + parts):
+            # 물체 전체는 조금만 보여도 박스(안 치면 '배경'으로 배운다), 증명사진·바코드는 절반 이상 보일 때만
+            keep = 0.2 if whole and i == 0 else 0.5
+            b = _box_from(M, rect, W, H) if occ is None else _visible_box(M, rect, occ, W, H, keep)
             if b:
                 lines.append(f"{c} {b[0]:.6f} {b[1]:.6f} {b[2]:.6f} {b[3]:.6f}")
 

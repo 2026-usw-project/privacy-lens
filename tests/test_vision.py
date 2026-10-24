@@ -232,3 +232,14 @@ def test_synth_covers_every_class_and_small_documents():
             small += max(float(w) * W, float(h) * H) / min(W, H) < 0.2
     assert seen == set(NAMES.values())          # 송장·학생증·명찰·화면·증명사진·바코드 모두
     assert small > 0                            # 작게 찍힌 문서도 나온다
+
+
+def test_occluded_part_gets_visible_box_only():
+    synth = pytest.importorskip("vision.synth", exc_type=Exception)
+    import numpy as np
+    M = np.eye(3, dtype=np.float32)                   # 원근 없음: 그림 좌표 = 사진 좌표
+    occ = np.zeros((100, 200), bool)
+    occ[:, :50] = True                                # 왼쪽 50px 가림
+    b = synth._visible_box(M, [20, 20, 120, 60], occ, 200, 100)
+    assert b is not None and abs(b[2] * 200 - 70) <= 1   # 100px 중 보이는 70px 만
+    assert synth._visible_box(M, [10, 20, 60, 60], occ, 200, 100) is None   # 80% 가려짐 → 박스 안 침
