@@ -243,3 +243,17 @@ def test_occluded_part_gets_visible_box_only():
     b = synth._visible_box(M, [20, 20, 120, 60], occ, 200, 100)
     assert b is not None and abs(b[2] * 200 - 70) <= 1   # 100px 중 보이는 70px 만
     assert synth._visible_box(M, [10, 20, 60, 60], occ, 200, 100) is None   # 80% 가려짐 → 박스 안 침
+
+
+def test_import_backgrounds_are_train_only_empty_and_used_by_synth(ws, tmp_path):
+    src = tmp_path / "openimages_bg"
+    src.mkdir()
+    for i in range(2):
+        Image.new("RGB", (300 + i, 200), (90, 100, 110)).save(src / f"{i}.jpg")
+    assert ingest.import_backgrounds(ws, str(src)) == 2
+    assert ingest.import_backgrounds(ws, str(src)) == 0            # 같은 사진은 한 번만
+    rows = [r for r in ws.load().values() if r.group == "bg_openimages_bg"]
+    assert len(rows) == 2 and all(r.source == "public" and r.split == "train" and r.status == DONE for r in rows)
+    assert all((ws.dataset / "labels" / f"{r.id}.txt").read_text() == "" for r in rows)
+    synth = pytest.importorskip("vision.synth", exc_type=Exception)
+    assert len(synth._background_photos(ws, ws.load())) == 2       # 합성 배경으로 쓰인다

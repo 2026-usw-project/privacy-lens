@@ -14,7 +14,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from .workspace import IMAGE_EXTS, REVIEW, Row, Workspace, file_id
+from .workspace import DONE, IMAGE_EXTS, REVIEW, Row, Workspace, file_id
 
 MAX_SIDE = 2560      # 학습은 1280 으로 하지만 작은 물체 때문에 여유를 둔다
 PRELABEL_CONF = 0.25 # 초벌 라벨 기준. 낮을수록 많이 그리고 사람이 지운다
@@ -113,3 +113,41 @@ def run(ws: Workspace, *, keep_originals: bool = False, prelabel: bool = True) -
 
     print(f"\n새 사진 {added}장, 이미 있던 사진 {dup}장, 실패 {bad}장")
     print(f"다음: 라벨링 도구로 {ws.review} 폴더를 열어 검수하세요.")
+
+
+def import_backgrounds(ws: Workspace, src: str, limit: int | None = None) -> int:
+    """물체 없는 배경 사진 폴더를 **학습 전용·빈 라벨**로 데이터셋에 바로 넣는다.
+
+    공개 사진(Open Images 등)이나 AI 로 만든 배경용이다. ingest 로 넣으면 '직접 촬영'으로
+    분류되어 검증·시험에 섞이므로 따로 넣는다. 합성 생성기가 이 사진들을 배경으로도 쓴다.
+    송장·학생증·명찰·화면·바코드가 찍힌 사진은 넣지 않는다(그것들을 배경으로 잘못 배운다).
+    """
+    ws.init()
+    rows = ws.load()
+    root = Path(src).expanduser()
+    files = sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTS)[:limit]
+    if not files:
+        raise SystemExit(f"사진이 없습니다: {root}")
+    group = f"bg_{root.name}"
+    added = dup = bad = 0
+    for p in files:
+        fid = f"bg_{file_id(p)}"
+        if fid in rows:
+            dup += 1
+            continue
+        try:
+            _clean_copy(p, ws.dataset / "images" / f"{fid}.jpg")
+        except Exception as exc:
+            bad += 1
+            print(f"  ! {p.name}: 열 수 없어 건너뜀 ({exc})")
+            continue
+        (ws.dataset / "labels" / f"{fid}.txt").write_text("", encoding="utf-8")
+        rows[fid] = Row(id=fid, group=group, source="public", split="train", status=DONE,
+                        added_at=dt.datetime.now().isoformat(timespec="seconds"),
+                        orig_name=p.name, prelabel="")
+        added += 1
+    ws.save(rows)
+    from .build import write_lists
+    write_lists(ws, rows)
+    print(f"배경 사진 {added}장을 학습 데이터에 넣었습니다(train 전용, 이미 있던 {dup}장, 실패 {bad}장).")
+    return added

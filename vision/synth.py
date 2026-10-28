@@ -11,7 +11,8 @@
   방해물  송장이 아닌 한국어 서류·메모·영수증(박스 없음). 글자 있는 종이를 송장으로 착각하지 않게
   크기    40% 는 사진 짧은 변의 5~20% 로 작게. 서비스가 노리는 '배경에 작게 찍힌' 경우다
   놓임    30% 는 기대 세운 원근, 35% 는 책등·물건에 일부 가려짐(박스는 보이는 부분만)
-  배경    데이터셋에 물체 없는 실사 사진이 있으면 절반은 그 위에, 나머지는 만든 무늬 위에
+  배경    데이터셋에 물체 없는 사진(직접 찍은 배경, import-bg 로 넣은 공개·AI 배경)이 있으면
+          절반은 그 위에, 나머지는 만든 무늬 위에
 
 합성 사진은 **학습(train)에만** 들어간다. 점수는 실사 val/test 로만 잰다.
 """
@@ -486,10 +487,10 @@ def make_scene(seed: int, photos=()) -> tuple[Image.Image, list[str]]:
 
 
 def _background_photos(ws: Workspace, rows) -> list[Path]:
-    """데이터셋의 물체 없는 실사 사진(빈 라벨). 합성 배경으로 쓴다."""
+    """데이터셋의 물체 없는 사진(빈 라벨): 직접 찍은 배경과 import-bg 로 넣은 공개·AI 배경. 합성 배경으로 쓴다."""
     out = []
     for r in rows.values():
-        if r.status == DONE and r.source == "real":
+        if r.status == DONE and r.source in ("real", "public"):
             label = ws.dataset / "labels" / f"{r.id}.txt"
             img = ws.dataset / "images" / f"{r.id}.jpg"
             if img.exists() and label.exists() and not label.read_text(encoding="utf-8").strip():
@@ -502,7 +503,7 @@ def run(ws: Workspace, n: int = 200, seed: int = 0) -> None:
     rows = ws.load()
     photos = _background_photos(ws, rows)
     if photos:
-        print(f"물체 없는 실사 사진 {len(photos)}장을 배경으로 섞어 씁니다.")
+        print(f"물체 없는 배경 사진 {len(photos)}장을 합성 배경으로 섞어 씁니다.")
     made = 0
     for i in range(n):
         s = seed + i
