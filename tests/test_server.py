@@ -85,7 +85,10 @@ def test_llm_judge_errors_are_safe(client, monkeypatch):
     judge = json.dumps({"provider": "gemini", "model": "m", "api_key": "sk-test-not-real"})
     r = client.post("/analyze", files={"image": ("a.png", png())}, data={"judge": judge})
     assert r.status_code == 502 and r.json()["detail"] == wording.LLM_AUTH_FAILED
-    assert "sk-test-not-real" not in r.text and "010" not in r.text
+    assert "sk-test-not-real" not in r.text and "010" not in r.json()["detail"]
+    # 개발자 콘솔용 기록: 실패한 요청도 남고, 키는 끝 4글자만
+    trace = r.json()["llm_trace"]
+    assert trace[0]["ok"] is False and trace[0]["headers"]["x-goog-api-key"] == "…real"
 
 
 def test_llm_judge_config_checked_before_queue(client):
@@ -98,11 +101,68 @@ def test_llm_models_endpoint(client, monkeypatch):
     monkeypatch.setattr(llm_judge, "_http_get", lambda url, headers, timeout: {"data": [{"id": "b"}, {"id": "a"}]})
     judge = json.dumps({"provider": "openai", "api_key": "sk-test-not-real"})
     r = client.post("/llm/models", data={"judge": judge})
-    assert r.status_code == 200 and r.json() == {"models": ["a", "b"]}
+    assert r.status_code == 200 and r.json()["models"] == ["a", "b"]
+    assert r.json()["llm_trace"][0]["url"] == "https://api.openai.com/v1/models"
     assert "sk-test-not-real" not in r.text
     r = client.post("/llm/models", data={"judge": json.dumps({"provider": "openai"})})
     assert r.status_code == 400 and r.json()["detail"] == wording.LLM_KEY_MISSING
     assert client.post("/llm/models", data={"judge": '{"provider":"rules"}'}).json() == {"models": []}
+
+
+@pytest.fixture
+def server_log():
+    """서버 콘솔 로거가 찍는 줄을 모은다."""
+    import logging
+
+    lines: list[str] = []
+
+    class Collect(logging.Handler):
+        def emit(self, record):
+            lines.append(record.getMessage())
+
+    handler = Collect()
+    server.log.addHandler(handler)
+    yield lines
+    server.log.removeHandler(handler)
+
+
+def test_failed_requests_logged_without_content(client, monkeypatch, server_log):
+    client.post("/analyze", files={"image": ("a.txt", b"not an image")})
+    assert any("POST /analyze → 400" in line and "이미지로 읽을 수 없는" in line for line in server_log)
+
+    client.post("/analyze")  # image 칸 없음
+    assert any("→ 422" in line and "image" in line for line in server_log)
+
+    def transport(*_):
+        raise llm_judge.LlmJudgeError(wording.LLM_AUTH_FAILED, status=401, provider_body="공급자 응답 본문")
+
+    monkeypatch.setattr(llm_judge, "_http_post", transport)
+    judge = json.dumps({"provider": "openai", "model": "m-1", "api_key": "sk-test-not-real"})
+    client.post("/analyze", files={"image": ("a.png", png())}, data={"judge": judge})
+    line = next(line for line in server_log if "→ 502" in line)
+    assert "openai/m-1 HTTP 401" in line
+    text = "\n".join(server_log)
+    assert "sk-test" not in text and "010" not in text and "공급자 응답 본문" not in text
+
+
+def test_ocr_failure_cause_logged(client, monkeypatch, server_log):
+    from pipeline.worker import OcrUnavailable
+
+    class Broken:
+        name = "broken"
+
+        def read(self, image):
+            raise OcrUnavailable("RuntimeError")
+
+    monkeypatch.setattr(server, "_backend", Broken())
+    r = client.post("/analyze", files={"image": ("a.png", png())})
+    assert r.status_code == 503
+    assert any("→ 503" in line and "RuntimeError" in line for line in server_log)
+
+
+def test_successful_requests_not_logged(client, server_log):
+    client.post("/analyze", files={"image": ("a.png", png())})
+    assert server_log == []
 
 
 def test_non_image_is_400(client):

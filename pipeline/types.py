@@ -192,6 +192,8 @@ class Report:
     raw_ocr: list[TextSpan] = field(default_factory=list)
     judge: str = "규칙 기반"      # 글자 판단에 쓴 방법. LLM 이면 '공급자 · 모델'
     judge_provider: str = "rules"
+    # LLM 판단 때 공급자와 주고받은 요청·응답(키 가림). 화면이 개발자 콘솔에만 찍는다. 서버 로그에는 남기지 않는다
+    llm_trace: list = field(default_factory=list)
 
     def sorted_findings(self) -> list[Finding]:
         return sorted(self.findings, key=lambda f: (f.severity.rank, f.kind))
@@ -212,4 +214,5 @@ class Report:
             "notes": self.notes,
             "raw_ocr": [span.as_dict() for span in self.raw_ocr],
             "raw_ocr_note": wording.RAW_OCR_NOTE,
+            **({"llm_trace": self.llm_trace} if self.llm_trace else {}),
         }

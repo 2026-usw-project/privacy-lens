@@ -832,7 +832,7 @@
   function renderDev() {
     const id=state.dev.provider,j=Core.JUDGES[id],p=state.dev.providers[id],llm=id!=='rules';
     $('#judgeProvider').value=id;
-    $('#judgeModelField').classList.toggle('hidden',!llm);$('#judgeKeyField').classList.toggle('hidden',!llm||!j.key);$('#judgeUrlField').classList.toggle('hidden',!llm||!('url' in j));
+    $('#judgeModelField').classList.toggle('hidden',!llm);$('#judgeModelListField').classList.toggle('hidden',!llm);$('#judgeKeyField').classList.toggle('hidden',!llm||!j.key);$('#judgeUrlField').classList.toggle('hidden',!llm||!('url' in j));
     if(llm){
       if(document.activeElement!==$('#judgeModel'))$('#judgeModel').value=p.model;
       if(document.activeElement!==$('#judgeKey'))$('#judgeKey').value=p.apiKey;
@@ -858,11 +858,17 @@
   }
   // 공급자가 알려 주는 모델 이름을 모델 칸의 추천 목록으로. 칸에는 직접 써도 된다.
   const modelLists=new Map();
+  // 불러온 모델은 따로 고르는 목록에. 고르면 아래 '직접 입력' 칸에 들어가고, 목록에 없는 이름은 그 칸에 쓴다.
   function renderModelList() {
-    const names=modelLists.get(state.dev.provider)||[];
-    $('#judgeModelList').innerHTML=names.map(n=>'<option value="'+escapeHTML(n)+'"></option>').join('');
-    $('#judgeModelStatus').textContent=modelLists.has(state.dev.provider)?(names.length?names.length+'개 모델을 불러왔어요. 모델 칸을 눌러 고르세요.':'불러온 모델이 없어요. 이름을 직접 입력하세요.'):'';
+    const id=state.dev.provider,loaded=modelLists.has(id),names=modelLists.get(id)||[];
+    const current=id==='rules'?'':state.dev.providers[id].model;
+    const select=$('#judgeModelList');
+    select.innerHTML=(loaded&&names.length?'<option value="">'+(names.includes(current)?'모델 고르기':'목록에서 고르기 (지금 모델은 목록에 없음)')+'</option>':'<option value="">'+(loaded?'불러온 모델이 없어요':'목록을 먼저 불러오세요')+'</option>')
+      +names.map(n=>'<option value="'+escapeHTML(n)+'">'+escapeHTML(n)+'</option>').join('');
+    select.disabled=!names.length;select.value=names.includes(current)?current:'';
+    $('#judgeModelStatus').textContent=loaded?(names.length?names.length+'개 모델을 불러왔어요.':'이름을 직접 입력하세요.'):'';
   }
+  $('#judgeModelList').addEventListener('change',e=>{if(!e.target.value)return;updateDev({model:e.target.value});$('#judgeModel').value=e.target.value;renderModelList();});
   async function loadModels() {
     const id=state.dev.provider,query=Core.modelQuery(state.dev);
     if(!query)return;
@@ -877,7 +883,7 @@
   }
   $('#judgeLoadModels').addEventListener('click',loadModels);
   $('#judgeProvider').addEventListener('change',e=>{updateDev({provider:e.target.value});renderModelList();});
-  $('#judgeModel').addEventListener('input',e=>updateDev({model:e.target.value}));
+  $('#judgeModel').addEventListener('input',e=>{updateDev({model:e.target.value});renderModelList();});
   $('#judgeKey').addEventListener('input',e=>updateDev({apiKey:e.target.value}));
   $('#judgeUrl').addEventListener('input',e=>updateDev({baseUrl:e.target.value}));
   $('#judgeKeyToggle').addEventListener('click',()=>{const k=$('#judgeKey'),show=k.type==='password';k.type=show?'text':'password';$('#judgeKeyToggle').textContent=show?'숨기기':'보기';$('#judgeKeyToggle').setAttribute('aria-pressed',String(show));});

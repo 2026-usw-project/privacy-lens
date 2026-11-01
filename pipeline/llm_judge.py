@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -82,7 +83,16 @@ tracking(운송장번호), brn(사업자등록번호), long_digits(정체 모를
 
 
 class LlmJudgeError(Exception):
-    """화면에 그대로 보여도 되는 문구만 담는다. 키·원문·응답 본문은 넣지 않는다."""
+    """화면에 그대로 보여도 되는 문구만 담는다. 키·원문·응답 본문은 넣지 않는다.
+
+    status·provider_body 는 개발자 콘솔(llm_trace)에만 쓴다. 서버 로그와 detail 에는 넣지 않는다.
+    """
+
+    def __init__(self, message: str, *, status: int | None = None, provider_body: str | None = None):
+        super().__init__(message)
+        self.status = status
+        self.provider_body = provider_body
+        self.trace: list[dict] = []
 
 
 @dataclass(frozen=True)
@@ -165,14 +175,15 @@ def _send(req: urllib.request.Request, timeout: float) -> dict:
         with urllib.request.urlopen(req, timeout=timeout) as res:
             return json.loads(res.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        # 응답 본문에 보낸 원문이 되돌아올 수 있어 상태 코드만 쓴다
-        if exc.code in (401, 403):
-            raise LlmJudgeError(wording.LLM_AUTH_FAILED) from None
-        if exc.code == 404:
-            raise LlmJudgeError(wording.LLM_MODEL_NOT_FOUND) from None
-        if exc.code == 429:
-            raise LlmJudgeError(wording.LLM_RATE_LIMITED) from None
-        raise LlmJudgeError(wording.llm_http_failed(exc.code)) from None
+        # 응답 본문에 보낸 원문이 되돌아올 수 있어 화면 문구에는 상태 코드만 쓴다.
+        # 본문은 개발자 콘솔(llm_trace)로만 넘긴다.
+        try:
+            body = exc.read().decode("utf-8", "replace")[:TRACE_BODY_CHARS]
+        except Exception:
+            body = None
+        message = {401: wording.LLM_AUTH_FAILED, 403: wording.LLM_AUTH_FAILED, 404: wording.LLM_MODEL_NOT_FOUND,
+                   429: wording.LLM_RATE_LIMITED}.get(exc.code) or wording.llm_http_failed(exc.code)
+        raise LlmJudgeError(message, status=exc.code, provider_body=body) from None
     except (urllib.error.URLError, TimeoutError, OSError):
         raise LlmJudgeError(wording.LLM_UNREACHABLE) from None
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -250,6 +261,55 @@ def _parse_json(text: str) -> dict:
     return out
 
 
+# ------------------------------------------------------------------ 개발자 콘솔 기록
+
+TRACE_BODY_CHARS = 20_000
+_SECRET_HEADERS = {"authorization", "x-api-key", "x-goog-api-key"}
+
+
+def _mask_headers(headers: dict) -> dict:
+    """키는 끝 4글자만 남긴다. 콘솔에 키 전체가 찍히지 않게."""
+    out = {}
+    for k, v in headers.items():
+        if k.lower() in _SECRET_HEADERS and isinstance(v, str):
+            prefix = "Bearer " if v.startswith("Bearer ") else ""
+            secret = v[len(prefix):]
+            out[k] = f"{prefix}…{secret[-4:]}" if len(secret) > 8 else f"{prefix}…"
+        else:
+            out[k] = v
+    return out
+
+
+def _traced(trace: list | None, kind: str, cfg: JudgeConfig, method: str, url: str, headers: dict,
+            body: dict | None, call: Callable[[], dict]) -> dict:
+    """공급자 요청 한 번. trace 가 있으면 요청·응답(키 가림)을 남긴다. 실패해도 남기고 예외에 붙인다."""
+    entry = {"kind": kind, "provider": cfg.provider, "model": cfg.model, "method": method, "url": url,
+             "headers": _mask_headers(headers), "request": body}
+    started = time.perf_counter()
+    try:
+        data = call()
+    except LlmJudgeError as exc:
+        if trace is not None:
+            entry.update(ok=False, elapsed_ms=int((time.perf_counter() - started) * 1000), status=exc.status,
+                         error=str(exc), response=exc.provider_body)
+            trace.append(entry)
+            exc.trace = trace
+        raise
+    if trace is not None:
+        entry.update(ok=True, elapsed_ms=int((time.perf_counter() - started) * 1000), status=200, response=data)
+        trace.append(entry)
+    return data
+
+
+def _fail(trace: list | None, message: str) -> LlmJudgeError:
+    """응답은 왔지만 해석하지 못했을 때. 이미 남긴 요청·응답 기록을 예외에 붙인다."""
+    exc = LlmJudgeError(message)
+    if trace:
+        trace[-1].update(ok=False, error=message)
+        exc.trace = trace
+    return exc
+
+
 # ------------------------------------------------------------------ 판단
 
 def _user_message(spans: list[TextSpan], width: int, height: int) -> str:
@@ -314,15 +374,23 @@ def to_findings(data: dict, spans: list[TextSpan]) -> list[Finding]:
 
 
 def evaluate(spans: list[TextSpan], cfg: JudgeConfig, *, width: int, height: int,
-             transport: Transport | None = None) -> list[Finding]:
-    """OCR 조각 → LLM → 탐지 항목. 조각이 없으면 부르지 않는다."""
+             transport: Transport | None = None, trace: list | None = None) -> list[Finding]:
+    """OCR 조각 → LLM → 탐지 항목. 조각이 없으면 부르지 않는다.
+
+    trace 에 리스트를 주면 공급자와 주고받은 요청·응답을 남긴다(개발자 콘솔용, 키는 가림).
+    """
     if not spans:
         return []
     url, headers, body = _request(cfg, SYSTEM_PROMPT, _user_message(spans, width, height))
-    data = (transport or _http_post)(url, headers, body, TIMEOUT_S)
-    if not isinstance(data, dict):
-        raise LlmJudgeError(wording.LLM_BAD_RESPONSE)
-    return to_findings(_parse_json(_reply_text(cfg.provider, data)), spans)
+    post = transport or _http_post
+    data = _traced(trace, "judge", cfg, "POST", url, headers, body,
+                   lambda: post(url, headers, body, TIMEOUT_S))
+    try:
+        if not isinstance(data, dict):
+            raise LlmJudgeError(wording.LLM_BAD_RESPONSE)
+        return to_findings(_parse_json(_reply_text(cfg.provider, data)), spans)
+    except LlmJudgeError as exc:
+        raise _fail(trace, str(exc)) from None
 
 
 # ------------------------------------------------------------------ 모델 목록
@@ -372,17 +440,21 @@ def _model_page(provider: str, data: dict) -> tuple[list[str], str | None]:
         raise LlmJudgeError(wording.LLM_BAD_RESPONSE) from None
 
 
-def list_models(cfg: JudgeConfig, *, transport: GetTransport | None = None) -> list[str]:
+def list_models(cfg: JudgeConfig, *, transport: GetTransport | None = None,
+                trace: list | None = None) -> list[str]:
     """공급자가 이 키로 쓸 수 있다고 알려 주는 모델 이름. 정렬하고 중복을 뺀다."""
     get = transport or _http_get
     names: list[str] = []
     page: str | None = None
     for _ in range(MAX_PAGES):
         url, headers = _model_request(cfg, page)
-        data = get(url, headers, 30)
-        if not isinstance(data, dict):
-            raise LlmJudgeError(wording.LLM_BAD_RESPONSE)
-        got, page = _model_page(cfg.provider, data)
+        data = _traced(trace, "models", cfg, "GET", url, headers, None, lambda: get(url, headers, 30))
+        try:
+            if not isinstance(data, dict):
+                raise LlmJudgeError(wording.LLM_BAD_RESPONSE)
+            got, page = _model_page(cfg.provider, data)
+        except LlmJudgeError as exc:
+            raise _fail(trace, str(exc)) from None
         names += [n for n in got if isinstance(n, str) and 0 < len(n) <= MAX_FIELD]
         if not page or len(names) >= MAX_MODELS:
             break

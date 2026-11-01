@@ -136,6 +136,28 @@ await test('model list asks with provider and key but no photo',async()=>{
   assert.deepEqual((await api.models(C.modelQuery(dev))).models,['a','b']);
   assert.equal(C.modelQuery(C.devSettings(null)),undefined);
 });
+await test('LLM exchanges printed to the developer console, success and failure',async()=>{
+  const lines=[];const out={groupCollapsed:(...a)=>lines.push(['group',...a]),log:(...a)=>lines.push(['log',...a]),warn:(...a)=>lines.push(['warn',...a]),groupEnd:()=>lines.push(['end'])};
+  const trace=[{kind:'judge',provider:'openai',model:'m-1',method:'POST',url:'https://api.openai.com/v1/chat/completions',headers:{Authorization:'Bearer …real'},
+    request:{model:'m-1'},ok:true,status:200,elapsed_ms:812,response:{choices:[{message:{content:'{"findings":[]}'}}]}}];
+  A.logTrace('/analyze',trace,out);
+  assert.match(lines[0][1],/LLM 판단 · openai · m-1 · 성공 \(HTTP 200\) · 812ms ← \/analyze/);
+  assert.equal(lines[1][2].headers.Authorization,'Bearer …real');
+  assert.ok(lines.some(l=>l[1]==='모델이 쓴 글'&&l[2]==='{"findings":[]}'));
+  assert.deepEqual(lines.at(-1),['end']);
+  lines.length=0;A.logTrace('/analyze',undefined,out);A.logTrace('/analyze',[],out);assert.equal(lines.length,0);
+  // 응답 경로: 성공은 report.llm_trace, 실패(502)는 본문의 llm_trace
+  const seen=[];const orig=globalThis.console;
+  globalThis.console={...orig,groupCollapsed:(h)=>seen.push(h),log(){},warn:(h)=>seen.push(h),groupEnd(){}};
+  try {
+    await A.client('',async()=>json({report:{...report,llm_trace:trace}})).analyze(file,{});
+    const failed={...trace[0],ok:false,status:401,error:'키 거부'};
+    await assert.rejects(A.client('',async()=>new Response(JSON.stringify({detail:'키 거부',llm_trace:[failed]}),{status:502,headers:{'content-type':'application/json'}})).analyze(file,{}));
+  } finally { globalThis.console=orig; }
+  assert.equal(seen.filter(h=>/LLM 판단/.test(h)).length,2);
+  assert.ok(seen.some(h=>/실패 \(HTTP 401\)/.test(h)));
+  assert.ok(seen.some(h=>/POST \/analyze 실패 \(HTTP 502\)/.test(h)));
+});
 await test('developer settings are sanitized and remembered per provider',()=>{
   const d=C.devSettings({provider:'nope',providers:{openai:{model:'x'.repeat(900),apiKey:42},ollama:{apiKey:'ignored'}}});
   assert.equal(d.provider,'rules');assert.equal(C.judgeField(d),undefined);assert.equal(C.judgeLabel(d),'문맥·결합');

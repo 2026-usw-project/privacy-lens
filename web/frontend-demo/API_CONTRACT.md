@@ -46,6 +46,10 @@ multipart: `image`(원본 파일), `ticket`(번호표, 선택), `judge`(개발�
   long_digits, qr, barcode, gps,
   document(문서 검출: 못 읽은 문서 영역), face_photo(문서 검출: 증명사진 영역).
   문서 검출 항목은 `detail.source == "detector"` 이고 `certainty` 는 region 입니다.
+- `report.llm_trace`(LLM 판단일 때만): 서버가 공급자와 주고받은 요청·응답 기록 배열
+  `{kind, provider, model, method, url, headers, request, ok, status, elapsed_ms, response, error?}`.
+  `headers` 의 키는 끝 4글자만 남깁니다(`Bearer …abcd`). 보낸 OCR 원문이 들어 있어 화면은 **개발자 콘솔(F12)에만**
+  찍고 저장하지 않습니다. 실패(502) 응답 본문, `/llm/models`, `/redact`(재검사) 응답에도 같은 `llm_trace` 가 붙습니다.
 - `report.judge`: 글자 판단에 쓴 방법. 규칙이면 `규칙 기반`, LLM 이면 `공급자 · 모델`(예: `Claude · claude-haiku-5-5`).
   `report.judge_provider`: `rules` 또는 위 provider. LLM 이 낸 항목은 `detail.judge == "llm"` 이고 `kind` 에 `other`(그 밖의 개인정보)가 더 있습니다.
 - `report.detector`: 문서 검출 모델 이름(예: `yolo:v003`). 검출을 쓰지 않았으면 빈 문자열.
@@ -74,7 +78,7 @@ multipart: `image`(원본 파일), `ticket`(번호표, 선택), `judge`(개발�
 
 ## POST /llm/models
 
-multipart: `judge`(JSON 문자열 `{"provider","api_key","base_url"}`, `model` 은 비어도 됨). 개발자 모드의 '목록 불러오기'가 부릅니다.
+multipart: `judge`(JSON 문자열 `{"provider","api_key","base_url"}`, `model` 은 비어도 됨). 개발자 모드의 '목록 불러오기'가 부르고, 받은 이름은 '모델 목록' 선택 칸에 따로 채웁니다(고르면 '직접 입력' 칸에 들어감).
 사진·OCR 원문은 보내지 않고 대기열도 거치지 않습니다.
 
 ```json

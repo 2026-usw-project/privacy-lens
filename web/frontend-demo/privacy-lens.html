@@ -418,7 +418,7 @@ dialog[open]{animation:reveal .18s cubic-bezier(.16,1,.3,1)}
 .dev-field input,.dev-field select{width:100%;min-width:0;height:40px}
 .dev-field input{background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:7px 10px;font-size:14px;font-family:var(--mono)}
 .dev-key{display:flex;align-items:center;gap:8px}
-.dev-key input{flex:1}
+.dev-key input,.dev-key select{flex:1}
 .dialog-callout.warn{background:var(--warn-bg);color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn-line)}
 .dialog-callout.warn svg{color:var(--warn)}
 .style-options.two{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -723,7 +723,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <p class="dialog-intro">글자를 읽은 뒤(OCR) 개인정보인지 판단할 방법을 골라요. LLM 을 고르면 규칙 기반 판단은 꺼지고, 모든 글자 판단을 그 모델이 해요. 위치정보·QR·문서 영역 검사는 그대로예요.</p>
 <div class="dev-form">
   <div class="dev-field"><label for="judgeProvider">판단 모델 종류</label><select id="judgeProvider"><option value="rules">규칙 기반 판단</option><option value="openai">ChatGPT</option><option value="gemini">Gemini</option><option value="anthropic">Claude</option><option value="openrouter">OpenRouter</option><option value="ollama">Ollama</option><option value="custom">Custom API</option></select></div>
-  <div class="dev-field" id="judgeModelField"><label for="judgeModel">모델</label><div class="dev-key"><input id="judgeModel" type="text" list="judgeModelList" autocomplete="off" spellcheck="false" maxlength="500"><button type="button" class="text-button" id="judgeLoadModels">목록 불러오기</button></div><datalist id="judgeModelList"></datalist><p class="fine-print" id="judgeModelStatus" role="status"></p></div>
+  <div class="dev-field" id="judgeModelListField"><label for="judgeModelList">모델 목록</label><div class="dev-key"><select id="judgeModelList" disabled><option value="">목록을 먼저 불러오세요</option></select><button type="button" class="text-button" id="judgeLoadModels">목록 불러오기</button></div><p class="fine-print" id="judgeModelStatus" role="status"></p></div>
+  <div class="dev-field" id="judgeModelField"><label for="judgeModel">모델 (직접 입력)</label><input id="judgeModel" type="text" autocomplete="off" spellcheck="false" maxlength="500"></div>
   <div class="dev-field" id="judgeKeyField"><label for="judgeKey" id="judgeKeyLabel">API 키</label><div class="dev-key"><input id="judgeKey" type="password" autocomplete="off" spellcheck="false" maxlength="500"><button type="button" class="text-button" id="judgeKeyToggle" aria-controls="judgeKey" aria-pressed="false">보기</button></div></div>
   <div class="dev-field" id="judgeUrlField"><label for="judgeUrl">API 주소</label><input id="judgeUrl" type="url" autocomplete="off" spellcheck="false" maxlength="500"></div>
   <p class="fine-print" id="judgeHint"></p>
@@ -909,6 +910,34 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       : Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
   }
 
+  // 개발자 콘솔(F12) 출력. LLM 판단을 쓰면 서버가 공급자와 주고받은 요청·응답(llm_trace, 키는 끝 4글자만)을
+  // 응답에 실어 보낸다. 사진 속 글자(OCR 원문)가 들어 있으니 콘솔에만 찍고 어디에도 저장하지 않는다.
+  function logTrace(route,trace,out=globalThis.console) {
+    if(!out || !Array.isArray(trace) || !trace.length)return;
+    for(const t of trace){
+      const head='[Privacy Lens] LLM '+(t.kind==='models'?'모델 목록':'판단')+' · '+t.provider+(t.model?' · '+t.model:'')
+        +' · '+(t.ok?'성공':'실패')+(t.status?' (HTTP '+t.status+')':'')+(Number.isFinite(t.elapsed_ms)?' · '+t.elapsed_ms+'ms':'')+' ← '+route;
+      (out.groupCollapsed||out.log).call(out,head);
+      out.log('요청',{method:t.method,url:t.url,headers:t.headers,body:t.request});
+      if(t.error)out.warn('오류',t.error);
+      out.log('응답',t.response);
+      const text=replyText(t);
+      if(text)out.log('모델이 쓴 글',text);
+      out.groupEnd?.();
+    }
+  }
+  // 공급자별 응답에서 모델이 쓴 글만 꺼내 읽기 쉽게
+  function replyText(t) {
+    const r=t.response;
+    if(!r || typeof r!=='object' || t.kind!=='judge')return '';
+    try {
+      if(t.provider==='anthropic')return r.content.filter(b=>b.type==='text').map(b=>b.text).join('');
+      if(t.provider==='gemini')return r.candidates[0].content.parts.map(p=>p.text||'').join('');
+      if(t.provider==='ollama')return r.message.content;
+      return r.choices[0].message.content;
+    } catch { return ''; }
+  }
+
   function client(base='', fetchImpl=globalThis.fetch.bind(globalThis), timeoutMs=TIMEOUT_MS) {
     async function request(route,init,signal) {
       const controller=new AbortController();
@@ -920,13 +949,16 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         const response=await fetchImpl(base+route,{credentials:'same-origin',cache:'no-store',redirect:'error',...init,signal:controller.signal});
         if(!response.ok) {
           let detail='';
-          try{const data=await response.json();detail=typeof data.detail==='string'?data.detail.slice(0,200):'';}catch{}
+          try{const data=await response.json();detail=typeof data.detail==='string'?data.detail.slice(0,200):'';logTrace(route,data.llm_trace);}catch{}
           const error=new Error(detail || (response.status===413?'사진이 너무 커요. 더 작은 사진으로 시도해 주세요.':'서버 처리에 실패했어요. (HTTP '+response.status+')'));
           error.status=response.status;
+          if(response.status!==409)globalThis.console?.warn('[Privacy Lens] '+(init.method||'GET')+' '+route+' 실패 (HTTP '+response.status+')',error.message);
           throw error;
         }
         if(!(response.headers.get('content-type')||'').includes('application/json'))throw new Error('서버가 JSON 대신 다른 형식을 반환했습니다.');
-        return await response.json();
+        const data=await response.json();
+        logTrace(route,data?.llm_trace||data?.report?.llm_trace);
+        return data;
       } catch(error) {
         if(timedOut)throw new Error('서버 응답 시간이 초과됐어요. 잠시 후 다시 시도해 주세요.');
         if(controller.signal.aborted)throw new DOMException('요청 취소','AbortError');
@@ -966,7 +998,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       }
     };
   }
-  globalThis.PrivacyLensAPI=Object.freeze({client,newTicket});
+  globalThis.PrivacyLensAPI=Object.freeze({client,newTicket,logTrace});
 })();
 
 'use strict';
@@ -1803,7 +1835,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   function renderDev() {
     const id=state.dev.provider,j=Core.JUDGES[id],p=state.dev.providers[id],llm=id!=='rules';
     $('#judgeProvider').value=id;
-    $('#judgeModelField').classList.toggle('hidden',!llm);$('#judgeKeyField').classList.toggle('hidden',!llm||!j.key);$('#judgeUrlField').classList.toggle('hidden',!llm||!('url' in j));
+    $('#judgeModelField').classList.toggle('hidden',!llm);$('#judgeModelListField').classList.toggle('hidden',!llm);$('#judgeKeyField').classList.toggle('hidden',!llm||!j.key);$('#judgeUrlField').classList.toggle('hidden',!llm||!('url' in j));
     if(llm){
       if(document.activeElement!==$('#judgeModel'))$('#judgeModel').value=p.model;
       if(document.activeElement!==$('#judgeKey'))$('#judgeKey').value=p.apiKey;
@@ -1829,11 +1861,17 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   }
   // 공급자가 알려 주는 모델 이름을 모델 칸의 추천 목록으로. 칸에는 직접 써도 된다.
   const modelLists=new Map();
+  // 불러온 모델은 따로 고르는 목록에. 고르면 아래 '직접 입력' 칸에 들어가고, 목록에 없는 이름은 그 칸에 쓴다.
   function renderModelList() {
-    const names=modelLists.get(state.dev.provider)||[];
-    $('#judgeModelList').innerHTML=names.map(n=>'<option value="'+escapeHTML(n)+'"></option>').join('');
-    $('#judgeModelStatus').textContent=modelLists.has(state.dev.provider)?(names.length?names.length+'개 모델을 불러왔어요. 모델 칸을 눌러 고르세요.':'불러온 모델이 없어요. 이름을 직접 입력하세요.'):'';
+    const id=state.dev.provider,loaded=modelLists.has(id),names=modelLists.get(id)||[];
+    const current=id==='rules'?'':state.dev.providers[id].model;
+    const select=$('#judgeModelList');
+    select.innerHTML=(loaded&&names.length?'<option value="">'+(names.includes(current)?'모델 고르기':'목록에서 고르기 (지금 모델은 목록에 없음)')+'</option>':'<option value="">'+(loaded?'불러온 모델이 없어요':'목록을 먼저 불러오세요')+'</option>')
+      +names.map(n=>'<option value="'+escapeHTML(n)+'">'+escapeHTML(n)+'</option>').join('');
+    select.disabled=!names.length;select.value=names.includes(current)?current:'';
+    $('#judgeModelStatus').textContent=loaded?(names.length?names.length+'개 모델을 불러왔어요.':'이름을 직접 입력하세요.'):'';
   }
+  $('#judgeModelList').addEventListener('change',e=>{if(!e.target.value)return;updateDev({model:e.target.value});$('#judgeModel').value=e.target.value;renderModelList();});
   async function loadModels() {
     const id=state.dev.provider,query=Core.modelQuery(state.dev);
     if(!query)return;
@@ -1848,7 +1886,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   }
   $('#judgeLoadModels').addEventListener('click',loadModels);
   $('#judgeProvider').addEventListener('change',e=>{updateDev({provider:e.target.value});renderModelList();});
-  $('#judgeModel').addEventListener('input',e=>updateDev({model:e.target.value}));
+  $('#judgeModel').addEventListener('input',e=>{updateDev({model:e.target.value});renderModelList();});
   $('#judgeKey').addEventListener('input',e=>updateDev({apiKey:e.target.value}));
   $('#judgeUrl').addEventListener('input',e=>updateDev({baseUrl:e.target.value}));
   $('#judgeKeyToggle').addEventListener('click',()=>{const k=$('#judgeKey'),show=k.type==='password';k.type=show?'text':'password';$('#judgeKeyToggle').textContent=show?'숨기기':'보기';$('#judgeKeyToggle').setAttribute('aria-pressed',String(show));});

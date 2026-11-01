@@ -34,6 +34,7 @@ def analyze(
     detector=_AUTO,
     judge: llm_judge.JudgeConfig | None = None,
     llm_transport=None,
+    llm_trace: list | None = None,
 ) -> Report:
     """detector 를 안 주면 PL_YOLO_WEIGHTS 로 만든 검출기를 쓰고, 없으면 검출 없이 돈다.
     None 을 주면 검출을 끈다(비교 실험의 대조군)."""
@@ -54,7 +55,7 @@ def analyze(
 
     if judge is not None:
         findings = llm_judge.evaluate(spans, judge, width=image.width, height=image.height,
-                                      transport=llm_transport)
+                                      transport=llm_transport, trace=llm_trace)
     else:
         findings = context.evaluate(spans, use_context=use_context, naive=naive)
 
@@ -82,6 +83,7 @@ def analyze(
         detector_device=getattr(detector, "device", "") if detector is not None else "",
         judge=judge.label if judge is not None else "규칙 기반",
         judge_provider=judge.provider if judge is not None else "rules",
+        llm_trace=llm_trace or [],
     )
 
     if not findings:

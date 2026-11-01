@@ -9,7 +9,14 @@ from .ocr import OcrBackend
 
 
 class OcrUnavailable(Exception):
-    """원문을 노출하지 않고 서버에 OCR 실패를 알린다."""
+    """원문을 노출하지 않고 서버에 OCR 실패를 알린다.
+
+    cause 는 원래 예외의 종류 이름뿐이다(서버 콘솔용). 메시지는 원문이 섞일 수 있어 담지 않는다.
+    """
+
+    def __init__(self, cause: str = ""):
+        super().__init__()
+        self.cause = cause
 
 
 class ThreadBoundBackend:
@@ -25,9 +32,9 @@ class ThreadBoundBackend:
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="privacy-ocr")
         try:
             self.name = self._executor.submit(self._initialize).result()
-        except Exception:
+        except Exception as exc:
             self._executor.shutdown(wait=True)
-            raise OcrUnavailable() from None
+            raise OcrUnavailable(type(exc).__name__) from None
 
     def _initialize(self):
         self._engine = self._factory()
@@ -38,11 +45,11 @@ class ThreadBoundBackend:
             if self._engine is None:
                 self.name = self._initialize()
             return self._engine.read(image)
-        except Exception:
+        except Exception as exc:
             # 손상됐을 수 있는 추론기는 다음 요청에서 다시 만든다.
-            # 이미지나 예외 원문은 로그·응답에 남기지 않는다.
+            # 이미지나 예외 원문은 로그·응답에 남기지 않는다. 예외 종류만 서버 콘솔로.
             self._engine = None
-            raise OcrUnavailable() from None
+            raise OcrUnavailable(type(exc).__name__) from None
 
     def read(self, image: Image.Image):
         return self._executor.submit(self._read, image).result()
