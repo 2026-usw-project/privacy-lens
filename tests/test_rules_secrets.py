@@ -143,3 +143,67 @@ def test_every_backend_kind_has_a_screen_label():
     screen = set(re.findall(r"(\w+):\[", block))
     missing = set(wording.KIND_NOUN) - screen - {"gps"}  # gps 는 영역이 아니라 위치정보 안내로 따로 보인다
     assert not missing, f"core.js KINDS 에 없는 kind: {sorted(missing)}"
+
+
+# ------------------------------------------------------------ 라벨 없는 이름
+
+def test_unlabeled_name_next_to_phone_is_cover_and_promotes_phone():
+    fs = context.evaluate([span("권원예", 0, 0, 80), span("010-3550-1081", 0, 30, 200)])
+    [n] = kinds(fs, "name")
+    assert n.severity is Severity.COVER and n.detail.get("unlabeled")
+    assert kinds(fs, "mobile")[0].severity is Severity.COVER
+
+
+def test_unlabeled_name_on_badge_is_cover():
+    fs = context.evaluate([span("누리전자 영업팀", 0, 0, 200), span("이서진", 0, 40, 160, 40)])
+    assert kinds(fs, "name")[0].severity is Severity.COVER
+
+
+def test_label_words_and_menu_items_are_not_names():
+    # 실사(Tesseract)에서 '배송지' 라벨이 이름 후보로 잡혔던 오탐
+    fs = context.evaluate([span("배송지", 0, 0, 80), span("010-1234-5678", 100, 0, 200)])
+    assert not [f for f in kinds(fs, "name") if f.evidence_text == "배송지"]
+    # 영수증 '카드번호' 옆 메뉴 이름
+    fs = context.evaluate([span("장보기", 0, 0, 80), span("4,500", 120, 0, 60),
+                           span("카드번호 9410-12**-****-3547", 0, 30, 300)])
+    assert not kinds(fs, "name")
+
+
+def test_standalone_candidate_only_in_all_mode():
+    spans = [span("한빛분식", 0, 0, 120), span("황호연", 0, 200, 80)]
+    assert not kinds(context.evaluate(spans), "name")
+    [n] = kinds(context.evaluate(spans, unlabeled_names="all"), "name")
+    assert n.severity is Severity.REVIEW
+    assert not kinds(context.evaluate([span("권원예", 0, 0, 80), span("010-3550-1081", 0, 30, 200)],
+                                      unlabeled_names="off"), "name")
+
+
+def test_honorific_name_in_sentence_is_review():
+    fs = context.evaluate([span("황호연님 택배 경비실에 맡겨두었습니다", 0, 0, 500)])
+    [n] = kinds(fs, "name")
+    assert n.severity is Severity.REVIEW and n.evidence_text == "황호연"
+
+
+def test_mail_and_address_next_to_name_are_promoted_but_landline_is_not():
+    fs = context.evaluate([span("황지아", 0, 0, 80), span("010-7666-7220", 0, 30, 200),
+                           span("031-237-9858", 0, 60, 200), span("jiyoon32@example.com", 0, 90, 240)])
+    assert kinds(fs, "email")[0].severity is Severity.COVER
+    assert kinds(fs, "landline")[0].severity is Severity.REVIEW
+
+
+def test_wide_gap_label_above_for_account_and_unlabeled_student_id():
+    # 손글씨 메모처럼 줄 간격이 넓다
+    fs = context.evaluate([span("월세 국민", 0, 0, 120, 30), span("381-594119-57-851", 0, 60, 260, 30)])
+    assert kinds(fs, "account")
+    fs = context.evaluate([span("누리대학교", 0, 0, 160), span("학생증", 200, 0, 80),
+                           span("이도민", 0, 40, 80), span("20202752", 0, 70, 120)])
+    [s] = kinds(fs, "student_id")
+    assert s.severity is Severity.REVIEW  # 라벨 없는 학번은 확인 필요까지만
+
+
+def test_name_candidate_on_separate_word_lists():
+    # eval.names_check 의 따로 모은 낱말. 기준을 정해 두고 나빠지면 알린다
+    from eval import names_check
+    r = names_check.run()
+    assert r["hit"] / r["names"] >= 0.9
+    assert len(r["fp"]) / r["words"] <= 0.2

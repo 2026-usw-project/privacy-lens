@@ -136,9 +136,11 @@ def memo(f: Fake, split: bool):
 def receipt(f: Fake, split: bool):
     tel, brn = f.landline(), f.brn()
     masked = f"9410-12**-****-{f.r.randint(1000, 9999)}"
+    menu = f.pick(NAME_LIKE_WORDS)
     lines = [["누리마트 수원점"], _lv("대표", tel, split), _lv("사업자", brn, split),
-             _lv("카드번호", masked, split), ["합계 12,500원"]]
-    gold = [Gold(tel, NONE, "유선전화"), Gold(brn, NONE, "사업자번호"), Gold(masked, NONE, "카드번호")]
+             [menu, "4,500"], _lv("카드번호", masked, split), ["카드승인 합계 12,500원"]]
+    gold = [Gold(tel, NONE, "유선전화"), Gold(brn, NONE, "사업자번호"), Gold(masked, NONE, "카드번호"),
+            Gold(menu, NONE, "이름 같은 낱말")]
     return lines, gold
 
 
@@ -249,11 +251,12 @@ def verdict(expect: str, got: str) -> str:
     return {COVER: "오탐(가림)", REVIEW: "오탐(확인 필요)", NONE: "맞음"}[got]
 
 
-def run(scenes: list[Scene]) -> list[dict]:
+def run(scenes: list[Scene], unlabeled_names: str = "context") -> list[dict]:
+    """unlabeled_names 는 환경변수와 상관없이 고정한다. 기준선이 실행 환경에 따라 달라지면 안 된다."""
     rows = []
     for sc in scenes:
         spans = sc.spans()
-        findings = context.evaluate(spans)
+        findings = context.evaluate(spans, unlabeled_names=unlabeled_names)
         for g, got, hits in predict(sc, spans, findings):
             rows.append({
                 "scene": sc.sid, "category": sc.category, "item": g.item, "text": g.text,
@@ -380,6 +383,8 @@ def main(argv=None) -> None:
     ap.add_argument("--check", action="store_true", help="기준선보다 나빠지면 종료 코드 1")
     ap.add_argument("--update", action="store_true", help="지금 결과를 기준선으로 저장")
     ap.add_argument("--quiet", action="store_true", help="요약 표 없이 검사 결과만")
+    ap.add_argument("--unlabeled-names", default="context", choices=["off", "context", "all"],
+                    help="라벨 없는 이름 판단(D-12 비교용). 기준선은 context 로만 잰다")
     a = ap.parse_args(argv)
     if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
         try:
@@ -393,7 +398,9 @@ def main(argv=None) -> None:
             for sc in scenes:
                 fp.write(json.dumps({"id": sc.sid, "category": sc.category, "lines": sc.lines,
                                      "gold": [g.__dict__ for g in sc.gold]}, ensure_ascii=False) + "\n")
-    rows = run(scenes)
+    if a.unlabeled_names != "context" and (a.check or a.update):
+        raise SystemExit("기준선은 --unlabeled-names context 로만 잽니다.")
+    rows = run(scenes, a.unlabeled_names)
     if not a.quiet:
         report(rows, show_all=a.all)
     if a.json:

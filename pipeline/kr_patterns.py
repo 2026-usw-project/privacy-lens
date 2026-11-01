@@ -140,6 +140,44 @@ NAME_STOPWORDS = {
 }
 
 
+# 이름(성 빼고)에 흔히 쓰는 글자. 라벨 없는 이름 후보를 고를 때 '이름처럼 생겼나'를 본다.
+# 통계 모델이 아니라 흔한 글자 목록이다. 상호·지명·일반 낱말을 일부 거르는 정도로만 기대한다.
+GIVEN_SYLLABLES = set(
+    "가강건결경고광구국규근기길나남녕다단담대덕도동두라란래려련렬령례로록룡류률리린림"
+    "마만명모목무문미민바박범별병보복봄봉부분비빈빛산상새서석선설섭성세소솔송수숙순슬승시식신실심"
+    "아안애양언엄여연열염영예오옥온완용우욱운웅원월위유윤율은을음의이익인일임"
+    "자재정제조종주준중지진찬창채천철초춘충치태택하학한해행현혁형혜호홍화환활황효후훈휘희"
+)
+# 이름이 아니라 장소·가게·물건으로 끝나는 말
+NOT_NAME_SUFFIX = ("역", "점", "식당", "약국", "마트", "나라", "문의", "특가", "상품", "병원", "학교",
+                   "센터", "은행", "카드", "택배", "시장", "구청", "동", "로", "길", "관", "집", "국",
+                   "탕", "실", "회", "당", "사", "과", "팀", "부", "층", "번", "원장",
+                   "구", "산", "문", "형")  # 강남구·한라산·남대문·최신형
+COMPOUND_SURNAMES = {"남궁", "황보", "제갈", "선우", "독고", "사공", "서문"}
+HONORIFIC = re.compile(r"(?<![가-힣])([가-힣]{3,4})(?:님|씨|께서|에게|선생님|고객님)")
+
+
+def name_candidate(token: str) -> bool:
+    """라벨 없이 쓰인 이름 후보인가. 성 + 흔한 이름 글자 두 개(3글자, 복성이면 4글자).
+
+    '확정'이 아니다. 주변 단서(연락처·주소, 명찰·학생증)가 있을 때만 가림 권장으로 쓰고,
+    단서 없는 후보는 PL_UNLABELED_NAMES=all 일 때만 검토 권장으로 낸다.
+    """
+    if not re.fullmatch(r"[가-힣]{3,4}", token) or token in NAME_STOPWORDS:
+        return False
+    if any(token.endswith(sfx) for sfx in NOT_NAME_SUFFIX):
+        return False
+    if len(token) == 4:
+        surname, given = token[:2], token[2:]
+        if surname not in COMPOUND_SURNAMES:
+            return False
+    else:
+        surname, given = token[0], token[1:]
+        if surname not in SURNAMES:
+            return False
+    return all(ch in GIVEN_SYLLABLES for ch in given)
+
+
 def looks_like_name(token: str) -> bool:
     """2~4글자 한글이고 흔한 성씨로 시작하는가. 이름이라는 '확정'은 아니다."""
     if not re.fullmatch(r"[가-힣]{2,4}", token) or token in NAME_STOPWORDS:
