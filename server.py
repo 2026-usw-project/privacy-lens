@@ -5,7 +5,8 @@
 그 때문이다. 서버가 원본을 들고 있지 않다.
 
 로깅도 마찬가지다. uvicorn 접근 로그에는 경로만 남고 본문은 남지 않는다.
-추출된 문자열은 어떤 로그에도 기록하지 않는다.
+추출된 문자열은 어떤 로그에도 기록하지 않는다. 실패한 요청은 서버 콘솔에 한 줄씩
+남긴다(메서드·경로·상태·걸린 시간·화면에 나간 문구·예외 종류). 사진·OCR 원문·API 키는 넣지 않는다.
 
 엔드포인트는 일부러 `async def` 가 아니라 `def` 다. OCR 은 수 초씩 CPU 를
 붙잡는 동기 작업이라, async 안에서 돌리면 이벤트 루프가 멈춰 요청 하나가
@@ -23,16 +24,22 @@ import asyncio
 import base64
 import io
 import json
+import logging
 import mimetypes
 import os
 import re
 import threading
+import time
+import traceback
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
 from starlette.formparsers import MultiPartParser
@@ -43,6 +50,15 @@ from pipeline import analyze as pl
 from pipeline import detect, llm_judge, metadata, ocr, redact, wording
 from pipeline.worker import OcrUnavailable, ThreadBoundBackend
 from pipeline.types import Box
+
+# 서버 콘솔 오류 기록. uvicorn 이 루트 로거를 설정하지 않으므로 직접 붙인다.
+log = logging.getLogger("privacy_lens")
+if not log.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s [privacy-lens] %(levelname)s %(message)s"))
+    log.addHandler(_handler)
+    log.setLevel(logging.INFO)
+    log.propagate = False
 
 # iPhone 기본 형식(HEIC). 패키지가 없으면 JPEG/PNG 만 받는다.
 try:
@@ -121,8 +137,49 @@ app = FastAPI(title="Privacy Lens", lifespan=_lifespan)
 app.mount("/dist/fonts", StaticFiles(directory=FRONT / "dist" / "fonts"), name="fonts")
 
 
+def _note(request: Request, message: str) -> None:
+    """실패 이유를 요청에 붙여 둔다. 아래 미들웨어가 상태 코드와 함께 한 줄로 찍는다."""
+    request.state.error_note = message[:300]
+
+
+@app.middleware("http")
+async def _log_failures(request: Request, call_next):
+    """모든 요청 중 실패(4xx·5xx)와 처리하지 못한 예외를 서버 콘솔에 남긴다. 본문은 남기지 않는다."""
+    started = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        ms = int((time.perf_counter() - started) * 1000)
+        log.error("%s %s → 500 (%dms) 처리하지 못한 예외 %s\n%s", request.method, request.url.path, ms,
+                  type(exc).__name__, "".join(traceback.format_tb(exc.__traceback__)).rstrip())
+        raise
+    if response.status_code >= 400:
+        ms = int((time.perf_counter() - started) * 1000)
+        note = getattr(request.state, "error_note", "")
+        level = logging.ERROR if response.status_code >= 500 else logging.WARNING
+        log.log(level, "%s %s → %d (%dms)%s", request.method, request.url.path, response.status_code, ms,
+                f" {note}" if note else "")
+    return response
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_error(request: Request, exc: StarletteHTTPException):
+    if isinstance(exc.detail, str):
+        _note(request, exc.detail)
+    return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error(request: Request, exc: RequestValidationError):
+    # 어떤 칸이 빠졌는지만. 보낸 값(input)은 남기지 않는다.
+    fields = sorted({".".join(str(p) for p in e.get("loc", ())) for e in exc.errors()})
+    _note(request, "입력 형식 오류: " + ", ".join(fields))
+    return await request_validation_exception_handler(request, exc)
+
+
 @app.exception_handler(OcrUnavailable)
-async def ocr_unavailable(_request, _exc):
+async def ocr_unavailable(request: Request, exc: OcrUnavailable):
+    _note(request, wording.OCR_UNAVAILABLE + (f" (원인: {exc.cause})" if getattr(exc, "cause", "") else ""))
     return JSONResponse(
         status_code=503,
         content={"detail": wording.OCR_UNAVAILABLE},
@@ -275,9 +332,17 @@ async def queue_cancel(ticket: str):
 
 
 @app.exception_handler(llm_judge.LlmJudgeError)
-async def llm_failed(_request, exc):
-    # 문구는 wording 이 만든 것뿐이다. 키·원문·공급자 응답은 담기지 않는다.
-    return JSONResponse(status_code=502, content={"detail": str(exc)})
+async def llm_failed(request: Request, exc: llm_judge.LlmJudgeError):
+    # detail 은 wording 이 만든 문구뿐이다. 서버 로그에는 공급자·모델·상태 코드까지만 남긴다.
+    # llm_trace(요청·응답, 키 가림)는 화면이 개발자 콘솔에 찍도록 응답에만 싣는다.
+    last = exc.trace[-1] if exc.trace else {}
+    where = f"{last.get('provider', '?')}/{last.get('model') or '-'}" if last else "설정"
+    status = f" HTTP {exc.status}" if exc.status else ""
+    _note(request, f"LLM 실패 [{where}{status}] {exc}")
+    content = {"detail": str(exc)}
+    if exc.trace:
+        content["llm_trace"] = exc.trace
+    return JSONResponse(status_code=502, content=content)
 
 
 def _judge(raw: str | None) -> llm_judge.JudgeConfig | None:
@@ -300,7 +365,8 @@ def llm_models(judge: str = Form(...)):
         raise HTTPException(400, str(exc))
     if cfg is None:
         return {"models": []}
-    return {"models": llm_judge.list_models(cfg)}
+    trace: list = []
+    return {"models": llm_judge.list_models(cfg, trace=trace), "llm_trace": trace}
 
 
 @app.post("/analyze")
@@ -315,7 +381,7 @@ def analyze_endpoint(
 
     with _Turn(_ticket(ticket)):
         img = _open(data)
-        report = pl.analyze(img, backend=backend(), judge=cfg)
+        report = pl.analyze(img, backend=backend(), judge=cfg, llm_trace=[] if cfg else None)
     preview, scale = _preview(img)
 
     return JSONResponse({
@@ -371,14 +437,17 @@ def redact_endpoint(
         # 원본 전체를 다시 분석하지 않는다. 검증에 필요한 건 '원본에 위치정보가
         # 있었는가' 뿐이고, 그건 EXIF 만 읽으면 된다. OCR 은 결과 파일에 한 번만.
         had_gps = bool(metadata.check_exif(img))
+        trace: list = []
         check = redact.verify(
-            wanted, out, lambda im: pl.analyze(im, backend=backend(), judge=cfg), had_gps=had_gps
+            wanted, out, lambda im: pl.analyze(im, backend=backend(), judge=cfg,
+                                               llm_trace=trace if cfg else None), had_gps=had_gps
         )
 
     return JSONResponse({
         "file": base64.b64encode(out).decode(),
         "verification": check,
         "bytes": len(out),
+        **({"llm_trace": trace} if trace else {}),
     })
 
 

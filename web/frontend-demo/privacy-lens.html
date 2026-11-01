@@ -910,6 +910,34 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       : Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
   }
 
+  // 개발자 콘솔(F12) 출력. LLM 판단을 쓰면 서버가 공급자와 주고받은 요청·응답(llm_trace, 키는 끝 4글자만)을
+  // 응답에 실어 보낸다. 사진 속 글자(OCR 원문)가 들어 있으니 콘솔에만 찍고 어디에도 저장하지 않는다.
+  function logTrace(route,trace,out=globalThis.console) {
+    if(!out || !Array.isArray(trace) || !trace.length)return;
+    for(const t of trace){
+      const head='[Privacy Lens] LLM '+(t.kind==='models'?'모델 목록':'판단')+' · '+t.provider+(t.model?' · '+t.model:'')
+        +' · '+(t.ok?'성공':'실패')+(t.status?' (HTTP '+t.status+')':'')+(Number.isFinite(t.elapsed_ms)?' · '+t.elapsed_ms+'ms':'')+' ← '+route;
+      (out.groupCollapsed||out.log).call(out,head);
+      out.log('요청',{method:t.method,url:t.url,headers:t.headers,body:t.request});
+      if(t.error)out.warn('오류',t.error);
+      out.log('응답',t.response);
+      const text=replyText(t);
+      if(text)out.log('모델이 쓴 글',text);
+      out.groupEnd?.();
+    }
+  }
+  // 공급자별 응답에서 모델이 쓴 글만 꺼내 읽기 쉽게
+  function replyText(t) {
+    const r=t.response;
+    if(!r || typeof r!=='object' || t.kind!=='judge')return '';
+    try {
+      if(t.provider==='anthropic')return r.content.filter(b=>b.type==='text').map(b=>b.text).join('');
+      if(t.provider==='gemini')return r.candidates[0].content.parts.map(p=>p.text||'').join('');
+      if(t.provider==='ollama')return r.message.content;
+      return r.choices[0].message.content;
+    } catch { return ''; }
+  }
+
   function client(base='', fetchImpl=globalThis.fetch.bind(globalThis), timeoutMs=TIMEOUT_MS) {
     async function request(route,init,signal) {
       const controller=new AbortController();
@@ -921,13 +949,16 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         const response=await fetchImpl(base+route,{credentials:'same-origin',cache:'no-store',redirect:'error',...init,signal:controller.signal});
         if(!response.ok) {
           let detail='';
-          try{const data=await response.json();detail=typeof data.detail==='string'?data.detail.slice(0,200):'';}catch{}
+          try{const data=await response.json();detail=typeof data.detail==='string'?data.detail.slice(0,200):'';logTrace(route,data.llm_trace);}catch{}
           const error=new Error(detail || (response.status===413?'사진이 너무 커요. 더 작은 사진으로 시도해 주세요.':'서버 처리에 실패했어요. (HTTP '+response.status+')'));
           error.status=response.status;
+          if(response.status!==409)globalThis.console?.warn('[Privacy Lens] '+(init.method||'GET')+' '+route+' 실패 (HTTP '+response.status+')',error.message);
           throw error;
         }
         if(!(response.headers.get('content-type')||'').includes('application/json'))throw new Error('서버가 JSON 대신 다른 형식을 반환했습니다.');
-        return await response.json();
+        const data=await response.json();
+        logTrace(route,data?.llm_trace||data?.report?.llm_trace);
+        return data;
       } catch(error) {
         if(timedOut)throw new Error('서버 응답 시간이 초과됐어요. 잠시 후 다시 시도해 주세요.');
         if(controller.signal.aborted)throw new DOMException('요청 취소','AbortError');
@@ -967,7 +998,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       }
     };
   }
-  globalThis.PrivacyLensAPI=Object.freeze({client,newTicket});
+  globalThis.PrivacyLensAPI=Object.freeze({client,newTicket,logTrace});
 })();
 
 'use strict';

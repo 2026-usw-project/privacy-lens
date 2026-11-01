@@ -119,6 +119,36 @@ def test_unparseable_reply_raises_safe_error():
     assert str(err.value) == wording.LLM_BAD_RESPONSE
 
 
+def test_trace_records_exchange_with_masked_key():
+    trace = []
+    llm_judge.evaluate(SPANS, CFG, width=300, height=200, transport=fake(reply([
+        {"i": 1, "kind": "name", "severity": "cover", "text": "홍길동"}])), trace=trace)
+    entry = trace[0]
+    assert entry["ok"] is True and entry["kind"] == "judge" and entry["provider"] == "openai"
+    assert entry["headers"]["Authorization"] == "Bearer …real"
+    assert entry["request"]["messages"][1]["content"]   # 보낸 내용
+    assert entry["response"]["choices"]                  # 받은 내용
+    assert "sk-test-not-real" not in json.dumps(trace, ensure_ascii=False)
+
+
+def test_trace_kept_when_reply_unparseable():
+    trace = []
+    with pytest.raises(LlmJudgeError) as err:
+        llm_judge.evaluate(SPANS, CFG, width=300, height=200, trace=trace,
+                           transport=fake({"choices": [{"message": {"content": "모르겠어요"}}]}))
+    assert err.value.trace is trace and trace[0]["ok"] is False
+    assert trace[0]["error"] == wording.LLM_BAD_RESPONSE and trace[0]["response"]["choices"]
+
+
+def test_trace_kept_when_provider_fails():
+    def boom(*_):
+        raise LlmJudgeError(wording.LLM_AUTH_FAILED, status=401, provider_body='{"error":"bad key"}')
+    trace = []
+    with pytest.raises(LlmJudgeError):
+        llm_judge.evaluate(SPANS, CFG, width=300, height=200, transport=boom, trace=trace)
+    assert trace[0]["status"] == 401 and trace[0]["response"] == '{"error":"bad key"}'
+
+
 def test_no_spans_no_call():
     def boom(*_):
         raise AssertionError("부르면 안 된다")
