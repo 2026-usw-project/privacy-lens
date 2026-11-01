@@ -257,3 +257,16 @@ def test_import_backgrounds_are_train_only_empty_and_used_by_synth(ws, tmp_path)
     assert all((ws.dataset / "labels" / f"{r.id}.txt").read_text() == "" for r in rows)
     synth = pytest.importorskip("vision.synth", exc_type=Exception)
     assert len(synth._background_photos(ws, ws.load())) == 2       # 합성 배경으로 쓰인다
+
+
+def test_promotion_blocked_without_real_val_or_test():
+    from vision.train import decide_promotion
+    # 실사 검증이 없으면 점수가 높아도 기존 모델을 바꾸지 않는다
+    assert decide_promotion(True, n_val=0, n_test=0, has_current=True) == (False, True)
+    # 첫 모델은 비교 대상이 없으니 쓴다
+    assert decide_promotion(True, n_val=0, n_test=0, has_current=False) == (True, False)
+    # 실사로 잰 경우는 점수대로
+    assert decide_promotion(True, n_val=3, n_test=0, has_current=True) == (True, False)
+    assert decide_promotion(False, n_val=3, n_test=2, has_current=True) == (False, False)
+    # --force 는 언제나 교체
+    assert decide_promotion(False, n_val=0, n_test=0, has_current=True, force=True) == (True, False)
