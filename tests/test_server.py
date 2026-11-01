@@ -312,3 +312,30 @@ def test_zero_denominator_gps_is_reported(client, monkeypatch):
     assert response.status_code == 200
     gps = next(f for f in response.json()["report"]["findings"] if f["kind"] == "gps")
     assert gps["certainty"] == "region" and gps["detail"] == {}
+
+
+def test_between_one_and_two_times_pixel_limit_is_413(client):
+    # Pillow 는 한도의 2배를 넘어야 오류를 낸다. 1~2배 사이(예: 7천만 화소)도 막아야 한다
+    buf = io.BytesIO()
+    Image.new("L", (10000, 7000), 255).save(buf, "PNG")
+    r = client.post("/analyze", files={"image": ("big.png", buf.getvalue())})
+    assert r.status_code == 413
+
+
+@pytest.mark.parametrize("mode", ["CMYK", "RGBA", "I;16", "P", "LA"])
+def test_unusual_image_modes_reach_ocr_as_rgb(client, monkeypatch, mode):
+    # CMYK JPEG 은 Tesseract 에서 503(문자 인식 실패)이 났다(eval.stability)
+    seen = []
+
+    class Spy(ocr.ScriptedBackend):
+        def read(self, image):
+            seen.append(image.mode)
+            return super().read(image)
+
+    monkeypatch.setattr(server, "_backend", Spy([TextSpan("받는분 010-1234-5678", Box(10, 10, 200, 20), 0.95)]))
+    img = Image.new("RGB", (300, 200), "white")
+    img = img.convert("L").convert("I;16") if mode == "I;16" else img.convert(mode)
+    buf = io.BytesIO()
+    img.save(buf, "JPEG" if mode == "CMYK" else "PNG")
+    r = client.post("/analyze", files={"image": ("a", buf.getvalue())})
+    assert r.status_code == 200 and seen == ["RGB"]

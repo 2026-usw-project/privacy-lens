@@ -165,3 +165,10 @@ def test_strip_removes_exif_and_applies_rotation(tmp_path):
     assert failures.strip(tmp_path) == 1
     with Image.open(tmp_path / "a.jpg") as out:
         assert not out.getexif() and out.size == (20, 40)
+
+
+def test_ner_compare_rules_engine_runs_without_models():
+    from eval import ner_compare
+    r = ner_compare.score(ner_compare.Rules(), judgment.build(per_template=1))
+    assert r["name_total"] > 0 and r["name_hit"] <= r["name_total"]
+    assert r["list_names_total"] == len(ner_compare.names_check.GIVEN)

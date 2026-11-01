@@ -37,19 +37,21 @@ def analyze(
     if detector is _AUTO:
         detector = detect.get_detector()
 
-    spans, raw_ocr = ocr.read_with_raw(backend, image)
+    # 위치정보(EXIF)는 원본에서, 글자·문서·코드는 RGB 로 바꾼 사본에서 본다(CMYK·16비트·투명 PNG)
+    pixels = ocr.ocr_ready(image)
+    spans, raw_ocr = ocr.read_with_raw(backend, pixels)
 
     # 문서 검출 → 작게 찍힌 문서는 잘라 확대해서 다시 읽는다
-    dets = detector.detect(image) if detector is not None else []
+    dets = detector.detect(pixels) if detector is not None else []
     if dets:
-        spans, _ = detect.reread_documents(image, spans, dets, backend, raw_ocr=raw_ocr)
+        spans, _ = detect.reread_documents(pixels, spans, dets, backend, raw_ocr=raw_ocr)
 
     findings = context.evaluate(spans, use_context=use_context, naive=naive)
 
     if check_meta:
         findings.extend(metadata.check_exif(image))
     if check_codes:
-        findings.extend(metadata.check_codes(image))
+        findings.extend(metadata.check_codes(pixels))
     if dets:
         # 다시 읽어도 못 읽은 문서, 증명사진, 해독 못 한 코드는 영역으로 알린다
         findings.extend(detect.region_findings(dets, spans, findings))

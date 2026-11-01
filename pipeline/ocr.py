@@ -32,8 +32,32 @@ class OcrBackend(Protocol):
     def read(self, image: Image.Image) -> list[TextSpan]: ...
 
 
+def ocr_ready(image: Image.Image) -> Image.Image:
+    """OCR·검출에 넣을 RGB 이미지. 크기와 좌표는 그대로다.
+
+    CMYK JPEG 은 Tesseract 가 받지 못해 '문자 인식 실패'가 났고(eval.stability),
+    16비트 흑백을 그냥 변환하면 255 에서 잘려 글자가 하얗게 날아갔다.
+    투명 PNG 는 흰 바탕에 얹는다(투명한 부분이 검게 변하면 검은 글자가 사라진다).
+    """
+    if image.mode == "RGB":
+        return image
+    if image.mode in ("I;16", "I;16B", "I;16L", "I", "F"):
+        import numpy as np
+        arr = np.asarray(image, dtype=np.float64)
+        lo, hi = float(arr.min()), float(arr.max())
+        scaled = (arr - lo) * (255.0 / (hi - lo)) if hi > lo else np.zeros_like(arr)
+        return Image.fromarray(scaled.astype("uint8"), "L").convert("RGB")
+    if image.mode in ("RGBA", "LA", "PA") or (image.mode == "P" and "transparency" in image.info):
+        rgba = image.convert("RGBA")
+        bg = Image.new("RGB", rgba.size, (255, 255, 255))
+        bg.paste(rgba, mask=rgba.getchannel("A"))
+        return bg
+    return image.convert("RGB")
+
+
 def read_with_raw(backend, image: Image.Image) -> tuple[list[TextSpan], list[TextSpan]]:
     """한 번의 추론으로 판정용 조각과 병합 전 원문을 함께 얻는다."""
+    image = ocr_ready(image)
     reader = getattr(backend, "read_with_raw", None)
     if reader is not None:
         return reader(image)
