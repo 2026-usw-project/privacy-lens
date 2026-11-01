@@ -228,8 +228,10 @@ privacy-lens/
 │   ├── dist/             화면 편집 원본 (HTML · CSS · JavaScript)
 │   ├── scripts/          정적 검사 · API 계약 검사 · 빌드
 │   └── privacy-lens.html 서버에서 제공하는 빌드 결과물
-├── eval/                 비교 실험 · 회전 실험
-├── samples/              가상 정보 기반 합성 샘플 생성
+├── eval/                 비교·회전 실험 · 판단 평가 · 실사 실패 원인 · 정답 입력 도구
+├── samples/              가상 정보 기반 합성 샘플 · 촬영용 소품
+├── vision/               YOLO 문서 검출 학습 도구(선택)
+├── .github/              CI · PR·이슈 양식
 ├── tests/                백엔드 회귀 테스트
 └── docs/                 설계 · 개발 기록 · 역할 · 결정 사항
 ```
@@ -242,6 +244,23 @@ privacy-lens/
 
 ```bash
 python -m pytest tests
+```
+
+**판단 회귀 검사** — 판단 규칙(`pipeline/`)을 고쳤다면 실행합니다. OCR 없이 가상 텍스트 장면으로 판단만 재며, 기준선보다 나빠지면 실패합니다. PR 마다 CI 가 같은 검사를 돌립니다.
+
+```bash
+python -m eval.judgment            # 항목별 결과와 틀린 사례
+python -m eval.judgment --check    # 기준선 비교
+python -m eval.judgment --update   # 좋아졌으면 기준선 갱신(결과 파일을 같이 커밋)
+```
+
+**실사 평가** — 팀원이 찍은 사진으로 놓친 원인을 나눕니다. 사진과 정답은 저장소가 아니라 팀 드라이브에 둡니다. 절차는 [실사 평가 가이드](docs/REAL_PHOTO_GUIDE.md), Colab 은 `eval/colab_eval.ipynb`.
+
+```bash
+python -m samples.props <폴더>                # 촬영용 가상 소품 인쇄물 + 정답
+python -m eval.failures strip <폴더>          # 위치정보 지우기
+python -m eval.failures init <폴더>           # 정답 틀 + 정답입력도구.html
+python -m eval.failures run <폴더> --note "…" # ① 못 찾음 ② 잘못 읽음 ③ 판단 실패, 평가기록.csv 누적
 ```
 
 **화면 검사·빌드** — 화면을 수정했다면 아래 순서로 실행합니다.
@@ -301,6 +320,7 @@ python -m eval.rotation
 - `feat/<모듈>-<내용>` 브랜치에서 작업하고, PR에 리뷰 1인 승인을 받은 뒤 병합합니다. `main`에 직접 push하지 않습니다.
 - 실사 이미지, OCR 원문, 실제 개인정보는 커밋하거나 로그에 기록하지 않습니다. 샘플과 정답에는 가상 정보만 사용합니다.
 - 문서·주석·커밋 메시지는 한국어, 식별자는 영어를 사용합니다. 커밋 메시지 형식은 `type(scope): 설명`입니다.
+- PR 을 올리면 CI(테스트 · 판단 회귀 · 화면 점검)가 자동으로 돕니다. 빨간 X 가 뜨면 병합하지 않습니다.
 - AI 코딩 도구를 사용하는 경우 [AGENTS.md](AGENTS.md)를 먼저 확인합니다.
 
 ## 알려진 한계
@@ -330,6 +350,9 @@ python -m eval.rotation
 
 | 문서 | 내용 |
 |---|---|
+| [1차 완성 계획](docs/PLAN_1ST.md) | 지금 문제 · 완료 기준 · 할 일과 담당 · 개발 도구 |
+| [가림 기준표](docs/MASKING_CRITERIA.md) | 항목별 가림 / 확인 필요 / 가리지 않음 기준(초안) |
+| [실사 평가 가이드](docs/REAL_PHOTO_GUIDE.md) | 촬영 · 개인정보 처리 · 정답 입력 · 평가 |
 | [개발 노트](docs/DEVELOPMENT.md) | 설치 세부 · 설계 원칙 · 판정 규칙 · 측정 기록 · 알려진 한계 |
 | [아키텍처](docs/ARCHITECTURE.md) | 처리 흐름 · 모듈 구성 · API · 개인정보 보호 원칙 |
 | [결정 사항](docs/DECISIONS.md) | 결정 이력 · 미결 사항 · 백엔드 교체 기록 |

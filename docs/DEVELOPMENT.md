@@ -618,9 +618,10 @@ Linux에서 여러 요청을 처리할 때 글줄 방향 추론의 `predictor.ru
 
 ## 다음 할 일
 
-1. 실사 사진 100장 수집 (촬영자와 평가 설계자 분리)
-2. PaddleOCR + Presidio 베이스라인으로 현재 성능 측정
-3. 그 숫자를 보고 개선 지점 결정
+[1차 완성 계획](PLAN_1ST.md) 으로 옮겼다. 요약하면
+1. 가림 기준표 합의([MASKING_CRITERIA.md](MASKING_CRITERIA.md))
+2. 실사 사진 30장 + 정답([REAL_PHOTO_GUIDE.md](REAL_PHOTO_GUIDE.md)) → `eval.failures` 로 원인 비율
+3. 판단 보강은 `eval.judgment` 기준선을 지키면서
 
 기획은 여기서 끝. 다음 논쟁은 숫자가 정리해준다.
 

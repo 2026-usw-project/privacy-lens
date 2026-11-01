@@ -13,6 +13,11 @@ Privacy Lens — 사진을 SNS·중고거래에 올리기 전에 배경의 개�
 - 이전의 `server/`·`reader/`·`schema/`·`data/`·React 앱은 삭제했습니다. [docs/DECISIONS.md](docs/DECISIONS.md)의 '교체로 사실상 정해진 것'을 먼저 봅니다.
 - **YOLO 문서 검출(선택)**: `pipeline/detect.py` 는 `PL_YOLO_WEIGHTS` 또는 프로젝트 `models/v<최대 숫자>/best.pt`(버전 폴더가 없으면 `models/best.pt`)를 사용합니다. 모델이 없으면 OCR만 실행하며 `PL_YOLO=off`로 끌 수 있습니다. 학습 도구는 새 `vision/`(예전 `vision/` 과 무관)이고, 사진·라벨·모델은 저장소가 아니라 팀 구글 드라이브 `PrivacyLens-YOLO` 에 둡니다. 사용법은 [vision/README.md](vision/README.md).
 
+## 지금 단계 (2026-11-01~)
+
+**1차 완성(안정화)** 단계입니다. [docs/PLAN_1ST.md](docs/PLAN_1ST.md) 의 할 일 표를 기준으로 일하고, 새 기능은 2차로 미룹니다.
+판단 기준은 [docs/MASKING_CRITERIA.md](docs/MASKING_CRITERIA.md)(초안), 실사 평가 절차는 [docs/REAL_PHOTO_GUIDE.md](docs/REAL_PHOTO_GUIDE.md) 입니다.
+
 ## 작업 전에
 
 1. 사용자의 역할(1~5번)을 모르면 먼저 묻고, [docs/ROLES.md](docs/ROLES.md)에서 그 역할의 범위를 확인합니다. ROLES 의 폴더 이름은 교체 전 기준이니 지금 구조로 바꿔 읽습니다.
@@ -26,6 +31,8 @@ Privacy Lens — 사진을 SNS·중고거래에 올리기 전에 배경의 개�
 - **출력 문구**: 사용자에게 나가는 문장은 `pipeline/wording.py` 에서만 만듭니다. 단정 표현은 `assert_safe()` 가 막습니다.
 - **개인정보**: 실사 이미지, OCR 원문, 실제 개인정보를 커밋·로그·외부 API로 내보내지 않습니다. 샘플과 정답에는 가상 정보만 씁니다. 서버는 업로드를 디스크에 쓰지 않습니다.
 - **측정**: 성능 수치는 측정한 것만 씁니다. 합성 샘플 숫자는 실사로 다시 재야 한다고 함께 적습니다.
+- **판단 규칙을 고치면** `python -m eval.judgment --check` 를 통과해야 합니다. 좋아졌으면 `--update` 로 `eval/baselines/judgment.json` 을 갱신해 같이 커밋합니다. 놓친 사례를 고칠 때는 먼저 `eval/judgment.py` 에 같은 유형의 가상 장면을 넣고 고칩니다.
+- **실사 평가 사진·정답·`평가기록.csv`** 는 팀 드라이브 `PrivacyLens-Eval/` 에만 둡니다. `eval.failures --show-text` 출력은 공유하지 않습니다.
 - **화면을 고치면** `node scripts/check.mjs`, `node scripts/check-contract.mjs`, `node scripts/build.mjs` 를 차례로 돌립니다.
 - **언어와 커밋**: 문서·주석·커밋 메시지는 한국어, 식별자는 영어로 씁니다. 커밋 메시지는 `type(scope): 설명` 형식입니다.
 
@@ -35,6 +42,9 @@ Privacy Lens — 사진을 SNS·중고거래에 올리기 전에 배경의 개�
 pip install -r requirements.txt
 python run.py                              # 환경 점검 → 서버 + 화면 (http://127.0.0.1:8000)
 python -m pytest tests                     # 백엔드 테스트 (OCR 불필요)
+python -m eval.judgment --check            # 판단 회귀 검사(OCR 불필요, CI 와 같음)
+python -m eval.failures run <폴더>          # 실사 실패 원인 분류(사진은 드라이브)
+python -m samples.props <폴더>              # 촬영용 가상 소품 + 정답
 python -m eval.compare samples/out         # 비교 실험
 PL_OCR=paddleocr python -m eval.rotation   # 회전 실험
 PL_OCR=paddleocr python -m eval.realtext run <평가 묶음>              # AI 허브 실사 평가(데이터는 승인받은 본인만)
