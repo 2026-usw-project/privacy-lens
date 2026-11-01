@@ -105,6 +105,25 @@ def found(kind: str, *, near: str | None = None) -> str:
     return assert_safe(f"{josa(noun)} 인식됨")
 
 
+def found_in_document(kind: str, doc: str) -> str:
+    """LLM 판단의 '문서 종류' 근거. '학생증으로 보이는 문서 안에서 …'"""
+    noun = KIND_NOUN.get(kind, "개인정보 후보")
+    where = DOC_NOUN.get(doc, "문서 또는 카드")
+    return assert_safe(f"{josa(where, '으로/로')} 보이는 문서 안에서 {josa(noun)} 인식됨")
+
+
+def found_linked(kind: str, other: str) -> str:
+    """LLM 판단의 '함께 있는 개인정보' 근거. 값이 아니라 종류만 말한다."""
+    noun = KIND_NOUN.get(kind, "개인정보 후보")
+    with_noun = KIND_NOUN.get(other, "다른 개인정보")
+    return assert_safe(f"{josa(with_noun, '과/와')} 함께 있는 {josa(noun)} 인식됨")
+
+
+def found_honorific(kind: str) -> str:
+    noun = KIND_NOUN.get(kind, "개인정보 후보")
+    return assert_safe(f"호칭이 붙은 {josa(noun)} 인식됨")
+
+
 def found_public(kind: str, *, near: str | None = None) -> str:
     noun = KIND_NOUN.get(kind, "문자열")
     hint = f"'{near}' 주변이라 " if near else ""
@@ -202,7 +221,8 @@ def all_templates() -> list[str]:
     out = []
     for kind in KIND_NOUN:
         out += [found(kind), found(kind, near="수취인"),
-                found_public(kind), found_public(kind, near="고객센터")]
+                found_public(kind), found_public(kind, near="고객센터"),
+                found_in_document(kind, "student"), found_linked(kind, "card"), found_honorific(kind)]
     for doc in list(DOC_NOUN) + [None]:
         out += [region_only(doc), document_unconfirmed(doc), combined(doc, ["휴대전화번호", "도로명주소"])]
     for kind in ("url", "vcard", "wifi", "tel", "text", "unknown"):

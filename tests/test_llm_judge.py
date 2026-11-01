@@ -65,24 +65,99 @@ def test_ollama_needs_no_key_and_has_default_url():
 
 def test_llm_findings_become_report_items():
     out = llm_judge.evaluate(SPANS, CFG, width=300, height=200, transport=fake(reply([
-        {"i": 1, "kind": "name", "severity": "cover", "text": "홍길동", "near": "받는분"},
-        {"i": 2, "kind": "mobile", "severity": "cover", "text": "010-1234-5678", "near": "연락처"},
-        {"i": 3, "kind": "service_line", "severity": "info", "text": "1588-0000", "near": "고객센터"},
+        {"i": [1], "kind": "name", "severity": "cover", "text": "홍길동", "basis": "label", "label_i": 0},
+        # 라벨과 값이 한 조각: 값 앞부분이 라벨
+        {"i": 2, "kind": "mobile", "severity": "cover", "text": "010-1234-5678", "basis": "label", "label_i": 2},
+        {"i": 3, "kind": "service_line", "severity": "info", "text": "1588-0000", "basis": "label", "label_i": 3},
     ])))
     by = {f.kind: f for f in out}
     assert by["name"].severity is Severity.COVER and by["name"].box == SPANS[1].box
     assert by["name"].message == wording.found("name", near="받는분")
+    assert by["name"].detail["basis"] == "label" and by["name"].detail["basis_box"] == SPANS[0].box.as_dict()
     assert by["mobile"].evidence_text == "010-1234-5678"
+    assert by["mobile"].message == wording.found("mobile", near="연락처")
     assert by["service_line"].message == wording.found_public("service_line", near="고객센터")
-    assert all(f.detail == {"judge": "llm"} for f in out)
 
 
-def test_invented_text_and_labels_are_not_shown():
+def test_invented_text_is_not_shown():
     out = llm_judge.evaluate(SPANS, CFG, width=300, height=200, transport=fake(reply([
-        {"i": 2, "kind": "mobile", "severity": "cover", "text": "010-9999-9999", "near": "수취인 전화"},
+        {"i": 2, "kind": "mobile", "severity": "cover", "text": "010-9999-9999", "basis": "format"},
     ])))
     assert out[0].evidence_text == SPANS[2].text   # 조각에 없는 값 대신 조각 원문
-    assert out[0].context_words == []               # 사진에 없는 라벨은 근거로 쓰지 않는다
+    assert out[0].message == wording.found("mobile") and out[0].context_words == []
+
+
+# 카드 장면(가상): 카드번호가 4자리씩 끊겨 읽히고, 아래에 유효기간 라벨과 영문 이름, 멀리 떨어진 다른 종이
+CARD = [
+    TextSpan("가상카드", Box(20, 20, 120, 30), 0.97),         # 0 카드사
+    TextSpan("1234", Box(20, 100, 80, 30), 0.96),             # 1
+    TextSpan("5678", Box(110, 100, 80, 30), 0.96),            # 2
+    TextSpan("9012", Box(200, 100, 80, 30), 0.96),            # 3
+    TextSpan("3456", Box(290, 100, 80, 30), 0.96),            # 4
+    TextSpan("VALID THRU", Box(20, 150, 110, 20), 0.95),      # 5
+    TextSpan("01/30", Box(140, 150, 60, 20), 0.95),           # 6
+    TextSpan("HONG GILDONG", Box(20, 190, 200, 24), 0.95),    # 7
+    TextSpan("고객센터", Box(1500, 1500, 100, 24), 0.95),       # 8 다른 종이, 멀리
+]
+
+
+def card_eval(findings):
+    return llm_judge.evaluate(CARD, CFG, width=2000, height=2000, transport=fake(reply(findings)))
+
+
+def test_split_value_becomes_one_item_with_joined_box():
+    out = card_eval([{"i": [1, 2, 3, 4], "kind": "card", "severity": "cover", "text": "1234 5678 9012 3456",
+                      "basis": "format"}])
+    assert len(out) == 1
+    assert out[0].box.as_dict() == {"x": 20, "y": 100, "w": 350, "h": 30}
+    assert out[0].evidence_text == "1234 5678 9012 3456" and out[0].detail["parts"] == 4
+
+
+def test_label_must_be_near_and_not_a_value():
+    out = card_eval([
+        {"i": [1, 2, 3, 4], "kind": "card", "severity": "cover", "basis": "format"},
+        {"i": 6, "kind": "other", "severity": "cover", "text": "01/30", "basis": "label", "label_i": 5},
+        # 멀리 있는 조각을 라벨로 → 형식 근거로 내림
+        {"i": 7, "kind": "name", "severity": "cover", "basis": "label", "label_i": 8},
+    ])
+    by = {f.kind: f for f in out}
+    assert by["other"].message == wording.found("other", near="VALID THRU")
+    assert by["name"].message == wording.found("name") and by["name"].detail["basis"] == "format"
+
+    # 다른 개인정보 값(카드번호 조각)을 라벨로 → 내림
+    out = card_eval([
+        {"i": [1, 2, 3, 4], "kind": "card", "severity": "cover", "basis": "format"},
+        {"i": 7, "kind": "name", "severity": "cover", "basis": "label", "label_i": 4},
+    ])
+    name = next(f for f in out if f.kind == "name")
+    assert name.context_words == [] and "3456" not in name.message
+
+
+def test_linked_and_document_basis_name_kinds_not_values():
+    out = card_eval([
+        {"i": [1, 2, 3, 4], "kind": "card", "severity": "cover", "basis": "format"},
+        {"i": 7, "kind": "name", "severity": "cover", "basis": "linked", "with": [1, 99]},
+        {"i": 0, "kind": "other", "severity": "review", "basis": "document", "doc": "id_card"},
+    ])
+    by = {f.kind: f for f in out}
+    assert by["name"].message == wording.found_linked("name", "card")
+    assert "1234" not in by["name"].message and by["name"].detail["linked_kinds"] == ["card"]
+    assert by["other"].message == wording.found_in_document("other", "id_card")
+    assert by["other"].detail["document_hint"] == "id_card"
+
+    # 목록에 없는 문서, 이번 출력에 없는 개인정보와의 연결 → 형식 근거
+    out = card_eval([
+        {"i": 7, "kind": "name", "severity": "cover", "basis": "linked", "with": [6]},
+        {"i": 0, "kind": "other", "severity": "review", "basis": "document", "doc": "passport"},
+    ])
+    assert all(f.detail["basis"] == "format" for f in out)
+
+
+def test_honorific_only_for_names():
+    spans = [TextSpan("홍길동님", Box(0, 0, 80, 20), 0.95)]
+    out = llm_judge.evaluate(spans, CFG, width=100, height=100, transport=fake(reply([
+        {"i": 0, "kind": "name", "severity": "review", "text": "홍길동", "basis": "honorific"}])))
+    assert out[0].message == wording.found_honorific("name")
 
 
 def test_unreadable_span_stays_region_only():
@@ -188,7 +263,21 @@ def test_prompt_carries_spans_and_positions():
     llm_judge.evaluate(SPANS, CFG, width=300, height=200, transport=fake(reply([]), seen))
     user = json.loads(seen["body"]["messages"][1]["content"])
     assert user["image"] == {"width": 300, "height": 200}
-    assert user["spans"][2]["text"] == SPANS[2].text and user["spans"][2]["y"] == 40
+    span = user["spans"][2]
+    assert span["text"] == SPANS[2].text and span["box"] == [10, 40, 200, 20]
+    # 글줄 관계: '홍길동'의 바로 왼쪽은 '받는분', 같은 줄에서 두 번째
+    name = user["spans"][1]
+    assert name["left"] == 0 and name["line"] == user["spans"][0]["line"] and name["order"] == 1
+    assert user["spans"][0]["left"] is None
+
+
+def test_relations_lines_and_documents():
+    rel = llm_judge._relations(CARD)
+    assert {rel[k]["line"] for k in (1, 2, 3, 4)} == {rel[1]["line"]}          # 카드번호 네 조각은 한 줄
+    assert [rel[k]["order"] for k in (1, 2, 3, 4)] == [0, 1, 2, 3]
+    assert rel[2]["left"] == 1 and rel[6]["left"] == 5
+    assert rel[0]["line"] < rel[1]["line"] < rel[5]["line"] < rel[7]["line"]   # 위에서 아래로
+    assert rel[8]["doc"] != rel[1]["doc"]                                       # 멀리 있는 종이는 다른 묶음
 
 
 # ------------------------------------------------------------------ 파이프라인

@@ -26,8 +26,10 @@ from dataclasses import dataclass
 from typing import Callable
 
 from . import wording
-from .context import _certainty_from_ocr, _region_only
-from .types import Certainty, Finding, Severity, TextSpan
+from .context import CONTEXT_RADIUS_EM, _certainty_from_ocr, _region_only
+from .grouping import _cluster
+from .layout import layout
+from .types import Box, Certainty, Finding, Severity, TextSpan
 
 PROVIDERS = {
     "openai": "ChatGPT",
@@ -50,6 +52,11 @@ KINDS = [
     "tracking", "brn", "long_digits", "other",
 ]
 SEVERITIES = {"cover": Severity.COVER, "review": Severity.REVIEW, "info": Severity.INFO}
+# basis=document 일 때 받는 문서 종류(wording.DOC_NOUN 의 키)
+DOCS = {"waybill", "student", "id_card", "badge", "receipt", "screen"}
+MAX_PARTS = 8            # 한 값으로 묶을 수 있는 조각 수(4자리씩 끊긴 카드번호 등)
+LABEL_MAX = 12           # 라벨로 인정할 최대 글자 수(공백 빼고). 'VALID THRU' 같은 영문 라벨까지
+_WORSE = [Certainty.READ, Certainty.PARTIAL, Certainty.REGION_ONLY]
 
 TIMEOUT_S = 90
 MAX_SPANS = 400          # 한 번에 보낼 조각 수 상한. 넘는 조각은 보내지 않고 판단도 하지 않는다
@@ -57,8 +64,12 @@ MAX_SPAN_CHARS = 200
 MAX_FIELD = 500
 
 SYSTEM_PROMPT = """너는 사진 속 개인정보를 가려 주는 서비스의 판단기다.
-OCR 이 사진에서 읽은 글자 조각 목록을 받는다. 각 조각은 번호(i), 글자(text), 원본 픽셀 상자(x, y, w, h), OCR 신뢰도(conf)를 가진다.
-상자 위치로 같은 줄·바로 왼쪽·바로 윗줄을 판단해 라벨과 값을 연결한다.
+OCR 이 사진에서 읽은 글자 조각 목록을 받는다. 각 조각:
+- i: 번호, text: 글자, conf: OCR 신뢰도, box: 원본 픽셀 상자 [x, y, w, h]
+- line: 몇 번째 글줄인지, order: 그 줄에서 몇 번째인지(기울어진 사진도 글줄 방향 기준)
+- left: 같은 줄 바로 왼쪽(앞) 조각 번호, above: 바로 윗줄에 줄머리를 맞춘 조각 번호(없으면 null)
+- doc: 같은 종이(문서)로 묶인 묶음 번호. 다른 묶음의 정보는 서로의 근거로 쓰지 않는다
+라벨과 값은 left·above 로 연결한다. 좌표를 직접 계산하기보다 이 관계를 먼저 본다.
 
 등급
 - cover: 혼자서 또는 옆 정보와 합쳐 특정 개인을 알아볼 수 있다(가림 권장)
@@ -78,7 +89,17 @@ tracking(운송장번호), brn(사업자등록번호), long_digits(정체 모를
 - 라벨 없는 긴 숫자는 계좌인지 주문번호인지 알 수 없으므로 info(long_digits).
 
 출력: JSON 객체 하나만. 설명·코드블록 없이.
-{"findings":[{"i":조각번호,"kind":"종류","severity":"cover|review|info","text":"조각 안의 해당 값 그대로","near":"근거가 된 옆 라벨(없으면 빈 문자열)"}]}
+{"findings":[{"i":[조각번호,...],"kind":"종류","severity":"cover|review|info","text":"조각 안의 해당 값 그대로",
+  "basis":"label|document|linked|honorific|format","label_i":라벨 조각번호,"doc":"문서 종류","with":[함께 있는 개인정보의 조각번호,...]}]}
+- i: 한 값이 여러 조각으로 나뉘었으면(예: 4자리씩 끊긴 카드번호) 모두 넣는다. 한 조각이면 [번호].
+- 좌표·상자는 출력하지 않는다. 서버가 조각 번호로 OCR 좌표를 쓴다.
+- basis: 판단 근거의 종류 하나.
+  label: 옆 라벨이 근거('연락처', '받는분', 'VALID THRU' 등). label_i 에 그 라벨 조각 번호(보통 left 나 above). 다른 개인정보 값은 라벨이 아니다.
+  document: 문서 종류가 근거. doc 은 waybill(송장)·student(학생증)·id_card(신분증·카드)·badge(명찰·사원증)·receipt(영수증)·screen(화면) 중 하나.
+  linked: 같은 묶음의 다른 개인정보와 함께 있는 것이 근거. with 에 그 개인정보의 조각 번호(이 출력에 함께 넣은 것만).
+  honorific: '…님'·'…씨' 같은 호칭이 근거.
+  format: 형식만 보고 판단(주민번호 체크섬, 카드번호 16자리 등).
+- 공개 정보(info)는 공개를 알려 주는 라벨('고객센터' 등)을 label 로 준다.
 개인정보가 아닌 조각은 넣지 않는다. text 는 조각 글자에 실제로 있는 부분만 그대로 옮기고, 고치거나 지어내지 않는다."""
 
 
@@ -312,15 +333,63 @@ def _fail(trace: list | None, message: str) -> LlmJudgeError:
 
 # ------------------------------------------------------------------ 판단
 
+def _hull(boxes: list[Box]) -> Box:
+    """여러 조각을 덮는 상자. 한 조각이면 외곽선(poly)까지 그대로."""
+    if len(boxes) == 1:
+        return boxes[0]
+    x0, y0 = min(b.x for b in boxes), min(b.y for b in boxes)
+    x1, y1 = max(b.x + b.w for b in boxes), max(b.y + b.h for b in boxes)
+    return Box(x0, y0, x1 - x0, y1 - y0)
+
+
+def _relations(spans: list[TextSpan]) -> list[dict]:
+    """조각마다 글줄 번호·순서·바로 왼쪽·바로 윗줄·문서 묶음. 규칙 판단과 같은 글줄 좌표계(layout)로 잰다.
+
+    LLM 은 숫자 좌표로 '같은 줄인지'를 계산하는 데 약하다(기울어진 사진에서 특히). 관계를 미리 풀어 준다.
+    """
+    lay = layout(spans)
+    n = len(spans)
+    left = [next(iter(lay.left_neighbors(i)), None) for i in range(n)]
+    above = [lay.line_above(i) for i in range(n)]
+
+    # 같은 줄: 바로 왼쪽으로 이어지는 조각끼리 묶는다
+    parent = list(range(n))
+
+    def find(k: int) -> int:
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]
+            k = parent[k]
+        return k
+
+    for i, j in enumerate(left):
+        if j is not None:
+            parent[find(i)] = find(j)
+    # 글줄 좌표계에서의 위치(줄 순서·줄 안 순서). 첫 조각의 좌표계를 기준으로 쓴다
+    ext = [lay.pair(0, k)[1] for k in range(n)]
+    lines: dict[int, list[int]] = {}
+    for k in range(n):
+        lines.setdefault(find(k), []).append(k)
+    ordered = sorted(lines.values(), key=lambda ks: sum(ext[k].mid_c for k in ks) / len(ks))
+    line_of, order_of = [0] * n, [0] * n
+    for li, ks in enumerate(ordered):
+        for oi, k in enumerate(sorted(ks, key=lambda k: ext[k].a0)):
+            line_of[k], order_of[k] = li, oi
+
+    doc_of = [0] * n
+    for di, ks in enumerate(_cluster(spans)):
+        for k in ks:
+            doc_of[k] = di
+    return [{"line": line_of[k], "order": order_of[k], "left": left[k], "above": above[k], "doc": doc_of[k]}
+            for k in range(n)]
+
+
 def _user_message(spans: list[TextSpan], width: int, height: int) -> str:
-    items = [{"i": i, "text": s.text[:MAX_SPAN_CHARS], "x": s.box.x, "y": s.box.y, "w": s.box.w, "h": s.box.h,
-              "conf": round(s.ocr_confidence, 2)}
-             for i, s in enumerate(spans[:MAX_SPANS])]
+    sent = spans[:MAX_SPANS]
+    rel = _relations(sent)
+    items = [{"i": i, "text": s.text[:MAX_SPAN_CHARS], "conf": round(s.ocr_confidence, 2),
+              "box": [s.box.x, s.box.y, s.box.w, s.box.h], **rel[i]}
+             for i, s in enumerate(sent)]
     return json.dumps({"image": {"width": width, "height": height}, "spans": items}, ensure_ascii=False)
-
-
-def _squash(text: str) -> str:
-    return re.sub(r"\s+", "", text)
 
 
 def _evidence(claimed: str, span_text: str) -> str:
@@ -329,47 +398,116 @@ def _evidence(claimed: str, span_text: str) -> str:
     return claimed if claimed and claimed in span_text else span_text
 
 
-def _near(word: str, spans: list[TextSpan]) -> str | None:
-    """근거 라벨은 사진에 실제로 있는 글자일 때만 쓴다."""
-    word = (word or "").strip()[:20]
-    if not word or not any(_squash(word) in _squash(s.text) for s in spans):
+def _indices(raw, limit: int) -> list[int]:
+    """i 는 번호 하나 또는 번호 목록. 범위 밖·중복·불리언은 버린다."""
+    items = raw if isinstance(raw, list) else [raw]
+    out: list[int] = []
+    for v in items[:MAX_PARTS]:
+        if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < limit and v not in out:
+            out.append(v)
+    return out
+
+
+def _clean_label(text: str) -> str | None:
+    text = re.sub(r"\s+", " ", text).strip().strip(":：-").strip()
+    return text if text and len(text.replace(" ", "")) <= LABEL_MAX else None
+
+
+def _label_ok(label_i, value_idx: list[int], spans: list[TextSpan], value_spans: set[int],
+              evidence: str) -> str | None:
+    """라벨 근거를 위치로 확인한다. 같은 줄 바로 앞, 바로 윗줄, 또는 문맥 반경 안이어야 하고,
+    다른 개인정보 값이 아니며, 라벨이라 부를 만큼 짧아야 한다. 통과하면 라벨 글자, 아니면 None.
+
+    '연락처 010-…' 처럼 라벨과 값이 한 조각이면 label_i 가 값 조각이어도 된다. 그때는 값 앞부분이 라벨이다.
+    """
+    if not isinstance(label_i, int) or isinstance(label_i, bool) or not 0 <= label_i < len(spans):
         return None
-    return word
+    if label_i in value_idx:
+        own = spans[label_i].text
+        cut = own.find(evidence) if evidence and evidence != own else -1
+        return _clean_label(own[:cut]) if cut > 0 else None
+    if label_i in value_spans:
+        return None
+    text = _clean_label(spans[label_i].text)
+    if not text:
+        return None
+    lay = layout(spans)
+    first = value_idx[0]
+    close = (label_i in lay.left_neighbors(first)[:2] or lay.line_above(first) == label_i
+             or lay.distance(first, label_i) <= max(lay.thickness(first), 12) * CONTEXT_RADIUS_EM)
+    return text if close else None
 
 
 def to_findings(data: dict, spans: list[TextSpan]) -> list[Finding]:
+    """LLM 출력 → 탐지 항목. 근거(basis)는 서버가 위치·목록으로 확인하고, 확인되지 않으면 '형식' 근거로 내린다.
+
+    화면 문구에 들어가는 것은 라벨 조각 글자, 문서 종류, 함께 있는 항목의 '종류'뿐이다. 다른 개인정보 값은 넣지 않는다.
+    """
     items = data.get("findings")
     if not isinstance(items, list):
         raise LlmJudgeError(wording.LLM_BAD_RESPONSE)
-    out: list[Finding] = []
+    limit = min(len(spans), MAX_SPANS)
+
+    # 1차: 값과 조각만 확정한다. 근거 확인에 '어떤 조각이 개인정보 값인지'가 필요하다.
+    picked: list[tuple[list[int], str, Severity, dict]] = []
     seen: set[tuple] = set()
     for item in items[:600]:
         if not isinstance(item, dict):
             continue
-        i, kind = item.get("i"), str(item.get("kind") or "").strip()
+        idx = _indices(item.get("i"), limit)
+        kind = str(item.get("kind") or "").strip()
         sev = SEVERITIES.get(str(item.get("severity") or "").strip().lower())
-        if not isinstance(i, int) or isinstance(i, bool) or not 0 <= i < min(len(spans), MAX_SPANS):
+        if not idx or kind not in KINDS or sev is None:
             continue
-        if kind not in KINDS or sev is None:
-            continue
-        span = spans[i]
-        certainty = _certainty_from_ocr(span.ocr_confidence)
-        if certainty is Certainty.REGION_ONLY:
-            key = (i, kind, None)
-            if key not in seen:
-                seen.add(key)
-                out.append(_region_only(kind, span, i))
-            continue
-        evidence = _evidence(str(item.get("text") or ""), span.text)
-        key = (i, kind, evidence)
+        key = (tuple(idx), kind)
         if key in seen:
             continue
         seen.add(key)
-        near = _near(str(item.get("near") or ""), spans)
-        message = wording.found_public(kind, near=near) if sev is Severity.INFO else wording.found(kind, near=near)
-        out.append(Finding(kind=kind, box=span.box, certainty=certainty, severity=sev, message=message,
-                           evidence_text=evidence, context_words=[near] if near else [], span_index=i,
-                           detail={"judge": "llm"}))
+        picked.append((idx, kind, sev, item))
+    kind_at = {k: kind for idx, kind, sev, _ in picked if sev is not Severity.INFO for k in idx}
+
+    out: list[Finding] = []
+    for idx, kind, sev, item in picked:
+        parts = [spans[k] for k in idx]
+        box = _hull([s.box for s in parts])
+        certainty = max((_certainty_from_ocr(s.ocr_confidence) for s in parts), key=_WORSE.index)  # 가장 못 읽은 조각 기준
+        if certainty is Certainty.REGION_ONLY:
+            f = _region_only(kind, parts[0], idx[0])
+            f.box = box
+            out.append(f)
+            continue
+        joined = " ".join(s.text for s in parts)
+        evidence = _evidence(str(item.get("text") or ""), joined)
+
+        basis = str(item.get("basis") or "").strip().lower()
+        detail: dict = {"judge": "llm", "basis": "format"}
+        context: list[str] = []
+        message = None
+        if basis == "label":
+            label = _label_ok(item.get("label_i"), idx, spans, set(kind_at), evidence)
+            if label:
+                detail.update(basis="label", basis_box=spans[item["label_i"]].box.as_dict())
+                context = [label]
+                message = (wording.found_public(kind, near=label) if sev is Severity.INFO
+                           else wording.found(kind, near=label))
+        elif basis == "document" and item.get("doc") in DOCS:
+            detail.update(basis="document", document_hint=item["doc"])
+            context = [wording.DOC_NOUN[item["doc"]]]
+            message = wording.found_in_document(kind, item["doc"])
+        elif basis == "linked":
+            others = [kind_at[k] for k in _indices(item.get("with"), limit) if k in kind_at and k not in idx]
+            if others:
+                detail.update(basis="linked", linked_kinds=sorted(set(others)))
+                message = wording.found_linked(kind, others[0])
+        elif basis == "honorific" and kind == "name":
+            detail.update(basis="honorific")
+            message = wording.found_honorific(kind)
+        if message is None:  # 근거가 없거나 확인되지 않음 → 형식 근거
+            message = wording.found_public(kind) if sev is Severity.INFO else wording.found(kind)
+        if len(idx) > 1:
+            detail["parts"] = len(idx)
+        out.append(Finding(kind=kind, box=box, certainty=certainty, severity=sev, message=message,
+                           evidence_text=evidence, context_words=context, span_index=idx[0], detail=detail))
     return out
 
 
