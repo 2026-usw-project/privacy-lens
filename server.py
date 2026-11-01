@@ -180,6 +180,10 @@ def _open(data: bytes) -> Image.Image:
     """
     try:
         img = Image.open(io.BytesIO(data))
+        # Pillow 는 한도의 2배를 넘을 때만 오류를 내고, 1~2배 사이는 경고만 하고 연다.
+        # 6천만~1억2천만 화소 사진이 그대로 OCR 까지 가면 메모리가 넘친다. 열기 전에 막는다.
+        if img.width * img.height > Image.MAX_IMAGE_PIXELS:
+            raise Image.DecompressionBombError("too many pixels")
         img.load()
     except Image.DecompressionBombError:
         raise HTTPException(413, "화소 수가 너무 많은 이미지입니다.")

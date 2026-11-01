@@ -1,0 +1,23 @@
+name: 작업
+description: 1차 계획(docs/PLAN_1ST.md)의 할 일
+title: "[작업] "
+labels: ["작업"]
+body:
+  - type: input
+    id: plan
+    attributes:
+      label: 1차 계획 항목 번호
+      placeholder: "예: 6"
+  - type: textarea
+    id: what
+    attributes:
+      label: 할 일
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 기준
+      description: 어떻게 확인하면 끝난 건지(측정 숫자, 테스트, 화면)
+    validations:
+      required: true

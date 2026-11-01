@@ -94,7 +94,33 @@ TRACKING_LABELS = ["운송장번호", "송장번호", "운송장", "등기번호
 NAME_LABELS = [
     "받는분", "받으실분", "수취인", "수하인", "보내는분", "보내시는분",
     "송하인", "발송인", "성명", "이름", "고객명", "예금주", "주문자",
+    "보낸사람", "받는사람", "작성자", "신청자", "보호자",
 ]
+
+# 계좌: 긴 숫자가 이 말과 같은 조각, 같은 줄 바로 왼쪽, 바로 윗줄에 있으면 계좌번호로 본다.
+# 은행 이름은 낱말 단위로만 본다('우리 집'의 '우리'를 은행으로 보지 않게 ACCOUNT_WORDS 와 나눈다).
+ACCOUNT_WORDS = ["계좌번호", "계좌", "예금주", "입금", "송금", "이체", "무통장", "가상계좌"]
+BANK_NAMES = {
+    "국민", "신한", "우리", "하나", "농협", "기업", "카카오뱅크", "카카오", "토스뱅크", "토스",
+    "케이뱅크", "새마을", "새마을금고", "우체국", "수협", "신협", "SC제일", "씨티", "산업",
+    "부산", "대구", "경남", "광주", "전북", "제주", "KB", "NH", "IBK",
+}
+
+# 비밀번호: 이 라벨 바로 뒤(같은 조각, 같은 줄 오른쪽 조각, 바로 아랫줄)의 값.
+# 비교는 소문자·공백 없이 '끝나는가'로 한다('와이파이 비번' → '비번').
+SECRET_LABELS = ["비밀번호", "비번", "패스워드", "암호", "password", "passwd", "pw", "pin",
+                 "도어락", "현관번호", "공동현관"]
+# 값: 공백 없는 4~24글자, 숫자를 하나 이상 포함('비밀번호 변경' 같은 화면 문구를 거른다)
+RE_SECRET_VALUE = re.compile(r"[A-Za-z0-9!@#$%^&*()_+=.?~\-]{4,24}")
+
+# 학번·사번: 라벨 바로 뒤 6~10자리 숫자
+ID_LABELS = ["학번", "사번", "사원번호", "학생번호", "직원번호", "교번", "수험번호"]
+RE_ID_VALUE = re.compile(r"(?<!\d)\d{6,10}(?!\d)")
+
+# 공개 문맥으로 끌어내리지 않을 이메일(개인 아이디처럼 생긴 것). 대표 메일 접두어만 공개로 본다.
+PUBLIC_MAIL_PREFIX = ("help", "cs", "info", "support", "admin", "contact", "service", "webmaster",
+                      "noreply", "no-reply", "master", "sales", "biz", "hr", "recruit")
+
 
 # 흔한 성씨. 라벨 뒤의 아무 2~4글자를 이름으로 잡지 않기 위한 두 번째 조건.
 SURNAMES = set(
@@ -114,11 +140,58 @@ NAME_STOPWORDS = {
 }
 
 
+# 이름(성 빼고)에 흔히 쓰는 글자. 라벨 없는 이름 후보를 고를 때 '이름처럼 생겼나'를 본다.
+# 통계 모델이 아니라 흔한 글자 목록이다. 상호·지명·일반 낱말을 일부 거르는 정도로만 기대한다.
+GIVEN_SYLLABLES = set(
+    "가강건결경고광구국규근기길나남녕다단담대덕도동두라란래려련렬령례로록룡류률리린림"
+    "마만명모목무문미민바박범별병보복봄봉부분비빈빛산상새서석선설섭성세소솔송수숙순슬승시식신실심"
+    "아안애양언엄여연열염영예오옥온완용우욱운웅원월위유윤율은을음의이익인일임"
+    "자재정제조종주준중지진찬창채천철초춘충치태택하학한해행현혁형혜호홍화환활황효후훈휘희"
+)
+# 이름이 아니라 장소·가게·물건으로 끝나는 말
+NOT_NAME_SUFFIX = ("역", "점", "식당", "약국", "마트", "나라", "문의", "특가", "상품", "병원", "학교",
+                   "센터", "은행", "카드", "택배", "시장", "구청", "동", "로", "길", "관", "집", "국",
+                   "탕", "실", "회", "당", "사", "과", "팀", "부", "층", "번", "원장",
+                   "구", "산", "문", "형")  # 강남구·한라산·남대문·최신형
+COMPOUND_SURNAMES = {"남궁", "황보", "제갈", "선우", "독고", "사공", "서문"}
+HONORIFIC = re.compile(r"(?<![가-힣])([가-힣]{3,4})(?:님|씨|께서|에게|선생님|고객님)")
+
+
+def name_candidate(token: str) -> bool:
+    """라벨 없이 쓰인 이름 후보인가. 성 + 흔한 이름 글자 두 개(3글자, 복성이면 4글자).
+
+    '확정'이 아니다. 주변 단서(연락처·주소, 명찰·학생증)가 있을 때만 가림 권장으로 쓰고,
+    단서 없는 후보는 PL_UNLABELED_NAMES=all 일 때만 검토 권장으로 낸다.
+    """
+    if not re.fullmatch(r"[가-힣]{3,4}", token) or token in NAME_STOPWORDS:
+        return False
+    if any(token.endswith(sfx) for sfx in NOT_NAME_SUFFIX):
+        return False
+    if len(token) == 4:
+        surname, given = token[:2], token[2:]
+        if surname not in COMPOUND_SURNAMES:
+            return False
+    else:
+        surname, given = token[0], token[1:]
+        if surname not in SURNAMES:
+            return False
+    return all(ch in GIVEN_SYLLABLES for ch in given)
+
+
 def looks_like_name(token: str) -> bool:
     """2~4글자 한글이고 흔한 성씨로 시작하는가. 이름이라는 '확정'은 아니다."""
     if not re.fullmatch(r"[가-힣]{2,4}", token) or token in NAME_STOPWORDS:
         return False
     return token[:2] in SURNAMES or token[0] in SURNAMES
+
+
+def label_key(text: str) -> str:
+    """라벨·문맥 어휘 비교용. 공백에 더해 OCR 이 끼워 넣는 기호도 뺀다.
+
+    PaddleOCR 가 기울어진 '받는분'을 '받-는분', '연락·처' 처럼 읽으면 라벨을 못 찾아
+    이름을 읽고도 놓쳤다(DEVELOPMENT.md 알려진 한계). 값 비교에는 쓰지 않는다.
+    """
+    return re.sub(r"[\s\-_·•‧'\"`~|]", "", text)
 
 
 def compact(text: str) -> str:
@@ -133,12 +206,13 @@ CONTEXT_PERSONAL = [
     "수취인", "받는분", "받는 분", "받으실분", "받으실 분", "수하인",
     "보내는분", "보내는 분", "송하인", "발송인",
     "고객명", "성명", "이름", "연락처", "휴대폰", "휴대전화", "전화",
+    "보낸사람", "보낸 사람", "받는사람", "받는 사람", "작성자", "신청자", "보호자",
     "배송지", "주소", "도착지", "설치주소", "거주지",
 ]
 
 # 옆에 있으면 '공개된 정보'일 가능성이 오르는 말
 CONTEXT_PUBLIC = [
-    "고객센터", "고객상담", "상담센터", "콜센터", "대표번호", "대표전화",
+    "고객센터", "고객상담", "상담센터", "콜센터", "대표번호", "대표전화", "대표",
     "문의", "안내", "ARS", "본사", "지사", "지점", "매장", "영업소",
     "사업자", "사업자등록번호", "상호", "법인", "판매자", "가맹점",
     "택배문의", "배송문의", "반품", "교환", "A/S", "AS센터",
@@ -198,10 +272,20 @@ def normalize(text: str) -> str:
         out.append("".join(buffer))
 
     joined = " ".join(out)
+    # 한글 사이에 낀 기호는 OCR 잡음이다('받-는분', '연락·처'). 라벨을 못 찾으면 문맥이 사라진다.
+    joined = re.sub(r"(?<=[가-힣])[\-_·•‧'\"`~|](?=[가-힣])", "", joined)
     # 숫자 사이에 낀 글자 오인식만 되돌린다. 전체에 적용하면 한글이 깨진다.
     joined = re.sub(
         r"\d[\dOolI|\-\s]{4,}\d",
         lambda m: m.group(0).translate(_OCR_DIGIT_FIX),
+        joined,
+    )
+    # 맨 앞 글자가 O 로 읽힌 번호('O1O-1234-5678', 'O2-123-4567'). 앞이 영문이 아니고,
+    # 뒤가 숫자 덩어리일 때만. 숫자가 6개 이상이어야 바꾼다('Oil 12' 같은 낱말은 그대로).
+    joined = re.sub(
+        r"(?<![A-Za-z])[Oo](?=[\dOolI|][\dOolI|\-\s]{4,}\d)[\dOolI|\-\s]*\d",
+        lambda m: (m.group(0).translate(_OCR_DIGIT_FIX)
+                   if sum(c.isdigit() for c in m.group(0)) >= 6 else m.group(0)),
         joined,
     )
     return joined

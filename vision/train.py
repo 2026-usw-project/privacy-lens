@@ -82,6 +82,18 @@ def add_extra(data_dir: Path, extra: Path, limit: int | None = None, seed: int =
     return len(lines)
 
 
+def decide_promotion(better: bool, *, n_val: int, n_test: int, has_current: bool,
+                     force: bool = False) -> tuple[bool, bool]:
+    """(교체 여부, 실사 검증이 없어 막혔는지).
+
+    val·test 는 실사 묶음만 들어간다(build.py). 둘 다 0장이면 점수는 학습 사진(대부분 합성)을
+    다시 맞힌 것이라 두 모델 중 어느 쪽이 실제로 나은지 알 수 없다. 그래서 첫 모델이 아니면
+    교체하지 않는다. 첫 모델은 비교할 대상이 없으니 그대로 쓴다.
+    """
+    blocked = n_val == 0 and n_test == 0 and has_current
+    return (better and not blocked) or force, blocked and not force
+
+
 def run(
     ws: Workspace,
     *,
@@ -167,7 +179,9 @@ def run(
         old_score = _score(current, data_yaml, split, imgsz, device)
 
     better = old_score is None or new_score["mAP50"] >= old_score["mAP50"]
-    promoted = better or force_promote
+    unmeasured = n_val == 0 and n_test == 0
+    promoted, blocked = decide_promotion(better, n_val=n_val, n_test=n_test,
+                                         has_current=current is not None, force=force_promote)
     info = {
         "version": version,
         "trained_at": dt.datetime.now().isoformat(timespec="seconds"),
@@ -181,6 +195,7 @@ def run(
         "score": new_score,
         "previous": {"version": ws.current_version(), "score": old_score} if old_score else None,
         "promoted": promoted,
+        "unmeasured": unmeasured,
     }
     (out_dir / "metrics.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -207,6 +222,11 @@ def run(
           "  ".join(f"{k} {v:.2f}" for k, v in new_score["per_class_AP50"].items()))
     if old_score:
         print(f"  기존 모델 mAP50 {old_score['mAP50']:.3f}  ({info['previous']['version']})")
-    print("  → current 로 교체했습니다." if promoted else
-          "  → 기존 모델보다 낮아 교체하지 않았습니다. (--force 로 강제 교체 가능)")
+    if promoted:
+        print("  → current 로 교체했습니다." + ("  (실사 검증 없이 교체됨 — 점수는 참고만)" if unmeasured else ""))
+    elif blocked:
+        print("  → 실사 검증·시험 사진이 0장이라 어느 모델이 나은지 알 수 없어 교체하지 않았습니다.\n"
+              "    실사 묶음을 5개 이상 검수해 넣으면 val·test 가 생깁니다. (--force 로 강제 교체 가능)")
+    else:
+        print("  → 기존 모델보다 낮아 교체하지 않았습니다. (--force 로 강제 교체 가능)")
     print(f"  저장 위치: {out_dir}")
