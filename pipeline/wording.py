@@ -184,6 +184,7 @@ LLM_MODEL_MISSING = assert_safe("개발자 모드에서 모델 이름을 입력�
 LLM_KEY_MISSING = assert_safe("개발자 모드에서 API 키를 입력해 주세요.")
 LLM_URL_MISSING = assert_safe("개발자 모드에서 http(s) 로 시작하는 API 주소를 입력해 주세요.")
 LLM_AUTH_FAILED = assert_safe("판단 모델 API 가 키를 거부했습니다. 키와 권한을 확인해 주세요.")
+LLM_MODEL_NOT_FOUND = assert_safe("판단 모델 API 가 이 모델을 찾지 못했습니다. '목록 불러오기'로 쓸 수 있는 모델을 골라 주세요.")
 LLM_RATE_LIMITED = assert_safe("판단 모델 API 사용 한도에 걸렸습니다. 잠시 후 다시 시도해 주세요.")
 LLM_UNREACHABLE = assert_safe("판단 모델 API 에 연결하지 못했습니다. 주소와 네트워크를 확인해 주세요.")
 LLM_BAD_RESPONSE = assert_safe("판단 모델의 응답을 해석하지 못했습니다. 다른 모델로 시도해 주세요.")

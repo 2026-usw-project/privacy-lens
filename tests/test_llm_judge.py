@@ -174,3 +174,62 @@ def test_analyze_uses_llm_instead_of_rules():
     rules = analyze.analyze(img, backend=ocr.ScriptedBackend(SPANS), detector=None)
     assert any(f.kind == "mobile" for f in rules.findings)
     assert rules.as_dict()["judge"] == "규칙 기반"
+
+
+# ------------------------------------------------------------------ 모델 목록
+
+def fake_get(pages, seen):
+    def get(url, headers, timeout):
+        seen.append((url, headers))
+        return pages[len(seen) - 1]
+    return get
+
+
+@pytest.mark.parametrize("provider, url_part, page", [
+    ("openai", "api.openai.com/v1/models", {"data": [{"id": "m-b"}, {"id": "m-a"}]}),
+    ("openrouter", "openrouter.ai/api/v1/models", {"data": [{"id": "m-a"}, {"id": "m-b"}]}),
+    ("anthropic", "api.anthropic.com/v1/models", {"data": [{"id": "m-a"}, {"id": "m-b"}], "has_more": False}),
+    ("gemini", "generativelanguage.googleapis.com/v1beta/models",
+     {"models": [{"name": "models/m-a", "supportedGenerationMethods": ["generateContent"]},
+                 {"name": "models/m-b", "supportedGenerationMethods": ["generateContent", "countTokens"]},
+                 {"name": "models/embed", "supportedGenerationMethods": ["embedContent"]}]}),
+])
+def test_cloud_model_lists(provider, url_part, page):
+    seen = []
+    names = llm_judge.list_models(JudgeConfig(provider, "", "sk-test-not-real"), transport=fake_get([page], seen))
+    assert names == ["m-a", "m-b"]
+    assert url_part in seen[0][0] and "sk-test" not in seen[0][0]
+    assert any("sk-test-not-real" in v for v in seen[0][1].values())
+
+
+def test_local_model_lists():
+    seen = []
+    assert llm_judge.list_models(JudgeConfig("ollama", "", "", "http://127.0.0.1:11434"),
+                                 transport=fake_get([{"models": [{"name": "qwen2.5:7b"}]}], seen)) == ["qwen2.5:7b"]
+    assert seen[0] == ("http://127.0.0.1:11434/api/tags", {})
+    seen = []
+    llm_judge.list_models(JudgeConfig("custom", "", "", "http://localhost:1234/v1"),
+                          transport=fake_get([{"data": [{"id": "local"}]}], seen))
+    assert seen[0] == ("http://localhost:1234/v1/models", {})
+
+
+def test_model_list_follows_pages():
+    seen = []
+    pages = [{"data": [{"id": "a"}], "has_more": True, "last_id": "a"}, {"data": [{"id": "b"}], "has_more": False}]
+    assert llm_judge.list_models(JudgeConfig("anthropic", "", "k"), transport=fake_get(pages, seen)) == ["a", "b"]
+    assert "after_id=a" in seen[1][0]
+    seen = []
+    pages = [{"models": [{"name": "models/a"}], "nextPageToken": "t2"}, {"models": [{"name": "models/b"}]}]
+    assert llm_judge.list_models(JudgeConfig("gemini", "", "k"), transport=fake_get(pages, seen)) == ["a", "b"]
+    assert "pageToken=t2" in seen[1][0]
+
+
+def test_model_list_needs_key_not_model():
+    assert parse_config('{"provider":"openai","api_key":"k"}', need_model=False).model == ""
+    with pytest.raises(ValueError):
+        parse_config('{"provider":"openai"}', need_model=False)
+
+
+def test_bad_model_list_reply():
+    with pytest.raises(LlmJudgeError):
+        llm_judge.list_models(JudgeConfig("openai", "", "k"), transport=fake_get([{"oops": 1}], []))

@@ -77,7 +77,7 @@ await test('analyze posts original file and ticket, no judge for rules',async()=
 await test('analyze and redact carry the developer-mode judge',async()=>{
   const dev=C.devSettings({provider:'gemini',providers:{gemini:{apiKey:'test-key-not-real'}}});
   const judge=C.judgeField(dev);
-  assert.deepEqual(JSON.parse(judge),{provider:'gemini',model:'gemini-2.5-flash',api_key:'test-key-not-real',base_url:''});
+  assert.deepEqual(JSON.parse(judge),{provider:'gemini',model:'gemini-flash-latest',api_key:'test-key-not-real',base_url:''});
   const seen=[];const api=A.client('',async(url,o)=>{seen.push([url,o.body.get('judge')]);return json({report,file:'',verification:{passed:true}});});
   await api.analyze(file,{judge});await api.redact(file,[],'blur',{judge});
   assert.deepEqual(seen,[['/analyze',judge],['/redact',judge]]);
@@ -129,6 +129,13 @@ await test('raw OCR keeps all text and never becomes a redaction selection',()=>
   assert.deepEqual(C.fromReport({...report,raw_ocr:[]}).rawOcr,[]);
 });
 
+await test('model list asks with provider and key but no photo',async()=>{
+  const dev=C.devSettings({provider:'openai',providers:{openai:{model:'chosen',apiKey:'test-key-not-real'}}});
+  const api=A.client('',async(url,o)=>{assert.equal(url,'/llm/models');assert.equal(o.body.get('image'),null);
+    assert.deepEqual(JSON.parse(o.body.get('judge')),{provider:'openai',model:'',api_key:'test-key-not-real',base_url:''});return json({models:['a','b']});});
+  assert.deepEqual((await api.models(C.modelQuery(dev))).models,['a','b']);
+  assert.equal(C.modelQuery(C.devSettings(null)),undefined);
+});
 await test('developer settings are sanitized and remembered per provider',()=>{
   const d=C.devSettings({provider:'nope',providers:{openai:{model:'x'.repeat(900),apiKey:42},ollama:{apiKey:'ignored'}}});
   assert.equal(d.provider,'rules');assert.equal(C.judgeField(d),undefined);assert.equal(C.judgeLabel(d),'문맥·결합');

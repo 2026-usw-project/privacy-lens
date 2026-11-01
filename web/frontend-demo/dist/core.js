@@ -19,7 +19,7 @@
   const JUDGES = {
     rules:{label:'규칙 기반 판단'},
     openai:{label:'ChatGPT',model:'gpt-4.1-mini',key:'required',cloud:true},
-    gemini:{label:'Gemini',model:'gemini-2.5-flash',key:'required',cloud:true},
+    gemini:{label:'Gemini',model:'gemini-flash-latest',key:'required',cloud:true},
     anthropic:{label:'Claude',model:'claude-haiku-5-5',key:'required',cloud:true},
     openrouter:{label:'OpenRouter',model:'openai/gpt-4.1-mini',key:'required',cloud:true},
     ollama:{label:'Ollama',model:'qwen2.5:7b',url:'http://127.0.0.1:11434'},
@@ -52,6 +52,13 @@
     if(s.provider==='rules')return false;
     if(j.cloud)return true;
     try{return !['localhost','127.0.0.1','[::1]'].includes(new URL(s.providers[s.provider].baseUrl).hostname);}catch{return false;}
+  }
+  // 모델 목록을 물을 때 보내는 설정. 아직 모델을 고르기 전이라 model 은 비어도 된다.
+  function modelQuery(settings) {
+    const s=devSettings(settings);
+    if(s.provider==='rules')return undefined;
+    const p=s.providers[s.provider];
+    return JSON.stringify({provider:s.provider,model:'',api_key:p.apiKey.trim(),base_url:p.baseUrl.trim()});
   }
   function judgeLabel(settings) {
     const s=devSettings(settings);
@@ -147,5 +154,5 @@
     return {image:{width:state.width,height:state.height},style:STYLES.includes(state.style)?state.style:'blur',boxes:boxes(state)};
   }
 
-  globalThis.PrivacyLensCore=Object.freeze({TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,toPixels,fromPixels,screenPoint,fromReport,boxes,payload});
+  globalThis.PrivacyLensCore=Object.freeze({TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload});
 })();

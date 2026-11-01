@@ -101,8 +101,11 @@ class JudgeConfig:
         return self.provider in CLOUD
 
 
-def parse_config(raw: str | None) -> JudgeConfig | None:
-    """화면이 보낸 판단 설정(JSON). 비었거나 provider 가 rules 면 None(규칙 기반)."""
+def parse_config(raw: str | None, *, need_model: bool = True) -> JudgeConfig | None:
+    """화면이 보낸 판단 설정(JSON). 비었거나 provider 가 rules 면 None(규칙 기반).
+
+    need_model=False 는 모델 목록을 물을 때다(아직 모델을 고르기 전).
+    """
     if raw is None or not raw.strip():
         return None
     try:
@@ -124,7 +127,7 @@ def parse_config(raw: str | None) -> JudgeConfig | None:
         return value.strip()
 
     model, key, url = field("model"), field("api_key"), field("base_url")
-    if not model:
+    if not model and need_model:
         raise ValueError(wording.LLM_MODEL_MISSING)
     if provider in NEEDS_KEY and not key:
         raise ValueError(wording.LLM_KEY_MISSING)
@@ -142,6 +145,7 @@ def parse_config(raw: str | None) -> JudgeConfig | None:
 # ------------------------------------------------------------------ 요청
 
 Transport = Callable[[str, dict, dict, float], dict]
+GetTransport = Callable[[str, dict, float], dict]
 
 
 def _http_post(url: str, headers: dict, body: dict, timeout: float) -> dict:
@@ -149,6 +153,14 @@ def _http_post(url: str, headers: dict, body: dict, timeout: float) -> dict:
         url, data=json.dumps(body).encode("utf-8"), method="POST",
         headers={"Content-Type": "application/json", **headers},
     )
+    return _send(req, timeout)
+
+
+def _http_get(url: str, headers: dict, timeout: float) -> dict:
+    return _send(urllib.request.Request(url, method="GET", headers=headers), timeout)
+
+
+def _send(req: urllib.request.Request, timeout: float) -> dict:
     try:
         with urllib.request.urlopen(req, timeout=timeout) as res:
             return json.loads(res.read().decode("utf-8"))
@@ -156,6 +168,8 @@ def _http_post(url: str, headers: dict, body: dict, timeout: float) -> dict:
         # 응답 본문에 보낸 원문이 되돌아올 수 있어 상태 코드만 쓴다
         if exc.code in (401, 403):
             raise LlmJudgeError(wording.LLM_AUTH_FAILED) from None
+        if exc.code == 404:
+            raise LlmJudgeError(wording.LLM_MODEL_NOT_FOUND) from None
         if exc.code == 429:
             raise LlmJudgeError(wording.LLM_RATE_LIMITED) from None
         raise LlmJudgeError(wording.llm_http_failed(exc.code)) from None
@@ -309,3 +323,67 @@ def evaluate(spans: list[TextSpan], cfg: JudgeConfig, *, width: int, height: int
     if not isinstance(data, dict):
         raise LlmJudgeError(wording.LLM_BAD_RESPONSE)
     return to_findings(_parse_json(_reply_text(cfg.provider, data)), spans)
+
+
+# ------------------------------------------------------------------ 모델 목록
+
+MAX_MODELS = 2000
+MAX_PAGES = 5
+
+
+def _model_request(cfg: JudgeConfig, page: str | None) -> tuple[str, dict]:
+    """공급자별 '쓸 수 있는 모델 목록' 요청. 키는 헤더로만."""
+    p = cfg.provider
+    bearer = {"Authorization": f"Bearer {cfg.api_key}"} if cfg.api_key else {}
+    if p == "openai":
+        return "https://api.openai.com/v1/models", bearer
+    if p == "openrouter":
+        return "https://openrouter.ai/api/v1/models", bearer
+    if p == "custom":
+        return cfg.base_url + "/models", bearer
+    if p == "ollama":
+        return cfg.base_url + "/api/tags", {}
+    if p == "anthropic":
+        q = {"limit": "1000", **({"after_id": page} if page else {})}
+        return ("https://api.anthropic.com/v1/models?" + urllib.parse.urlencode(q),
+                {"x-api-key": cfg.api_key, "anthropic-version": "2023-06-01"})
+    if p == "gemini":
+        q = {"pageSize": "1000", **({"pageToken": page} if page else {})}
+        return ("https://generativelanguage.googleapis.com/v1beta/models?" + urllib.parse.urlencode(q),
+                {"x-goog-api-key": cfg.api_key})
+    raise LlmJudgeError(wording.LLM_CONFIG_INVALID)
+
+
+def _model_page(provider: str, data: dict) -> tuple[list[str], str | None]:
+    """응답에서 모델 이름과 다음 쪽 표시를 꺼낸다."""
+    try:
+        if provider == "ollama":
+            return [m["name"] for m in data["models"]], None
+        if provider == "gemini":
+            # 판단에 쓰는 generateContent 를 지원하는 모델만. 이름 앞의 'models/' 는 뗀다
+            names = [m["name"].removeprefix("models/") for m in data.get("models", [])
+                     if "generateContent" in m.get("supportedGenerationMethods", ["generateContent"])]
+            return names, data.get("nextPageToken") or None
+        names = [m["id"] for m in data["data"]]
+        if provider == "anthropic" and data.get("has_more") and data.get("last_id"):
+            return names, data["last_id"]
+        return names, None
+    except (KeyError, TypeError, AttributeError):
+        raise LlmJudgeError(wording.LLM_BAD_RESPONSE) from None
+
+
+def list_models(cfg: JudgeConfig, *, transport: GetTransport | None = None) -> list[str]:
+    """공급자가 이 키로 쓸 수 있다고 알려 주는 모델 이름. 정렬하고 중복을 뺀다."""
+    get = transport or _http_get
+    names: list[str] = []
+    page: str | None = None
+    for _ in range(MAX_PAGES):
+        url, headers = _model_request(cfg, page)
+        data = get(url, headers, 30)
+        if not isinstance(data, dict):
+            raise LlmJudgeError(wording.LLM_BAD_RESPONSE)
+        got, page = _model_page(cfg.provider, data)
+        names += [n for n in got if isinstance(n, str) and 0 < len(n) <= MAX_FIELD]
+        if not page or len(names) >= MAX_MODELS:
+            break
+    return sorted(set(names))[:MAX_MODELS]
