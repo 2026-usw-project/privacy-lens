@@ -10,10 +10,13 @@
   const clone = value => JSON.parse(JSON.stringify(value));
   const Core=PrivacyLensCore, Api=PrivacyLensAPI, api=Api.client();
   const state = { source:null, file:null, phase:'empty', rawOcr:null, rawOcrNote:'', showRawOcr:false, rawFocused:null, regions:[], focused:null, editing:null, history:[], mode:'original', style:'blur', compare:50, drawing:false,
-    sample:false, sampleKey:null, width:0, height:0, name:'', bytes:0, serverImage:false, condition:'full', analysisStatus:'idle', groups:[], gps:[], issues:[],
+    sample:false, sampleKey:null, width:0, height:0, name:'', bytes:0, serverImage:false, dev:Core.devSettings(null), analyzedJudge:'', analysisStatus:'idle', groups:[], gps:[], issues:[],
     backend:'', elapsedMs:0, zoom:1, loadToken:0, exportToken:0, exportUrl:null, nextId:1, toastTimer:null,
     requestController:null, requestSerial:0, saving:false, saveError:'', ticket:null, previewState:'none', previewSeq:0 };
   try { const saved=localStorage.getItem('pl.maskStyle'); if(Core.STYLES.includes(saved)) state.style=saved; } catch(_) {}
+  // 개발자 모드 설정(판단 방법·모델·API 키)은 이 브라우저에만 둔다. 서버는 요청마다 받아 쓰고 저장하지 않는다.
+  try { state.dev=Core.devSettings(JSON.parse(localStorage.getItem('pl.devMode')||'null')); } catch(_) {}
+  function saveDev() { try{localStorage.setItem('pl.devMode',JSON.stringify(state.dev));}catch(_){} }
   const canvas = $('#photoCanvas');
   const ctx = canvas.getContext('2d');
   const protectedCanvas = document.createElement('canvas');   // 서버가 그려 준 가림 미리보기
@@ -429,7 +432,7 @@
     const serious=state.regions.filter(r=>r.severity==='cover'||r.severity==='review').length;
     $('#resultCount').textContent=count;$('#selectedCount').textContent=selected;
     $('#resultTitle').textContent=state.analysisStatus==='empty'?'탐지된 영역이 없어요':state.analysisStatus==='manual'?'직접 가릴 정보를 선택해요':state.analysisStatus==='partial'?'일부 정보를 확인해 주세요':'확인이 필요한 정보';
-    $('#reviewKicker').textContent=state.analysisStatus==='manual'?'MANUAL':Core.CONDITIONS[state.condition]||'';
+    $('#reviewKicker').textContent=state.analysisStatus==='manual'?'MANUAL':state.judgeShown||'';
     $('#reviewSubtitle').textContent=state.analysisStatus==='manual'?'직접 추가한 영역만 가려집니다. 사진 전체를 확인해 주세요.':'가림 권장 · 검토 권장 '+serious+'건. 기본으로 아무것도 고르지 않았어요. 가릴 항목을 고르세요.';
     $('#riskSummary').classList.toggle('safe',count>0&&selected===count);
     $('#riskSummaryText').textContent=count===0?'탐지 결과가 없어도 개인정보가 없다는 뜻은 아니에요.':selected===count?selected+'개 영역을 가리도록 선택했어요.':selected?(count-selected)+'개 영역은 가리지 않아요.':'아직 가릴 영역을 고르지 않았어요.';
@@ -561,7 +564,7 @@
     try {
       const file=await uploadFile();
       if(serial!==state.requestSerial)return;
-      const data=await api.redact(file,boxes,state.style,{ticket,signal:state.requestController.signal});
+      const data=await api.redact(file,boxes,state.style,{ticket,judge:Core.judgeField(state.dev),signal:state.requestController.signal});
       if(token!==state.exportToken||serial!==state.requestSerial)return;
       const bytes=Uint8Array.from(atob(data.file),c=>c.charCodeAt(0));
       const blob=new Blob([bytes],{type:'image/jpeg'});
@@ -626,7 +629,6 @@
     $('#payloadButton').disabled=!state.source||phase!=='review'||state.saving;
     $('#analyzeButton').disabled=!state.source||state.saving;
     $('#manualButton').disabled=state.serverImage&&state.analysisStatus==='idle';
-    $('#conditionSelect').disabled=phase==='scanning'||state.saving;
     $('#readyDescription').textContent=state.serverImage&&state.analysisStatus==='idle'?'이 형식은 브라우저가 미리 보지 못해요. 분석하면 서버가 만든 미리보기로 바뀌어요.':'사진을 Privacy Lens 서버로 보내 글자를 읽고 개인정보를 판정해요. 서버는 사진을 디스크에 저장하지 않아요.';
     $('#readyFileInfo').textContent=state.width+' × '+state.height+' px';
     $('#sourceBadge').textContent=state.backend||(state.sample?'가상 샘플':'분석 전');
@@ -648,20 +650,23 @@
     Object.assign(state,{rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,issues:[],groups:[],gps:[],mode:'original',phase:'scanning',analysisStatus:'running',drawing:false,previewState:'none'});
     syncDrawing();render();
     $('#scanningPanel').classList.add('server-analysis');
-    $('#scanPercent').textContent='올리는 중';$('#scanModeLabel').textContent=Core.CONDITIONS[state.condition];
+    const judge=Core.judgeField(state.dev);state.analyzedJudge=judge||'';  // 실패해도 같은 설정으로 다시 돌리지 않게
+    $('#scanPercent').textContent='올리는 중';$('#scanModeLabel').textContent=Core.judgeLabel(state.dev);
+    $('#scanTask3Text').textContent=judge?'LLM 으로 개인정보 판정 ('+Core.JUDGES[state.dev.provider].label+')':'주변 문구로 개인정보 판정';
     [1,2,3].forEach(i=>$('#scanTask'+i).classList.remove('active'));
     const serial=++state.requestSerial,ticket=Api.newTicket();
     state.ticket=ticket;state.requestController=new AbortController();pollSoon();
     try {
       const file=await uploadFile();
       if(serial!==state.requestSerial)return;
-      const data=await api.analyze(file,{mode:state.condition,ticket,signal:state.requestController.signal});
+      const data=await api.analyze(file,{judge,ticket,signal:state.requestController.signal});
       if(serial!==state.requestSerial)return;
       $('#scanTask3').classList.add('active');
       const result=Core.fromReport(data.report);
       if(state.serverImage || result.width!==state.width || result.height!==state.height) await adoptServerImage(data.preview,result.width,result.height);
       if(serial!==state.requestSerial)return;
       Object.assign(state,{rawOcr:result.rawOcr,rawOcrNote:result.rawOcrNote,regions:result.regions,groups:result.groups,gps:result.gps,backend:result.backend,elapsedMs:result.elapsedMs,
+        judgeShown:result.judgeProvider==='rules'?'문맥·결합':result.judge,
         issues:result.partial?['일부 영역은 글자가 흐려 내용을 확인하지 못했어요. 점선 영역을 확대해서 직접 확인해 주세요.']:[],
         analysisStatus:result.regions.length?(result.partial?'partial':'completed'):'empty',phase:'review',focused:result.regions[0]?.id||null});
       invalidate();render();setStep(2);
@@ -823,7 +828,45 @@
   $('#analyzeButton').addEventListener('click',()=>beginAnalysis());
   $('#manualButton').addEventListener('click',startManual);$('#failureManual').addEventListener('click',startManual);
   $('#retryAnalysis').addEventListener('click',()=>beginAnalysis());
-  $('#conditionSelect').addEventListener('change',event=>{state.condition=event.target.value;if(state.source&&(state.phase==='review'||state.phase==='failed')&&state.analysisStatus!=='manual')beginAnalysis();});
+  // 개발자 모드: 판단 모델 종류·모델·키·주소. 바꿀 때마다 이 브라우저에 저장한다.
+  function renderDev() {
+    const id=state.dev.provider,j=Core.JUDGES[id],p=state.dev.providers[id],llm=id!=='rules';
+    $('#judgeProvider').value=id;
+    $('#judgeModelField').classList.toggle('hidden',!llm);$('#judgeKeyField').classList.toggle('hidden',!llm||!j.key);$('#judgeUrlField').classList.toggle('hidden',!llm||!('url' in j));
+    if(llm){
+      if(document.activeElement!==$('#judgeModel'))$('#judgeModel').value=p.model;
+      if(document.activeElement!==$('#judgeKey'))$('#judgeKey').value=p.apiKey;
+      if(document.activeElement!==$('#judgeUrl'))$('#judgeUrl').value=p.baseUrl;
+      $('#judgeModel').placeholder=j.model||'모델 이름';
+      $('#judgeUrl').placeholder=j.url||'http://localhost:1234/v1';
+      $('#judgeKeyLabel').textContent=j.key==='optional'?'API 키 (필요할 때만)':'API 키';
+    }
+    $('#judgeHint').textContent=!llm?'서버의 규칙(정규식·체크섬·주변 문구·결합)으로 판단해요. 기본값이에요.'
+      :id==='ollama'?'이 컴퓨터의 Ollama 로 판단해요. 글자가 컴퓨터 밖으로 나가지 않아요. 모델을 먼저 받아 두세요(ollama pull).'
+      :id==='custom'?'OpenAI 호환 API 주소를 넣어요. 서버가 이 주소 뒤에 /chat/completions 를 붙여 불러요.'
+      :'모델 이름은 예시예요. 쓰는 계정에서 되는 이름으로 바꿔도 돼요. 사진 한 장마다 API 요금이 나갈 수 있어요.';
+    $('#judgeWarning').classList.toggle('hidden',!Core.sendsOutside(state.dev));
+    $('#judgeChipText').textContent=Core.judgeLabel(state.dev);
+    $('#judgeChip').classList.toggle('llm',llm);
+    $('#judgeChip').title='판단: '+(llm?Core.judgeLabel(state.dev):'규칙 기반 판단');
+  }
+  function updateDev(change) {
+    const id=state.dev.provider;
+    if(change.provider)state.dev.provider=change.provider;
+    else Object.assign(state.dev.providers[id],change);
+    state.dev=Core.devSettings(state.dev);saveDev();renderDev();
+  }
+  $('#judgeProvider').addEventListener('change',e=>updateDev({provider:e.target.value}));
+  $('#judgeModel').addEventListener('input',e=>updateDev({model:e.target.value}));
+  $('#judgeKey').addEventListener('input',e=>updateDev({apiKey:e.target.value}));
+  $('#judgeUrl').addEventListener('input',e=>updateDev({baseUrl:e.target.value}));
+  $('#judgeKeyToggle').addEventListener('click',()=>{const k=$('#judgeKey'),show=k.type==='password';k.type=show?'text':'password';$('#judgeKeyToggle').textContent=show?'숨기기':'보기';$('#judgeKeyToggle').setAttribute('aria-pressed',String(show));});
+  $('#judgeClearKeys').addEventListener('click',()=>{Object.values(state.dev.providers).forEach(p=>{p.apiKey='';});$('#judgeKey').value='';saveDev();renderDev();notify('저장된 API 키를 모두 지웠어요.');});
+  // 판단 방법을 바꾸고 닫으면, 이미 분석한 사진은 새 방법으로 다시 분석한다(예전 판정 조건 선택과 같다).
+  $('#devDialog').addEventListener('close',()=>{
+    const k=$('#judgeKey');k.type='password';$('#judgeKeyToggle').textContent='보기';$('#judgeKeyToggle').setAttribute('aria-pressed','false');
+    if(state.source&&(state.phase==='review'||state.phase==='failed')&&state.analysisStatus!=='manual'&&(Core.judgeField(state.dev)||'')!==state.analyzedJudge)beginAnalysis();
+  });
   $('#zoomIn').addEventListener('click',()=>zoomTo(state.zoom+.25));$('#zoomOut').addEventListener('click',()=>zoomTo(state.zoom-.25));
   $('#zoomFit').addEventListener('click',()=>{state.zoom=1;layoutCanvas(false);});
   new ResizeObserver(()=>layoutCanvas()).observe($('#canvasStage'));
@@ -833,6 +876,6 @@
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pollSoon();});
   window.addEventListener('pagehide',()=>{if(state.ticket)api.cancel(state.ticket);});
 
-  initializeThumbnails();
+  initializeThumbnails();renderDev();
   setStep(1);syncPanels();pollQueue();
 })();

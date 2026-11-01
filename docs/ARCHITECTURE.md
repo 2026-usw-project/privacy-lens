@@ -44,9 +44,9 @@ DB 는 없습니다. 사진은 요청 처리 함수 안에서만 존재하고, �
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | GET | `/` | 화면 (`web/frontend-demo/privacy-lens.html`) |
-| POST | `/analyze` | `image`, `mode`(full·baseline·naive), `ticket` → `report` + 미리보기 |
+| POST | `/analyze` | `image`, `ticket`, `judge`(개발자 모드 LLM 설정, 선택) → `report` + 미리보기 |
 | POST | `/redact/preview` | `image`, `boxes`, `style`(blur·solid) → 가린 축소본. 대기열 없음 |
-| POST | `/redact` | `image`, `boxes`, `style`, `ticket` → 가린 JPEG + 재검사 결과 |
+| POST | `/redact` | `image`, `boxes`, `style`, `ticket`, `judge` → 가린 JPEG + 재검사 결과(분석과 같은 판단 방법) |
 | GET | `/queue` | 대기열 상태. `ticket` 을 주면 내 차례 |
 | POST | `/queue/cancel` | 기다리던 요청 빼기 |
 

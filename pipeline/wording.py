@@ -50,6 +50,7 @@ KIND_NOUN = {
     "gps": "촬영 위치 좌표",
     "document": "문서 영역",
     "face_photo": "증명사진",
+    "other": "개인정보로 보이는 문자열",
 }
 
 DOC_NOUN = {
@@ -177,6 +178,21 @@ OCR_UNAVAILABLE = assert_safe("문자 인식 처리에 실패했습니다. 잠�
 NO_FINDINGS = "추가로 탐지된 항목이 없습니다"
 
 
+# LLM 판단(개발자 모드) 오류. 키·원문·공급자 응답 본문은 넣지 않는다.
+LLM_CONFIG_INVALID = assert_safe("판단 모델 설정 형식이 올바르지 않습니다.")
+LLM_MODEL_MISSING = assert_safe("개발자 모드에서 모델 이름을 입력해 주세요.")
+LLM_KEY_MISSING = assert_safe("개발자 모드에서 API 키를 입력해 주세요.")
+LLM_URL_MISSING = assert_safe("개발자 모드에서 http(s) 로 시작하는 API 주소를 입력해 주세요.")
+LLM_AUTH_FAILED = assert_safe("판단 모델 API 가 키를 거부했습니다. 키와 권한을 확인해 주세요.")
+LLM_RATE_LIMITED = assert_safe("판단 모델 API 사용 한도에 걸렸습니다. 잠시 후 다시 시도해 주세요.")
+LLM_UNREACHABLE = assert_safe("판단 모델 API 에 연결하지 못했습니다. 주소와 네트워크를 확인해 주세요.")
+LLM_BAD_RESPONSE = assert_safe("판단 모델의 응답을 해석하지 못했습니다. 다른 모델로 시도해 주세요.")
+
+
+def llm_http_failed(status: int) -> str:
+    return assert_safe(f"판단 모델 API 요청이 실패했습니다. (HTTP {int(status)})")
+
+
 def all_templates() -> list[str]:
     """테스트용. 이 파일이 만들 수 있는 문장을 종류별로 하나씩 만든다.
 
@@ -191,5 +207,5 @@ def all_templates() -> list[str]:
     for kind in ("url", "vcard", "wifi", "tel", "text", "unknown"):
         out.append(qr_decoded(kind))
     out += [qr_undecoded(), face_photo_region(), qr_contains(["휴대전화번호"]), barcode_decoded(),
-            gps_present(37.5, 127.0), NO_FINDINGS]
+            gps_present(37.5, 127.0), NO_FINDINGS, llm_http_failed(500)]
     return out

@@ -11,10 +11,53 @@
     plate:['PLATE','차량번호'],address_road:['ADDRESS','도로명주소'],address_unit:['ADDRESS','동·호수'],tracking:['TRACKING','운송장번호'],
     account:['ACCOUNT','계좌번호'],password:['SECRET','비밀번호'],student_id:['IDNUM','학번·사번'],
     long_digits:['NUMBER','긴 숫자'],qr:['BARCODE','QR코드'],barcode:['BARCODE','바코드'],
-    document:['UNKNOWN','문서 영역'],face_photo:['UNKNOWN','증명사진']
+    document:['UNKNOWN','문서 영역'],face_photo:['UNKNOWN','증명사진'],other:['UNKNOWN','개인정보 후보']
   };
   const SEVERITY = { cover:'가림 권장',review:'검토 권장',info:'참고' };
-  const CONDITIONS = { full:'문맥·결합',baseline:'심각도표',naive:'정규식만' };
+  // 판단 방법(개발자 모드). rules 는 서버의 문맥·결합 규칙, 나머지는 LLM 이 모든 글자 판단을 맡는다.
+  // cloud: 사진에서 읽은 글자가 그 회사 서버로 나간다. 모델 기본값은 고쳐 쓸 수 있는 예시다.
+  const JUDGES = {
+    rules:{label:'규칙 기반 판단'},
+    openai:{label:'ChatGPT',model:'gpt-4.1-mini',key:'required',cloud:true},
+    gemini:{label:'Gemini',model:'gemini-2.5-flash',key:'required',cloud:true},
+    anthropic:{label:'Claude',model:'claude-haiku-5-5',key:'required',cloud:true},
+    openrouter:{label:'OpenRouter',model:'openai/gpt-4.1-mini',key:'required',cloud:true},
+    ollama:{label:'Ollama',model:'qwen2.5:7b',url:'http://127.0.0.1:11434'},
+    custom:{label:'Custom API',model:'',key:'optional',url:'',urlRequired:true}
+  };
+  const MAX_FIELD = 500;
+  const field = v => typeof v==='string' ? v.slice(0,MAX_FIELD) : '';
+  // 브라우저에 저장된 개발자 모드 설정을 믿지 않고 다듬는다. 공급자마다 모델·키·주소를 따로 기억한다.
+  function devSettings(raw) {
+    const src=raw&&typeof raw==='object'?raw:{};
+    const provider=Object.hasOwn(JUDGES,src.provider)?src.provider:'rules';
+    const providers={};
+    for(const [id,j] of Object.entries(JUDGES)) {
+      if(id==='rules')continue;
+      const p=src.providers&&typeof src.providers[id]==='object'?src.providers[id]:{};
+      providers[id]={model:field(p.model)||j.model||'',apiKey:j.key?field(p.apiKey):'',baseUrl:'url' in j?(field(p.baseUrl)||j.url):''};
+    }
+    return {provider,providers};
+  }
+  // 서버 /analyze·/redact 의 judge 필드. 규칙 기반이면 보내지 않는다.
+  function judgeField(settings) {
+    const s=devSettings(settings);
+    if(s.provider==='rules')return undefined;
+    const p=s.providers[s.provider];
+    return JSON.stringify({provider:s.provider,model:p.model.trim(),api_key:p.apiKey.trim(),base_url:p.baseUrl.trim()});
+  }
+  // 글자가 이 컴퓨터 밖으로 나가는가. 클라우드 공급자는 항상, Ollama·Custom 은 주소가 이 컴퓨터가 아닐 때.
+  function sendsOutside(settings) {
+    const s=devSettings(settings),j=JUDGES[s.provider];
+    if(s.provider==='rules')return false;
+    if(j.cloud)return true;
+    try{return !['localhost','127.0.0.1','[::1]'].includes(new URL(s.providers[s.provider].baseUrl).hostname);}catch{return false;}
+  }
+  function judgeLabel(settings) {
+    const s=devSettings(settings);
+    if(s.provider==='rules')return '문맥·결합';
+    return JUDGES[s.provider].label+(s.providers[s.provider].model?' · '+s.providers[s.provider].model:'');
+  }
   const STYLES = ['blur','solid'];
   const MAX_REGIONS = 300;
 
@@ -86,6 +129,7 @@
         report.detector?'YOLO '+String(report.detector).replace(/^yolo:/,'').slice(0,80)
           +(report.detector_device?' ('+String(report.detector_device).slice(0,40).toUpperCase()+')':''):'YOLO 꺼짐'
       ].filter(Boolean).join(' · '),elapsedMs:Number(report.elapsed_ms)||0,
+      judge:String(report.judge||'규칙 기반').slice(0,240),judgeProvider:Object.hasOwn(JUDGES,report.judge_provider)?report.judge_provider:'rules',
       partial:regions.some(r=>r.certainty!=='read')};
   }
 
@@ -103,5 +147,5 @@
     return {image:{width:state.width,height:state.height},style:STYLES.includes(state.style)?state.style:'blur',boxes:boxes(state)};
   }
 
-  globalThis.PrivacyLensCore=Object.freeze({TYPES,KINDS,SEVERITY,CONDITIONS,STYLES,toPixels,fromPixels,screenPoint,fromReport,boxes,payload});
+  globalThis.PrivacyLensCore=Object.freeze({TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,toPixels,fromPixels,screenPoint,fromReport,boxes,payload});
 })();

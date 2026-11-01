@@ -40,7 +40,7 @@ from starlette.formparsers import MultiPartParser
 from jobqueue import Cancelled, QueueFull, WorkQueue
 
 from pipeline import analyze as pl
-from pipeline import detect, metadata, ocr, redact, wording
+from pipeline import detect, llm_judge, metadata, ocr, redact, wording
 from pipeline.worker import OcrUnavailable, ThreadBoundBackend
 from pipeline.types import Box
 
@@ -274,31 +274,39 @@ async def queue_cancel(ticket: str):
     return {"cancelled": QUEUE.cancel(ticket)}
 
 
+@app.exception_handler(llm_judge.LlmJudgeError)
+async def llm_failed(_request, exc):
+    # 문구는 wording 이 만든 것뿐이다. 키·원문·공급자 응답은 담기지 않는다.
+    return JSONResponse(status_code=502, content={"detail": str(exc)})
+
+
+def _judge(raw: str | None) -> llm_judge.JudgeConfig | None:
+    """개발자 모드의 판단 설정. 비었으면 규칙 기반. 키는 이 요청에서만 쓰고 저장하지 않는다."""
+    try:
+        return llm_judge.parse_config(raw)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
 @app.post("/analyze")
 def analyze_endpoint(
     image: UploadFile = File(...),
-    mode: str = Form("full"),
     ticket: str | None = Form(None),
+    judge: str | None = Form(None),
 ):
     # 기다리는 동안에는 받은 바이트만 들고 있는다. 디코딩은 차례가 온 뒤에.
     data = _read(image)
-
-    runner = {
-        "naive": pl.naive_regex,
-        "baseline": pl.baseline,
-        "full": pl.analyze,
-    }.get(mode, pl.analyze)
+    cfg = _judge(judge)
 
     with _Turn(_ticket(ticket)):
         img = _open(data)
-        report = runner(img, backend=backend())
+        report = pl.analyze(img, backend=backend(), judge=cfg)
     preview, scale = _preview(img)
 
     return JSONResponse({
         "report": report.as_dict(),
         "preview": preview,
         "preview_scale": scale,
-        "mode": mode,
     })
 
 
@@ -332,9 +340,11 @@ def redact_endpoint(
     boxes: str = Form("[]"),
     style: str = Form(redact.DEFAULT_STYLE),
     ticket: str | None = Form(None),
+    judge: str | None = Form(None),
 ):
     style = _style(style)
     data = _read(image)
+    cfg = _judge(judge)  # 가린 결과를 다시 검사할 때도 분석과 같은 판단 방법을 쓴다
 
     with _Turn(_ticket(ticket)):
         img = _open(data)
@@ -347,7 +357,7 @@ def redact_endpoint(
         # 있었는가' 뿐이고, 그건 EXIF 만 읽으면 된다. OCR 은 결과 파일에 한 번만.
         had_gps = bool(metadata.check_exif(img))
         check = redact.verify(
-            wanted, out, lambda im: pl.analyze(im, backend=backend()), had_gps=had_gps
+            wanted, out, lambda im: pl.analyze(im, backend=backend(), judge=cfg), had_gps=had_gps
         )
 
     return JSONResponse({
