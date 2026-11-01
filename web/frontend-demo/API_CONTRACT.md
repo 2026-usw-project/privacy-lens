@@ -51,7 +51,11 @@ multipart: `image`(원본 파일), `ticket`(번호표, 선택), `judge`(개발�
   `headers` 의 키는 끝 4글자만 남깁니다(`Bearer …abcd`). 보낸 OCR 원문이 들어 있어 화면은 **개발자 콘솔(F12)에만**
   찍고 저장하지 않습니다. 실패(502) 응답 본문, `/llm/models`, `/redact`(재검사) 응답에도 같은 `llm_trace` 가 붙습니다.
 - `report.judge`: 글자 판단에 쓴 방법. 규칙이면 `규칙 기반`, LLM 이면 `공급자 · 모델`(예: `Claude · claude-haiku-5-5`).
-  `report.judge_provider`: `rules` 또는 위 provider. LLM 이 낸 항목은 `detail.judge == "llm"` 이고 `kind` 에 `other`(그 밖의 개인정보)가 더 있습니다.
+  `report.judge_provider`: `rules` 또는 위 provider. LLM 이 낸 항목은 `detail.judge == "llm"` 이고,
+  `detail.basis` 가 근거 종류입니다: `label`(옆 라벨, `basis_box` 에 라벨 상자) · `document`(`document_hint` 에 문서 종류) ·
+  `linked`(`linked_kinds` 에 함께 있는 항목 종류) · `honorific` · `format`(근거 없음 또는 서버 확인 실패).
+  여러 조각으로 나뉜 값(4자리씩 끊긴 카드번호 등)은 한 항목이며 `detail.parts` 에 조각 수, `box` 는 조각들을 덮는 상자입니다.
+  LLM 판단에서는 `kind` 에 `other`(그 밖의 개인정보)가 더 있습니다.
 - `report.detector`: 문서 검출 모델 이름(예: `yolo:v003`). 검출을 쓰지 않았으면 빈 문자열.
 - `report.detector_device`: YOLO가 실제 추론에 사용한 장치(예: `cpu`, `cuda:0`). 검출을 쓰지 않았거나 장치를 알 수 없으면 빈 문자열. 화면 하단에 OCR 모델과 함께 YOLO 버전·장치를 표시하며 검출 미사용 시 `YOLO 꺼짐`으로 표시합니다.
 - `severity`: cover(가림 권장) · review(검토 권장) · info(참고). `certainty`: read · partial · region.
