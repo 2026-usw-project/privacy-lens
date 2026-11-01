@@ -263,6 +263,12 @@ python -m eval.failures init <폴더>           # 정답 틀 + 정답입력도�
 python -m eval.failures run <폴더> --note "…" # ① 못 찾음 ② 잘못 읽음 ③ 판단 실패, 평가기록.csv 누적
 ```
 
+**안정성 점검** — 이상한 입력(CMYK·16비트·HEIC·화소 폭탄·깨진 파일), 연속 30장, 동시 요청, 가림 한 바퀴를 실제 서버 코드로 돌립니다. CI 는 `--quick`(가짜 OCR).
+
+```bash
+PL_OCR=paddleocr python -m eval.stability
+```
+
 **화면 검사·빌드** — 화면을 수정했다면 아래 순서로 실행합니다.
 
 ```bash

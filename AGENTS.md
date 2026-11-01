@@ -44,6 +44,9 @@ python run.py                              # 환경 점검 → 서버 + 화면 (
 python -m pytest tests                     # 백엔드 테스트 (OCR 불필요)
 python -m eval.judgment --check            # 판단 회귀 검사(OCR 불필요, CI 와 같음)
 python -m eval.failures run <폴더>          # 실사 실패 원인 분류(사진은 드라이브)
+python -m eval.stability [--quick]         # 이상한 입력·연속 30장·동시 요청 점검
+python -m eval.names_check                 # 라벨 없는 이름 후보 판정(따로 모은 목록)
+python -m eval.ner_compare --engine rules kiwi hf   # 이름 찾기 규칙 vs NER(hf 는 Colab)
 python -m samples.props <폴더>              # 촬영용 가상 소품 + 정답
 python -m eval.compare samples/out         # 비교 실험
 PL_OCR=paddleocr python -m eval.rotation   # 회전 실험
