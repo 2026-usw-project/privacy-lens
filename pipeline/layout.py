@@ -91,11 +91,11 @@ class Extent:
 
 
 def _is_label(text: str) -> bool:
-    flat = kp.compact(kp.normalize(text)).rstrip(":：.#")
+    flat = kp.label_key(kp.normalize(text)).rstrip(":：.#")
     if not flat or len(flat) > LABEL_MAX_CHARS:
         return False
     words = kp.CONTEXT_PERSONAL + kp.CONTEXT_PUBLIC + kp.NAME_LABELS + kp.TRACKING_LABELS
-    return any(flat.endswith(kp.compact(w)) for w in words)
+    return any(flat.endswith(kp.label_key(w)) for w in words)
 
 
 class Layout:

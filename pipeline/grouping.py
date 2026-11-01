@@ -27,10 +27,12 @@ COMBINABLE = {
     frozenset({"name", "mobile"}),
     frozenset({"name", "address_road"}),
     frozenset({"name", "address_unit"}),
+    frozenset({"name", "account"}),
+    frozenset({"name", "student_id"}),
 }
 
 # 결합 설명에 나올 때의 순서. 집합 순회 순서에 기대지 않는다.
-_ORDER = ["name", "mobile", "landline", "email", "address_road", "address_unit"]
+_ORDER = ["name", "student_id", "mobile", "landline", "email", "address_road", "address_unit", "account"]
 
 
 def _cluster(spans: list[TextSpan]) -> list[list[int]]:
@@ -105,7 +107,7 @@ def assign_groups(
     for idx, member_ids in enumerate(clusters):
         group_id = f"g{idx}"
         blob = " ".join(spans[i].text for i in member_ids)
-        doc = kp.document_hint(kp.compact(kp.normalize(blob)))
+        doc = kp.document_hint(kp.label_key(kp.normalize(blob)))
 
         inside = members.get(idx, [])
         for f in inside:

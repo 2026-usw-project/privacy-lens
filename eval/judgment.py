@@ -171,6 +171,26 @@ def card_photo(f: Fake, split: bool):
     return lines, [Gold(c, COVER, "카드번호"), Gold(n, COVER, "이름")]
 
 
+def ocr_noise(f: Fake, split: bool):
+    """라벨에 기호가 끼고 번호 맨 앞 0 이 O 로 읽힌 송장(PaddleOCR·Tesseract 에서 실제로 나온 모양)."""
+    n, a, u = f.name(), f.road(), f.unit()
+    p = "O" + f.mobile()[1:]
+    lines = [_lv("받-는분", n, split), _lv("연락·처", p, split), _lv("배송‧지", f"{a} {u}", split)]
+    gold = [Gold(n, COVER, "이름"), Gold(p, COVER, "휴대폰"), Gold(a, COVER, "도로명주소"),
+            Gold(u, COVER, "상세주소")]
+    return lines, gold
+
+
+def settings_screen(f: Fake, split: bool):
+    """비밀번호·번호 낱말은 있지만 값이 없는 화면. 새 규칙의 오탐 시험용."""
+    member = f.tracking()
+    lines = [["계정 설정"], ["비밀번호 변경"], ["비밀번호를 입력하세요"], _lv("회원번호", member, split),
+             ["우리 집 와이파이 이름 NURI_5G"], ["문의 help@example.org"]]
+    gold = [Gold(member, NONE, "긴 숫자"), Gold("help@example.org", NONE, "이메일"),
+            Gold("NURI_5G", NONE, "와이파이 이름")]
+    return lines, gold
+
+
 TEMPLATES = {
     "송장(라벨 있음)": waybill_labeled,
     "송장(라벨 없음)": waybill_unlabeled,
@@ -183,6 +203,8 @@ TEMPLATES = {
     "메일 화면": mail_screen,
     "신분증": id_card,
     "카드": card_photo,
+    "OCR 잡음": ocr_noise,
+    "설정 화면": settings_screen,
 }
 
 

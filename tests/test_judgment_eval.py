@@ -54,8 +54,8 @@ def test_failure_causes():
     assert failures.classify(phone, texts, [])[0] == "③ 판단 실패"
     misread = {"text": "010-1234-5678", "expect": "cover"}
     assert failures.classify(misread, ["010-1284-5673"], [])[0] == "② 잘못 읽음"
-    # 맨 앞 글자가 O 이면 지금 정규화가 되돌리지 못한다(숫자로 시작할 때만 보정) → 잘못 읽음
-    assert failures.classify(misread, ["O1O-1234-5678"], [])[0] == "② 잘못 읽음"
+    # 맨 앞 글자가 O 로 읽힌 번호도 정규화가 되돌린다(2026-11) → 글자는 맞게 읽은 것
+    assert failures.classify(misread, ["O1O-1234-5678"], [])[0] == "③ 판단 실패"
     assert failures.classify({"text": "권선로 208", "expect": "cover"}, texts, [])[0] == "① 못 찾음"
     # 가리면 안 될 것을 못 읽은 건 결과적으로 맞음
     assert failures.classify({"text": "1588-1255", "expect": "none"}, texts, [])[0] == "맞음"

@@ -1,27 +1,27 @@
 {
  "items": {
   "cover|계좌번호": [
-   0,
+   14,
    14
   ],
   "cover|도로명주소": [
-   28,
-   42
+   42,
+   56
   ],
   "cover|비밀번호": [
-   0,
+   28,
    28
   ],
   "cover|상세주소": [
-   42,
-   42
+   56,
+   56
   ],
   "cover|이름": [
-   35,
-   112
+   63,
+   126
   ],
   "cover|이메일": [
-   0,
+   14,
    14
   ],
   "cover|주민번호": [
@@ -33,18 +33,26 @@
    14
   ],
   "cover|학번": [
-   0,
+   14,
    14
   ],
   "cover|휴대폰": [
-   28,
-   42
+   42,
+   56
+  ],
+  "none|긴 숫자": [
+   14,
+   14
   ],
   "none|대표번호": [
    14,
    14
   ],
   "none|사업자번호": [
+   14,
+   14
+  ],
+  "none|와이파이 이름": [
    14,
    14
   ],
@@ -57,8 +65,8 @@
    28
   ],
   "none|이메일": [
-   14,
-   14
+   28,
+   28
   ],
   "none|카드번호": [
    14,
@@ -83,14 +91,14 @@
  },
  "false_cover": 0,
  "summary": {
-  "items": 504,
-  "cover_total": 336,
-  "cover_hit": 47.9,
-  "cover_weak": 8.3,
-  "cover_miss": 43.8,
+  "items": 602,
+  "cover_total": 392,
+  "cover_hit": 76.8,
+  "cover_weak": 7.1,
+  "cover_miss": 16.1,
   "review_total": 42,
   "review_ok": 66.7,
-  "none_total": 126,
+  "none_total": 168,
   "false_cover": 0.0,
   "false_review": 0.0
  }
