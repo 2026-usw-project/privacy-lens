@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Lens 정답 입력</title>
+<style>
+  :root {
+    --bg: #f4f3ef; --panel: #ffffff; --line: #dcd9d1; --text: #22221f; --muted: #6d6a62;
+    --accent: #c4501d; --ok: #2f7a4a; --warn: #b3261e; --review: #9a6a00;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.45 "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; }
+  button, input, select, textarea { font: inherit; color: var(--text); }
+  button { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  button:hover { border-color: #b9b5aa; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.icon { padding: 4px 8px; color: var(--muted); }
+  button:disabled { opacity: .45; cursor: default; }
+  input, select, textarea { border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; background: #fff; min-width: 0; }
+  input:focus, select:focus, textarea:focus { outline: 2px solid #f0c3ad; border-color: var(--accent); }
+  kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 4px; padding: 0 4px; background: #fbfaf7; }
+
+  #app { display: grid; grid-template-columns: 1fr 500px; grid-template-rows: auto 1fr; height: 100%; }
+  header { grid-column: 1 / -1; display: flex; gap: 10px; align-items: center; padding: 10px 14px;
+    border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0 8px 0 0; }
+  #progress { color: var(--muted); }
+  #msg { margin-left: auto; color: var(--muted); }
+  #msg.ok { color: var(--ok); } #msg.err { color: var(--warn); }
+  #stage { position: relative; overflow: auto; background: #2b2a27; }
+  #stage img { display: block; max-width: 100%; max-height: 100%; margin: auto; cursor: zoom-in; }
+  #stage.zoom img { max-width: none; max-height: none; cursor: zoom-out; }
+  #empty { position: absolute; inset: 0; display: grid; place-items: center; color: #d8d5cc; text-align: center; padding: 24px; }
+  aside { border-left: 1px solid var(--line); background: var(--panel); overflow: auto; padding: 12px 14px; }
+  aside h2 { font-size: 13px; margin: 14px 0 6px; color: var(--muted); font-weight: 600; }
+  .photo-meta { display: grid; grid-template-columns: 80px 1fr; gap: 6px 8px; align-items: center; }
+  .item { display: grid; grid-template-columns: 1fr 112px 128px 28px; gap: 6px; margin: 6px 0; align-items: center; }
+  .item.cover select.expect { color: var(--warn); }
+  .item.review select.expect { color: var(--review); }
+  .item.none select.expect { color: var(--ok); }
+  .head { color: var(--muted); font-size: 12px; margin-bottom: -2px; }
+  .hint { color: var(--muted); font-size: 12.5px; }
+  .hint div { margin: 3px 0; }
+  .badge { font-size: 12px; padding: 1px 6px; border-radius: 10px; background: #eceae4; color: var(--muted); }
+  .badge.done { background: #e2efe6; color: var(--ok); }
+  #list { display: flex; flex-wrap: wrap; gap: 4px; }
+  #list button { padding: 2px 7px; font-size: 12px; }
+  #list button.done { background: #e2efe6; border-color: #bcd9c5; }
+  #list button.cur { border-color: var(--accent); }
+  .warnbox { background: #fdf3e7; border: 1px solid #f0d5ae; border-radius: 6px; padding: 8px 10px; color: #7a4b08; font-size: 13px; }
+  @media (max-width: 900px) { #app { grid-template-columns: 1fr; grid-template-rows: auto 50vh auto; } aside { border-left: 0; }
+    .item { grid-template-columns: 1fr 1fr 28px; } .item input { grid-column: 1 / -1; } .item.head span:nth-child(n+2) { display: none; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Privacy Lens 정답 입력</h1>
+    <button id="open" class="primary">폴더 열기</button>
+    <button id="prev" disabled>◀ 이전</button>
+    <button id="next" disabled>다음 ▶</button>
+    <span id="progress"></span>
+    <span id="status" class="badge" hidden></span>
+    <button id="save" class="primary" disabled>저장 (Ctrl+S)</button>
+    <span id="msg"></span>
+  </header>
+
+  <main id="stage">
+    <div id="empty">
+      <div>
+        <p><b>실사 평가 사진 폴더</b>를 여세요. 사진마다 <code>이름.json</code> 정답 파일을 같은 폴더에 저장합니다.</p>
+        <p id="unsupported" hidden style="color:#f3b0a8">이 브라우저는 폴더 열기를 지원하지 않습니다. 크롬이나 엣지에서 여세요.</p>
+        <p style="color:#a9a59b">사진은 이 컴퓨터 밖으로 나가지 않습니다(인터넷 연결 없이 동작).</p>
+      </div>
+    </div>
+    <img id="photo" alt="" hidden>
+  </main>
+
+  <aside>
+    <div id="panel" hidden>
+      <div class="photo-meta">
+        <label for="category">장면 종류</label>
+        <select id="category"></select>
+        <label for="note">메모</label>
+        <input id="note" placeholder="예: 형광등 반사, 멀리서 찍음">
+      </div>
+
+      <div id="propRow" hidden style="margin-top:12px">
+        <h2 style="margin-top:0">찍힌 소품 넣기 <span class="hint">(props.json)</span></h2>
+        <div style="display:flex;gap:6px">
+          <select id="prop" style="flex:1"></select>
+          <button id="addProp">넣기</button>
+        </div>
+        <div class="hint">소품 왼쪽 위 작은 번호(P01…)를 고르면 그 소품의 글자와 등급이 채워집니다. 사진에서 잘리거나 가려져 <b>안 보이는 글자는 지우세요.</b></div>
+      </div>
+
+      <h2>사진에 실제로 적힌 글자와 등급</h2>
+      <div class="item head"><span>글자 (사진에 보이는 그대로)</span><span>항목</span><span>등급</span><span></span></div>
+      <div id="items"></div>
+      <button id="add">+ 항목 추가 (Ctrl+Enter)</button>
+      <label style="display:flex;gap:6px;align-items:center;margin-top:10px">
+        <input type="checkbox" id="nothing"> 가릴 것이 없는 사진(간판·메뉴만 있음)
+      </label>
+
+      <h2>사진 목록</h2>
+      <div id="list"></div>
+
+      <h2>기준</h2>
+      <div class="hint">
+        <div><b style="color:var(--warn)">가림</b> 그대로 공유되면 안 되는 것 · <b style="color:var(--review)">확인 필요</b> 애매한 것 · <b style="color:var(--ok)">가리면 안 됨</b> 대표번호·상호처럼 공개된 것</div>
+        <div>자세한 기준은 <code>docs/MASKING_CRITERIA.md</code>.</div>
+        <div>가린 번호(포스트잇)는 적지 않습니다. <b>보이는 글자만</b> 적습니다.</div>
+        <div>주소처럼 여러 줄이면 줄마다 따로 적습니다(도로명 / 동·호수).</div>
+        <div><kbd>←</kbd><kbd>→</kbd> 사진 이동(입력칸 밖에서) · <kbd>Ctrl</kbd>+<kbd>S</kbd> 저장 · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> 항목 추가 · 사진 클릭 = 확대</div>
+      </div>
+      <p id="dirty" class="warnbox" hidden>저장하지 않은 변경이 있습니다. 다른 사진으로 넘어가면 자동 저장합니다.</p>
+    </div>
+  </aside>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+
+// 기준표(docs/MASKING_CRITERIA.md)의 항목과, 고르면 먼저 채워 줄 등급
+const ITEMS = [
+  ["이름", "cover"], ["휴대폰", "cover"], ["유선전화", "review"], ["대표번호", "none"],
+  ["도로명주소", "cover"], ["상세주소", "cover"], ["주민번호", "cover"], ["카드번호", "cover"],
+  ["계좌번호", "cover"], ["이메일", "cover"], ["비밀번호", "cover"], ["학번·사번", "cover"],
+  ["운송장번호", "review"], ["차량번호", "review"], ["사업자번호", "none"], ["학교·회사명", "review"],
+  ["상호·간판", "none"], ["기타", "review"],
+];
+const EXPECT = [["cover", "가림"], ["review", "확인 필요"], ["none", "가리면 안 됨"]];
+const CATEGORIES = ["송장", "학생증·신분증", "명찰·사원증", "카드", "영수증", "화면(모니터·폰)",
+  "메신저 캡처", "메모·포스트잇", "택배 상자", "간판·전단", "책상·방 배경", "기타"];
+const IMAGE = /\.(jpe?g|png|webp)$/i;
+
+const S = { dir: null, photos: [], index: -1, gold: {}, dirty: false, url: null, props: {} };
+
+function msg(text, kind = "") { $("msg").textContent = text; $("msg").className = kind; }
+function stem(name) { return name.replace(/\.[^.]+$/, ""); }
+function option(value, label, selected) {
+  const o = document.createElement("option"); o.value = value; o.textContent = label;
+  if (selected) o.selected = true; return o;
+}
+
+$("category").append(option("", "(고르세요)"), ...CATEGORIES.map((c) => option(c, c)));
+
+function itemRow(it = { text: "", item: "", expect: "cover" }) {
+  const row = document.createElement("div");
+  row.className = "item " + it.expect;
+  const text = document.createElement("input");
+  text.value = it.text; text.placeholder = "예: 010-1234-5678"; text.dataset.k = "text";
+  const item = document.createElement("select"); item.dataset.k = "item";
+  item.append(option("", "항목"), ...ITEMS.map(([n]) => option(n, n, n === it.item)));
+  const expect = document.createElement("select"); expect.className = "expect"; expect.dataset.k = "expect";
+  expect.append(...EXPECT.map(([v, l]) => option(v, l, v === it.expect)));
+  const del = document.createElement("button"); del.className = "icon"; del.textContent = "✕"; del.title = "지우기";
+  item.addEventListener("change", () => {
+    const def = ITEMS.find(([n]) => n === item.value);
+    if (def) { expect.value = def[1]; row.className = "item " + def[1]; }
+    markDirty();
+  });
+  expect.addEventListener("change", () => { row.className = "item " + expect.value; markDirty(); });
+  text.addEventListener("input", markDirty);
+  del.addEventListener("click", () => { row.remove(); markDirty(); });
+  row.append(text, item, expect, del);
+  return row;
+}
+
+function markDirty() { S.dirty = true; $("dirty").hidden = false; }
+
+function readForm() {
+  const items = [...$("items").children].map((row) => {
+    const get = (k) => row.querySelector(`[data-k="${k}"]`).value;
+    return { text: get("text").trim(), item: get("item"), expect: get("expect") };
+  }).filter((it) => it.text);
+  return { category: $("category").value, note: $("note").value.trim(), nothing: $("nothing").checked, items, checked: true };
+}
+
+function problems(g) {
+  const out = [];
+  if (!g.items.length && !g.nothing) out.push("항목이 없습니다. 가릴 것이 없는 사진이면 아래 칸을 체크하세요.");
+  if (g.items.length && g.nothing) out.push("'가릴 것이 없는 사진'인데 항목이 있습니다.");
+  if (g.items.some((it) => !it.item)) out.push("항목 이름을 고르지 않은 줄이 있습니다.");
+  const seen = new Set();
+  for (const it of g.items) { if (seen.has(it.text)) out.push(`'${it.text}' 를 두 번 적었습니다.`); seen.add(it.text); }
+  return out;
+}
+
+async function writeJson(name, data) {
+  const fh = await S.dir.getFileHandle(name, { create: true });
+  const w = await fh.createWritable();
+  await w.write(JSON.stringify(data, null, 1) + "\n");
+  await w.close();
+}
+
+async function save({ quiet = false } = {}) {
+  if (S.index < 0) return true;
+  const g = readForm();
+  const issues = problems(g);
+  if (issues.length && !quiet) { msg(issues[0], "err"); return false; }
+  if (issues.length && quiet && !g.items.length && !g.nothing && !S.gold[S.photos[S.index].name]) {
+    return true; // 아무것도 안 적은 사진은 넘어갈 때 파일을 만들지 않는다
+  }
+  const name = stem(S.photos[S.index].name) + ".json";
+  const { nothing, ...data } = g;
+  if (issues.length) data.checked = false; // 덜 끝난 것은 표시해 둔다
+  try {
+    await writeJson(name, data);
+    S.gold[S.photos[S.index].name] = data;
+    S.dirty = false; $("dirty").hidden = true;
+    msg(issues.length ? `임시 저장(확인 필요: ${issues[0]})` : `저장했습니다: ${name}`, issues.length ? "err" : "ok");
+    renderList();
+    return true;
+  } catch (e) { msg("저장 실패: " + e.message, "err"); return false; }
+}
+
+async function readGold(file) {
+  try {
+    const fh = await S.dir.getFileHandle(stem(file.name) + ".json");
+    return JSON.parse(await (await fh.getFile()).text());
+  } catch { return null; }
+}
+
+async function openFolder(handle) {
+  S.dir = handle; S.photos = []; S.gold = {};
+  for await (const entry of handle.values()) {
+    if (entry.kind === "file" && IMAGE.test(entry.name)) S.photos.push(entry);
+  }
+  S.photos.sort((a, b) => a.name.localeCompare(b.name, "ko", { numeric: true }));
+  S.props = {};
+  try {
+    const fh = await handle.getFileHandle("props.json");
+    S.props = JSON.parse(await (await fh.getFile()).text()).props || {};
+  } catch { /* 소품을 안 쓰는 폴더 */ }
+  const ids = Object.keys(S.props);
+  $("propRow").hidden = !ids.length;
+  $("prop").replaceChildren(...ids.map((id) => option(id, `${id} · ${S.props[id].kind}`)));
+  if (!S.photos.length) { msg("이 폴더에 사진(jpg·png·webp)이 없습니다.", "err"); return; }
+  for (const p of S.photos) { const g = await readGold(p); if (g) S.gold[p.name] = g; }
+  $("empty").hidden = true; $("panel").hidden = false; $("photo").hidden = false;
+  ["prev", "next", "save"].forEach((id) => ($(id).disabled = false));
+  const first = S.photos.findIndex((p) => !(S.gold[p.name] || {}).checked);
+  await show(first < 0 ? 0 : first);
+  msg(`사진 ${S.photos.length}장을 열었습니다.`, "ok");
+}
+
+async function show(i) {
+  if (i < 0 || i >= S.photos.length) return;
+  if (S.index >= 0 && S.dirty && !(await save({ quiet: true }))) return;
+  S.index = i;
+  msg("");
+  const p = S.photos[i];
+  const file = await p.getFile();
+  if (S.url) URL.revokeObjectURL(S.url);
+  S.url = URL.createObjectURL(file);
+  $("photo").src = S.url; $("photo").alt = p.name;
+  $("stage").classList.remove("zoom");
+  const g = S.gold[p.name] || { category: "", note: "", items: [] };
+  $("category").value = g.category || "";
+  $("note").value = g.note || "";
+  $("nothing").checked = !!(g.checked && g.items && !g.items.length);
+  $("items").replaceChildren(...(g.items && g.items.length ? g.items : [undefined]).map((it) => itemRow(it)));
+  S.dirty = false; $("dirty").hidden = true;
+  renderList();
+}
+
+function renderList() {
+  const done = S.photos.filter((p) => (S.gold[p.name] || {}).checked).length;
+  $("progress").textContent = `${S.index + 1} / ${S.photos.length} · 완료 ${done}장`;
+  const cur = S.photos[S.index];
+  const st = $("status"); st.hidden = false;
+  const g = S.gold[cur.name];
+  st.textContent = g ? (g.checked ? "완료" : "덜 됨") : "새 사진"; st.className = "badge" + (g && g.checked ? " done" : "");
+  $("list").replaceChildren(...S.photos.map((p, k) => {
+    const b = document.createElement("button");
+    b.textContent = String(k + 1); b.title = p.name;
+    b.className = ((S.gold[p.name] || {}).checked ? "done" : "") + (k === S.index ? " cur" : "");
+    b.addEventListener("click", () => show(k));
+    return b;
+  }));
+}
+
+$("addProp").addEventListener("click", () => {
+  const prop = S.props[$("prop").value];
+  if (!prop) return;
+  const have = new Set(readForm().items.map((it) => it.text));
+  // 비어 있는 첫 줄은 소품 항목으로 대신한다
+  [...$("items").children].forEach((row) => { if (!row.querySelector("input").value.trim()) row.remove(); });
+  const fresh = prop.items.filter((it) => !have.has(it.text));
+  $("items").append(...fresh.map((it) => itemRow(it)));
+  const cat = { "송장(라벨 없음)": "송장", "명함": "명찰·사원증", "학생증": "학생증·신분증" }[prop.kind] || prop.kind;
+  if (!$("category").value && CATEGORIES.includes(cat)) $("category").value = cat;
+  msg(`${$("prop").value}: ${fresh.length}개 항목을 넣었습니다. 사진에서 안 보이는 글자는 지우세요.`, "ok");
+  markDirty();
+});
+$("add").addEventListener("click", () => { const r = itemRow(); $("items").append(r); r.querySelector("input").focus(); markDirty(); });
+$("save").addEventListener("click", () => save());
+$("prev").addEventListener("click", () => show(S.index - 1));
+$("next").addEventListener("click", () => show(S.index + 1));
+["category", "note"].forEach((id) => $(id).addEventListener("input", markDirty));
+$("nothing").addEventListener("change", markDirty);
+$("photo").addEventListener("click", () => $("stage").classList.toggle("zoom"));
+
+document.addEventListener("keydown", (e) => {
+  const typing = ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName);
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); save(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); $("add").click(); return; }
+  if (typing || S.index < 0) return;
+  if (e.key === "ArrowLeft") show(S.index - 1);
+  if (e.key === "ArrowRight") show(S.index + 1);
+});
+window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ""; } });
+
+if (!("showDirectoryPicker" in window)) { $("unsupported").hidden = false; $("open").disabled = true; }
+$("open").addEventListener("click", async () => {
+  try { await openFolder(await window.showDirectoryPicker({ mode: "readwrite" })); }
+  catch (e) { if (e.name !== "AbortError") msg("폴더를 열지 못했습니다: " + e.message, "err"); }
+});
+// 시험용: 브라우저 내부 저장소(OPFS) 폴더로 열기
+window.__openForTest = openFolder;
+</script>
+</body>
+</html>

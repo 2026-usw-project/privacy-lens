@@ -13,14 +13,18 @@
 사용법:
     python -m eval.judgment                 # 요약 + 실패 사례
     python -m eval.judgment --all           # 실패 사례 전부
+    python -m eval.judgment --check         # 기준선보다 나빠진 항목이 있으면 실패(CI 가 돌린다)
+    python -m eval.judgment --update        # 판단 규칙을 고쳐 좋아졌으면 기준선을 새로 저장
     python -m eval.judgment --dump out.jsonl  # 장면·정답을 파일로(NER 비교 실험용)
+
+기준선(eval/baselines/judgment.json)은 '지금 규칙이 맞히는 개수'다. 규칙을 고친 PR 은
+--check 를 통과해야 하고(아무 항목도 나빠지지 않음), 좋아졌으면 --update 결과를 같이 올린다.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import random
 import re
 import sys
 from collections import Counter, defaultdict
@@ -62,76 +66,9 @@ class Scene:
         return out
 
 
-# ------------------------------------------------------------- 가상 정보
-
-SURN = "김이박최정강조윤장임한오서신권황안송"
-GIVEN = "민서지현우준수연하은도윤예성진유아원호영"
-ROADS = ["가온로", "누리로", "한빛로", "새솔길", "다온로", "푸른숲길", "별빛로", "이음로"]
-CITIES = [("수원시", "팔달구"), ("용인시", "기흥구"), ("화성시", "동탄구"), ("성남시", "분당구"),
-          ("서울특별시", "마포구"), ("안양시", "동안구")]
-SCHOOLS = ["한빛대학교", "누리대학교", "다온대학교"]
-COMPANIES = ["누리전자", "가온물산", "한빛시스템"]
-BANKS = ["국민", "신한", "우리", "하나", "농협"]
-# 이름처럼 생긴(흔한 성씨로 시작하는 2~4글자) 일반 낱말. 오탐 시험용
-NAME_LIKE_WORDS = ["김밥나라", "정성식당", "조은약국", "한우리", "강남역", "박하사탕", "이마트",
-                   "최고급", "장보기", "임대문의", "오늘특가", "신상품"]
-
-
-class Fake:
-    def __init__(self, seed: int):
-        self.r = random.Random(seed)
-
-    def name(self) -> str:
-        return self.r.choice(SURN) + self.r.choice(GIVEN) + self.r.choice(GIVEN)
-
-    def mobile(self) -> str:
-        return f"010-{self.r.randint(2000, 9999)}-{self.r.randint(1000, 9999)}"
-
-    def landline(self) -> str:
-        return f"031-{self.r.randint(200, 999)}-{self.r.randint(1000, 9999)}"
-
-    def road(self) -> str:
-        city, gu = self.r.choice(CITIES)
-        return f"{city} {gu} {self.r.choice(ROADS)} {self.r.randint(3, 280)}"
-
-    def unit(self) -> str:
-        return f"{self.r.randint(101, 115)}동 {self.r.randint(1, 25)}{self.r.randint(1, 4):02d}호"
-
-    def rrn(self) -> str:
-        while True:
-            yy, mm, dd = self.r.randint(80, 99), self.r.randint(1, 12), self.r.randint(1, 28)
-            body = f"{yy:02d}{mm:02d}{dd:02d}{self.r.choice('12')}{self.r.randint(0, 99999):05d}"
-            w = [2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 4, 5]
-            check = (11 - sum(int(body[i]) * w[i] for i in range(12)) % 11) % 10
-            full = body + str(check)
-            if kp.valid_rrn(full):
-                return f"{full[:6]}-{full[6:]}"
-
-    def card(self) -> str:
-        digits = [9] + [self.r.randint(0, 9) for _ in range(14)]
-        for last in range(10):
-            d = "".join(map(str, digits + [last]))
-            if kp.valid_luhn(d):
-                return "-".join(d[i:i + 4] for i in range(0, 16, 4))
-        raise AssertionError
-
-    def account(self) -> str:
-        return f"{self.r.randint(100, 999)}-{self.r.randint(100000, 999999)}-{self.r.randint(10, 99)}-{self.r.randint(100, 999)}"
-
-    def tracking(self) -> str:
-        return "".join(str(self.r.randint(0, 9)) for _ in range(12))
-
-    def brn(self) -> str:
-        while True:
-            d = "".join(str(self.r.randint(0, 9)) for _ in range(10))
-            if kp.valid_brn(d):
-                return f"{d[:3]}-{d[3:5]}-{d[5:]}"
-
-    def email(self) -> str:
-        return f"{self.r.choice(['minsu', 'jiyoon', 'hana', 'dohyun'])}{self.r.randint(10, 99)}@example.com"
-
-    def pick(self, seq):
-        return self.r.choice(seq)
+# 가상 정보 생성기는 촬영 소품(samples.props)과 같이 쓴다
+from samples.fake import (BANKS, CITIES, COMPANIES, GIVEN, NAME_LIKE_WORDS, ROADS,  # noqa: E402,F401
+                          SCHOOLS, SURN, Fake)
 
 
 # ------------------------------------------------------------- 장면 틀
@@ -363,11 +300,64 @@ def report(rows: list[dict], show_all: bool = False) -> None:
               f"{r['got']} ({r['verdict']}) {r['kinds'] or ''}")
 
 
+BASELINE = Path(__file__).resolve().parent / "baselines" / "judgment.json"
+
+
+def snapshot(rows: list[dict]) -> dict:
+    """기준선에 저장할 것: 항목·등급별 (맞음, 전체)와 잘못 가림 수. 문자열은 저장하지 않는다."""
+    table: dict[str, list[int]] = {}
+    for r in rows:
+        key = f"{r['expect']}|{r['item']}"
+        ok, total = table.get(key, [0, 0])
+        table[key] = [ok + (r["verdict"] == "맞음"), total + 1]
+    return {
+        "items": dict(sorted(table.items())),
+        "false_cover": sum(r["expect"] == NONE and r["got"] == COVER for r in rows),
+        "summary": summarize(rows),
+    }
+
+
+def check(rows: list[dict], baseline_path: Path = BASELINE) -> list[str]:
+    """기준선보다 나빠진 점. 빈 목록이면 통과."""
+    if not baseline_path.exists():
+        return [f"기준선 파일이 없습니다: {baseline_path} (python -m eval.judgment --update)"]
+    base = json.loads(baseline_path.read_text(encoding="utf-8"))
+    now = snapshot(rows)
+    problems = []
+    if set(base["items"]) != set(now["items"]) or any(
+            base["items"][k][1] != now["items"][k][1] for k in now["items"] if k in base["items"]):
+        problems.append("정답 세트가 기준선과 다릅니다. 장면 틀이나 정답을 일부러 바꿨다면 --update 로 기준선을 새로 저장하세요.")
+        return problems
+    for k, (ok, total) in now["items"].items():
+        was = base["items"][k][0]
+        if ok < was:
+            expect, item = k.split("|", 1)
+            problems.append(f"[{expect}] {item}: 맞음 {was} → {ok} (전체 {total})")
+    if now["false_cover"] > base["false_cover"]:
+        problems.append(f"잘못 가림 {base['false_cover']} → {now['false_cover']}")
+    return problems
+
+
+def improvements(rows: list[dict], baseline_path: Path = BASELINE) -> list[str]:
+    if not baseline_path.exists():
+        return []
+    base = json.loads(baseline_path.read_text(encoding="utf-8"))["items"]
+    out = []
+    for k, (ok, total) in snapshot(rows)["items"].items():
+        if k in base and ok > base[k][0]:
+            expect, item = k.split("|", 1)
+            out.append(f"[{expect}] {item}: 맞음 {base[k][0]} → {ok} (전체 {total})")
+    return out
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(prog="python -m eval.judgment")
     ap.add_argument("--all", action="store_true", help="틀린 사례 전부 보기")
     ap.add_argument("--dump", help="장면·정답을 JSONL 로 저장")
     ap.add_argument("--json", help="채점 결과를 JSON 으로 저장")
+    ap.add_argument("--check", action="store_true", help="기준선보다 나빠지면 종료 코드 1")
+    ap.add_argument("--update", action="store_true", help="지금 결과를 기준선으로 저장")
+    ap.add_argument("--quiet", action="store_true", help="요약 표 없이 검사 결과만")
     a = ap.parse_args(argv)
     if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
         try:
@@ -382,10 +372,27 @@ def main(argv=None) -> None:
                 fp.write(json.dumps({"id": sc.sid, "category": sc.category, "lines": sc.lines,
                                      "gold": [g.__dict__ for g in sc.gold]}, ensure_ascii=False) + "\n")
     rows = run(scenes)
-    report(rows, show_all=a.all)
+    if not a.quiet:
+        report(rows, show_all=a.all)
     if a.json:
         Path(a.json).write_text(json.dumps({"summary": summarize(rows), "rows": rows},
                                            ensure_ascii=False, indent=1), encoding="utf-8")
+    if a.update:
+        BASELINE.parent.mkdir(exist_ok=True)
+        BASELINE.write_text(json.dumps(snapshot(rows), ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        print(f"\n기준선을 저장했습니다: {BASELINE.relative_to(BASELINE.parents[2])}")
+    elif a.check:
+        problems = check(rows)
+        better = improvements(rows)
+        print("\n── 기준선 비교")
+        for line in better:
+            print(f"  좋아짐  {line}")
+        for line in problems:
+            print(f"  나빠짐  {line}")
+        if problems:
+            print("판단 규칙이 기준선보다 나빠졌습니다. 의도한 변경이면 이유를 PR 에 쓰고 --update 하세요.")
+            raise SystemExit(1)
+        print("  통과" + (" — 좋아진 항목이 있으니 --update 로 기준선을 올려 주세요." if better else " (변화 없음)"))
 
 
 if __name__ == "__main__":
