@@ -68,10 +68,19 @@ await test('payload has style and no recognized text',()=>{const p=C.payload(sta
 const png=new Blob([new Uint8Array([137,80,78,71,13,10,26,10])],{type:'image/png'});
 const file=new File([png],'photo.jpg',{type:'image/jpeg'});
 const json=body=>new Response(JSON.stringify(body),{headers:{'content-type':'application/json'}});
-await test('analyze posts original file, mode and ticket',async()=>{
+await test('analyze posts original file and ticket, no judge for rules',async()=>{
   const api=A.client('',async(url,o)=>{assert.equal(url,'/analyze');assert.equal(o.method,'POST');assert.equal(o.redirect,'error');
-    assert.equal(o.body.get('image').name,'photo.jpg');assert.equal(o.body.get('mode'),'baseline');assert.equal(o.body.get('ticket'),'t-12345678');return json({report,preview:'',preview_scale:1});});
-  assert.equal((await api.analyze(file,{mode:'baseline',ticket:'t-12345678'})).report.width,400);
+    assert.equal(o.body.get('image').name,'photo.jpg');assert.equal(o.body.get('ticket'),'t-12345678');
+    assert.equal(o.body.get('mode'),null);assert.equal(o.body.get('judge'),null);return json({report,preview:'',preview_scale:1});});
+  assert.equal((await api.analyze(file,{judge:C.judgeField(C.devSettings(null)),ticket:'t-12345678'})).report.width,400);
+});
+await test('analyze and redact carry the developer-mode judge',async()=>{
+  const dev=C.devSettings({provider:'gemini',providers:{gemini:{apiKey:'test-key-not-real'}}});
+  const judge=C.judgeField(dev);
+  assert.deepEqual(JSON.parse(judge),{provider:'gemini',model:'gemini-2.5-flash',api_key:'test-key-not-real',base_url:''});
+  const seen=[];const api=A.client('',async(url,o)=>{seen.push([url,o.body.get('judge')]);return json({report,file:'',verification:{passed:true}});});
+  await api.analyze(file,{judge});await api.redact(file,[],'blur',{judge});
+  assert.deepEqual(seen,[['/analyze',judge],['/redact',judge]]);
 });
 await test('preview posts boxes and style',async()=>{
   const boxes=[{x:1,y:2,w:3,h:4}];
@@ -118,6 +127,26 @@ await test('raw OCR keeps all text and never becomes a redaction selection',()=>
   assert.deepEqual(parsed.regions,result.regions);
   assert.equal(C.fromReport(report).rawOcr,null);
   assert.deepEqual(C.fromReport({...report,raw_ocr:[]}).rawOcr,[]);
+});
+
+await test('developer settings are sanitized and remembered per provider',()=>{
+  const d=C.devSettings({provider:'nope',providers:{openai:{model:'x'.repeat(900),apiKey:42},ollama:{apiKey:'ignored'}}});
+  assert.equal(d.provider,'rules');assert.equal(C.judgeField(d),undefined);assert.equal(C.judgeLabel(d),'문맥·결합');
+  assert.equal(d.providers.openai.model.length,500);assert.equal(d.providers.openai.apiKey,'');
+  assert.equal(d.providers.ollama.apiKey,'');assert.equal(d.providers.ollama.baseUrl,'http://127.0.0.1:11434');
+  assert.deepEqual(Object.keys(C.JUDGES),['rules','openai','gemini','anthropic','openrouter','ollama','custom']);
+  const custom=C.devSettings({provider:'custom',providers:{custom:{model:'local',baseUrl:'http://localhost:1234/v1'}}});
+  assert.equal(JSON.parse(C.judgeField(custom)).base_url,'http://localhost:1234/v1');
+  assert.equal(C.judgeLabel(custom),'Custom API · local');
+  assert.equal(C.sendsOutside(custom),false);assert.equal(C.sendsOutside(d),false);
+  assert.equal(C.sendsOutside({provider:'custom',providers:{custom:{baseUrl:'https://llm.example.com/v1'}}}),true);
+  assert.equal(C.sendsOutside({provider:'openrouter'}),true);assert.equal(C.sendsOutside({provider:'ollama'}),false);
+});
+await test('judge used by the server is shown',()=>{
+  assert.equal(result.judgeProvider,'rules');
+  const llm=C.fromReport({...report,judge:'Claude · claude-haiku-5-5',judge_provider:'anthropic'});
+  assert.equal(llm.judge,'Claude · claude-haiku-5-5');assert.equal(llm.judgeProvider,'anthropic');
+  assert.equal(C.fromReport({...report,judge_provider:'??'}).judgeProvider,'rules');
 });
 
 console.log('\n'+count+' geometry, report and API checks passed.');

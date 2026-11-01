@@ -10,7 +10,7 @@ pytest.importorskip("httpx")
 from fastapi.testclient import TestClient  # noqa: E402
 
 import server  # noqa: E402
-from pipeline import ocr  # noqa: E402
+from pipeline import llm_judge, ocr, wording  # noqa: E402
 from pipeline.types import Box, TextSpan  # noqa: E402
 
 
@@ -43,15 +43,55 @@ def test_analyze(client):
     assert "mobile" in kinds
 
 
-@pytest.mark.parametrize("mode", ["full", "baseline", "naive"])
-def test_raw_ocr_returned_without_findings(client, monkeypatch, mode):
+def test_raw_ocr_returned_without_findings(client, monkeypatch):
     spans = [TextSpan("일반 문구", Box(10, 20, 60, 20), 0.0)]
     monkeypatch.setattr(server, "_backend", ocr.ScriptedBackend(spans))
-    r = client.post("/analyze", files={"image": ("a.png", png())}, data={"mode": mode})
+    r = client.post("/analyze", files={"image": ("a.png", png())})
     assert r.status_code == 200
     report = r.json()["report"]
     assert report["findings"] == []
     assert report["raw_ocr"] == [s.as_dict() for s in spans]
+
+
+def test_rules_judge_by_default(client):
+    report = client.post("/analyze", files={"image": ("a.png", png())}).json()["report"]
+    assert report["judge"] == "규칙 기반" and report["judge_provider"] == "rules"
+
+
+def test_llm_judge_replaces_rules(client, monkeypatch):
+    sent = {}
+
+    def transport(url, headers, body, timeout):
+        sent["body"] = body
+        return {"choices": [{"message": {"content": json.dumps(
+            {"findings": [{"i": 0, "kind": "mobile", "severity": "review", "text": "010-1234-5678"}]})}}]}
+
+    monkeypatch.setattr(llm_judge, "_http_post", transport)
+    judge = json.dumps({"provider": "openai", "model": "test-model", "api_key": "sk-test-not-real"})
+    r = client.post("/analyze", files={"image": ("a.png", png())}, data={"judge": judge})
+    assert r.status_code == 200
+    report = r.json()["report"]
+    assert report["judge"] == "ChatGPT · test-model"
+    mobile = [f for f in report["findings"] if f["kind"] == "mobile"]
+    assert mobile[0]["severity"] == "review"   # 규칙이면 '받는분' 옆이라 가림 권장이었다
+    assert "sk-test-not-real" not in r.text     # 키는 응답에 되돌아가지 않는다
+
+
+def test_llm_judge_errors_are_safe(client, monkeypatch):
+    def transport(*_):
+        raise llm_judge.LlmJudgeError(wording.LLM_AUTH_FAILED)
+
+    monkeypatch.setattr(llm_judge, "_http_post", transport)
+    judge = json.dumps({"provider": "gemini", "model": "m", "api_key": "sk-test-not-real"})
+    r = client.post("/analyze", files={"image": ("a.png", png())}, data={"judge": judge})
+    assert r.status_code == 502 and r.json()["detail"] == wording.LLM_AUTH_FAILED
+    assert "sk-test-not-real" not in r.text and "010" not in r.text
+
+
+def test_llm_judge_config_checked_before_queue(client):
+    r = client.post("/analyze", files={"image": ("a.png", png())},
+                    data={"judge": json.dumps({"provider": "openai", "model": "m"})})
+    assert r.status_code == 400 and r.json()["detail"] == wording.LLM_KEY_MISSING
 
 
 def test_non_image_is_400(client):

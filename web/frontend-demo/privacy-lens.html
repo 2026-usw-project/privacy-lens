@@ -410,7 +410,17 @@ dialog[open]{animation:reveal .18s cubic-bezier(.16,1,.3,1)}
 .queue-badge i{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0}
 .queue-badge.busy i{background:#d99a1e}
 .queue-badge.ready i{background:var(--ok)}
-.cond-field select{height:36px}
+.judge-chip span{max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.judge-chip.llm{background:var(--warn-bg);color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn-line)}
+.dev-form{display:grid;gap:14px}
+.dev-field{display:grid;gap:6px}
+.dev-field>label{font-size:13px;font-weight:600;color:var(--ink-2)}
+.dev-field input,.dev-field select{width:100%;min-width:0;height:40px}
+.dev-field input{background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius-sm);padding:7px 10px;font-size:14px;font-family:var(--mono)}
+.dev-key{display:flex;align-items:center;gap:8px}
+.dev-key input{flex:1}
+.dialog-callout.warn{background:var(--warn-bg);color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn-line)}
+.dialog-callout.warn svg{color:var(--warn)}
 .style-options.two{grid-template-columns:repeat(2,minmax(0,1fr))}
 .segmented button{white-space:nowrap}
 /* 모델 이름(paddleocr 3.7.0 · PP-OCRv6_medium_det + …)은 길고 띄어쓰기가 적다.
@@ -479,11 +489,8 @@ dialog[open]{animation:reveal .18s cubic-bezier(.16,1,.3,1)}
   .targets-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .export-details{grid-template-columns:1fr 1fr}
   .export-actions{display:grid;grid-template-columns:1fr 1.3fr}
-  /* 판정 선택은 demo-field 를 빌려 쓰지만 머리글에서는 늘어나면 안 된다 */
-  .cond-field{flex:none;gap:0}
-  .cond-field>select{padding-right:4px}
-  .cond-field{font-size:0}
-  .cond-field select{font-size:12px}
+  .judge-chip{width:36px;padding:0;justify-content:center}
+  .judge-chip span{display:none}
   /* 대기열은 점만. 글자는 title·화면 낭독기로, 분석 중에는 오른쪽 패널에 '대기 N건' */
   .queue-badge{padding:0}
   .queue-badge span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -564,6 +571,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     <button class="nav-item active" id="workspaceNav"><svg><use href="#i-scan"/></svg><span>사진 검사</span></button>
     <button class="nav-item" data-dialog="targetsDialog"><svg><use href="#i-grid"/></svg><span>탐지 항목</span><span class="nav-count">9</span></button>
     <button class="nav-item" data-dialog="guideDialog"><svg><use href="#i-book"/></svg><span>이용 안내</span></button>
+    <button class="nav-item" data-dialog="devDialog"><svg><use href="#i-code"/></svg><span>개발자 모드</span></button>
   </nav>
   <div class="sidebar-bottom">
     <div class="private-card"><svg><use href="#i-lock"/></svg><div><strong>남기지 않아요.</strong><p>분석·저장할 때만 사진을 이 서버로 보내요. 디스크에 쓰지 않고 로그에도 남기지 않아요.</p></div></div>
@@ -580,7 +588,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     </ol>
     <div class="topbar-right">
       <span class="queue-badge mono-label" id="queueBadge" role="status" aria-live="polite"><i></i><span id="queueText">대기열 확인 중</span></span>
-      <label class="demo-field cond-field">판정<select id="conditionSelect" aria-label="판정 조건"><option value="full" selected>문맥·결합</option><option value="baseline">심각도표</option><option value="naive">정규식만</option></select></label>
+      <button class="chip-button judge-chip" id="judgeChip" data-dialog="devDialog" aria-label="판단 방법 · 개발자 모드 열기"><svg><use href="#i-code"/></svg><span id="judgeChipText">문맥·결합</span></button>
       <button class="chip-button icon-only" data-dialog="guideDialog" aria-label="이용 안내"><svg><use href="#i-info"/></svg></button>
     </div>
   </header>
@@ -671,7 +679,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           <h2 class="pane-heading">사진을 살펴보는 중 <span class="mono-tag live" id="scanModeLabel">문맥·결합</span></h2>
           <div class="scan-readout"><strong class="mono" id="scanPercent">0%</strong></div>
           <div class="scan-progress"><span id="scanProgress"></span></div>
-          <ol class="scan-tasks"><li id="scanTask1"><span class="mono">01</span>서버 대기열에서 차례 기다리기</li><li id="scanTask2"><span class="mono">02</span>글자 찾고 읽기 (OCR)</li><li id="scanTask3"><span class="mono">03</span>주변 문구로 개인정보 판정</li></ol>
+          <ol class="scan-tasks"><li id="scanTask1"><span class="mono">01</span>서버 대기열에서 차례 기다리기</li><li id="scanTask2"><span class="mono">02</span>글자 찾고 읽기 (OCR)</li><li id="scanTask3"><span class="mono">03</span><span id="scanTask3Text">주변 문구로 개인정보 판정</span></li></ol>
           <button class="button ghost full" id="cancelScan">분석 취소</button>
         </div>
 
@@ -711,6 +719,19 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <dialog id="exportDialog"><div class="dialog-header"><h2>저장 전 마지막 확인</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><p id="exportOrigin" class="mono-label"></p><div class="export-preview"><img id="exportPreview" alt="가림 처리가 적용된 최종 이미지"></div><dl class="export-details"><div><dt>가림 처리</dt><dd id="exportRegionCount"></dd></div><div><dt>촬영 메타데이터</dt><dd id="exportMetadata">원본 정보 제외</dd></div><div><dt>파일 형식</dt><dd>JPEG</dd></div></dl><div class="export-warning" id="exportWarning"></div><div class="export-actions"><button class="button ghost" data-close>계속 편집</button><button class="button primary" id="downloadButton"><svg><use href="#i-download"/></svg>다운로드</button></div></dialog>
 <dialog id="payloadDialog"><div class="dialog-header"><h2>최종 영역 데이터</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><p class="dialog-intro" id="payloadSummary"></p><pre id="payloadJson" tabindex="0" aria-label="최종 영역 JSON"></pre><div class="dialog-callout"><svg><use href="#i-info"/></svg><p>방향을 보정한 원본의 왼쪽 위가 (0, 0)입니다. 선택 해제·삭제한 영역은 빠져요. 저장할 때 이 영역(기울어진 글자는 외곽선 poly 포함)과 원본 사진을 서버로 보내요.</p></div><button class="button primary full" id="downloadPayload">영역 JSON 다운로드</button></dialog>
 
+<dialog id="devDialog" aria-labelledby="devTitle"><div class="dialog-header"><h2 id="devTitle">개발자 모드</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div>
+<p class="dialog-intro">글자를 읽은 뒤(OCR) 개인정보인지 판단할 방법을 골라요. LLM 을 고르면 규칙 기반 판단은 꺼지고, 모든 글자 판단을 그 모델이 해요. 위치정보·QR·문서 영역 검사는 그대로예요.</p>
+<div class="dev-form">
+  <div class="dev-field"><label for="judgeProvider">판단 모델 종류</label><select id="judgeProvider"><option value="rules">규칙 기반 판단</option><option value="openai">ChatGPT</option><option value="gemini">Gemini</option><option value="anthropic">Claude</option><option value="openrouter">OpenRouter</option><option value="ollama">Ollama</option><option value="custom">Custom API</option></select></div>
+  <div class="dev-field" id="judgeModelField"><label for="judgeModel">모델</label><input id="judgeModel" type="text" autocomplete="off" spellcheck="false" maxlength="500"></div>
+  <div class="dev-field" id="judgeKeyField"><label for="judgeKey" id="judgeKeyLabel">API 키</label><div class="dev-key"><input id="judgeKey" type="password" autocomplete="off" spellcheck="false" maxlength="500"><button type="button" class="text-button" id="judgeKeyToggle" aria-controls="judgeKey" aria-pressed="false">보기</button></div></div>
+  <div class="dev-field" id="judgeUrlField"><label for="judgeUrl">API 주소</label><input id="judgeUrl" type="url" autocomplete="off" spellcheck="false" maxlength="500"></div>
+  <p class="fine-print" id="judgeHint"></p>
+</div>
+<div class="dialog-callout warn hidden" id="judgeWarning"><svg><use href="#i-info"/></svg><p>사진에서 읽은 글자(OCR 원문)가 선택한 회사 서버로 전송돼요. 실제 개인정보가 담긴 사진에는 쓰지 마세요.</p></div>
+<div class="dialog-callout"><svg><use href="#i-lock"/></svg><p>설정과 API 키는 이 컴퓨터의 이 브라우저(localStorage)에만 저장돼요. 분석·저장할 때만 로컬 서버로 보내고, 서버는 키를 저장하거나 로그에 남기지 않아요.</p></div>
+<div class="export-actions"><button class="button ghost" id="judgeClearKeys">저장된 키 모두 지우기</button><button class="button primary" data-close>완료</button></div></dialog>
+
 <div class="toast" id="toast" role="status" aria-live="polite"><svg><use href="#i-check"/></svg><span id="toastText"></span></div>
 <script>
 'use strict';
@@ -726,10 +747,53 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     plate:['PLATE','차량번호'],address_road:['ADDRESS','도로명주소'],address_unit:['ADDRESS','동·호수'],tracking:['TRACKING','운송장번호'],
     account:['ACCOUNT','계좌번호'],password:['SECRET','비밀번호'],student_id:['IDNUM','학번·사번'],
     long_digits:['NUMBER','긴 숫자'],qr:['BARCODE','QR코드'],barcode:['BARCODE','바코드'],
-    document:['UNKNOWN','문서 영역'],face_photo:['UNKNOWN','증명사진']
+    document:['UNKNOWN','문서 영역'],face_photo:['UNKNOWN','증명사진'],other:['UNKNOWN','개인정보 후보']
   };
   const SEVERITY = { cover:'가림 권장',review:'검토 권장',info:'참고' };
-  const CONDITIONS = { full:'문맥·결합',baseline:'심각도표',naive:'정규식만' };
+  // 판단 방법(개발자 모드). rules 는 서버의 문맥·결합 규칙, 나머지는 LLM 이 모든 글자 판단을 맡는다.
+  // cloud: 사진에서 읽은 글자가 그 회사 서버로 나간다. 모델 기본값은 고쳐 쓸 수 있는 예시다.
+  const JUDGES = {
+    rules:{label:'규칙 기반 판단'},
+    openai:{label:'ChatGPT',model:'gpt-4.1-mini',key:'required',cloud:true},
+    gemini:{label:'Gemini',model:'gemini-2.5-flash',key:'required',cloud:true},
+    anthropic:{label:'Claude',model:'claude-haiku-5-5',key:'required',cloud:true},
+    openrouter:{label:'OpenRouter',model:'openai/gpt-4.1-mini',key:'required',cloud:true},
+    ollama:{label:'Ollama',model:'qwen2.5:7b',url:'http://127.0.0.1:11434'},
+    custom:{label:'Custom API',model:'',key:'optional',url:'',urlRequired:true}
+  };
+  const MAX_FIELD = 500;
+  const field = v => typeof v==='string' ? v.slice(0,MAX_FIELD) : '';
+  // 브라우저에 저장된 개발자 모드 설정을 믿지 않고 다듬는다. 공급자마다 모델·키·주소를 따로 기억한다.
+  function devSettings(raw) {
+    const src=raw&&typeof raw==='object'?raw:{};
+    const provider=Object.hasOwn(JUDGES,src.provider)?src.provider:'rules';
+    const providers={};
+    for(const [id,j] of Object.entries(JUDGES)) {
+      if(id==='rules')continue;
+      const p=src.providers&&typeof src.providers[id]==='object'?src.providers[id]:{};
+      providers[id]={model:field(p.model)||j.model||'',apiKey:j.key?field(p.apiKey):'',baseUrl:'url' in j?(field(p.baseUrl)||j.url):''};
+    }
+    return {provider,providers};
+  }
+  // 서버 /analyze·/redact 의 judge 필드. 규칙 기반이면 보내지 않는다.
+  function judgeField(settings) {
+    const s=devSettings(settings);
+    if(s.provider==='rules')return undefined;
+    const p=s.providers[s.provider];
+    return JSON.stringify({provider:s.provider,model:p.model.trim(),api_key:p.apiKey.trim(),base_url:p.baseUrl.trim()});
+  }
+  // 글자가 이 컴퓨터 밖으로 나가는가. 클라우드 공급자는 항상, Ollama·Custom 은 주소가 이 컴퓨터가 아닐 때.
+  function sendsOutside(settings) {
+    const s=devSettings(settings),j=JUDGES[s.provider];
+    if(s.provider==='rules')return false;
+    if(j.cloud)return true;
+    try{return !['localhost','127.0.0.1','[::1]'].includes(new URL(s.providers[s.provider].baseUrl).hostname);}catch{return false;}
+  }
+  function judgeLabel(settings) {
+    const s=devSettings(settings);
+    if(s.provider==='rules')return '문맥·결합';
+    return JUDGES[s.provider].label+(s.providers[s.provider].model?' · '+s.providers[s.provider].model:'');
+  }
   const STYLES = ['blur','solid'];
   const MAX_REGIONS = 300;
 
@@ -801,6 +865,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         report.detector?'YOLO '+String(report.detector).replace(/^yolo:/,'').slice(0,80)
           +(report.detector_device?' ('+String(report.detector_device).slice(0,40).toUpperCase()+')':''):'YOLO 꺼짐'
       ].filter(Boolean).join(' · '),elapsedMs:Number(report.elapsed_ms)||0,
+      judge:String(report.judge||'규칙 기반').slice(0,240),judgeProvider:Object.hasOwn(JUDGES,report.judge_provider)?report.judge_provider:'rules',
       partial:regions.some(r=>r.certainty!=='read')};
   }
 
@@ -818,13 +883,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     return {image:{width:state.width,height:state.height},style:STYLES.includes(state.style)?state.style:'blur',boxes:boxes(state)};
   }
 
-  globalThis.PrivacyLensCore=Object.freeze({TYPES,KINDS,SEVERITY,CONDITIONS,STYLES,toPixels,fromPixels,screenPoint,fromReport,boxes,payload});
+  globalThis.PrivacyLensCore=Object.freeze({TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,toPixels,fromPixels,screenPoint,fromReport,boxes,payload});
 })();
 
 'use strict';
 (() => {
   // Privacy Lens 서버 통신. 화면과 같은 주소에서 나오므로 서버 주소 설정이 없다.
-  //   POST /analyze          사진 원본 + 판정 조건 + 번호표 → 분석 결과(JSON)
+  //   POST /analyze          사진 원본 + 번호표 (+ 개발자 모드 판단 설정) → 분석 결과(JSON)
   //   POST /redact/preview   가린 모습 축소본(JSON, base64 JPEG). OCR 이 없어 대기열을 거치지 않는다
   //   POST /redact           가린 사진(JSON, base64 JPEG) + 다시 검사한 결과
   //   GET  /queue            대기열 상태. 번호표를 주면 내 앞에 몇 건인지
@@ -870,14 +935,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       return body;
     }
     return {
-      analyze(image,{mode='full',ticket,signal}={}) {
-        return request('/analyze',{method:'POST',body:form(image,{mode,ticket})},signal);
+      // judge: 개발자 모드의 LLM 설정(JSON 문자열, API 키 포함). 규칙 기반이면 undefined 라 보내지 않는다.
+      analyze(image,{ticket,judge,signal}={}) {
+        return request('/analyze',{method:'POST',body:form(image,{ticket,judge})},signal);
       },
       preview(image,boxes,style,{signal}={}) {
         return request('/redact/preview',{method:'POST',body:form(image,{boxes,style})},signal);
       },
-      redact(image,boxes,style,{ticket,signal}={}) {
-        return request('/redact',{method:'POST',body:form(image,{boxes,style,ticket})},signal);
+      redact(image,boxes,style,{ticket,judge,signal}={}) {
+        return request('/redact',{method:'POST',body:form(image,{boxes,style,ticket,judge})},signal);
       },
       queue(ticket,{signal}={}) {
         return request('/queue'+(ticket?'?ticket='+encodeURIComponent(ticket):''),{method:'GET'},signal);
@@ -904,10 +970,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   const clone = value => JSON.parse(JSON.stringify(value));
   const Core=PrivacyLensCore, Api=PrivacyLensAPI, api=Api.client();
   const state = { source:null, file:null, phase:'empty', rawOcr:null, rawOcrNote:'', showRawOcr:false, rawFocused:null, regions:[], focused:null, editing:null, history:[], mode:'original', style:'blur', compare:50, drawing:false,
-    sample:false, sampleKey:null, width:0, height:0, name:'', bytes:0, serverImage:false, condition:'full', analysisStatus:'idle', groups:[], gps:[], issues:[],
+    sample:false, sampleKey:null, width:0, height:0, name:'', bytes:0, serverImage:false, dev:Core.devSettings(null), analyzedJudge:'', analysisStatus:'idle', groups:[], gps:[], issues:[],
     backend:'', elapsedMs:0, zoom:1, loadToken:0, exportToken:0, exportUrl:null, nextId:1, toastTimer:null,
     requestController:null, requestSerial:0, saving:false, saveError:'', ticket:null, previewState:'none', previewSeq:0 };
   try { const saved=localStorage.getItem('pl.maskStyle'); if(Core.STYLES.includes(saved)) state.style=saved; } catch(_) {}
+  // 개발자 모드 설정(판단 방법·모델·API 키)은 이 브라우저에만 둔다. 서버는 요청마다 받아 쓰고 저장하지 않는다.
+  try { state.dev=Core.devSettings(JSON.parse(localStorage.getItem('pl.devMode')||'null')); } catch(_) {}
+  function saveDev() { try{localStorage.setItem('pl.devMode',JSON.stringify(state.dev));}catch(_){} }
   const canvas = $('#photoCanvas');
   const ctx = canvas.getContext('2d');
   const protectedCanvas = document.createElement('canvas');   // 서버가 그려 준 가림 미리보기
@@ -1323,7 +1392,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     const serious=state.regions.filter(r=>r.severity==='cover'||r.severity==='review').length;
     $('#resultCount').textContent=count;$('#selectedCount').textContent=selected;
     $('#resultTitle').textContent=state.analysisStatus==='empty'?'탐지된 영역이 없어요':state.analysisStatus==='manual'?'직접 가릴 정보를 선택해요':state.analysisStatus==='partial'?'일부 정보를 확인해 주세요':'확인이 필요한 정보';
-    $('#reviewKicker').textContent=state.analysisStatus==='manual'?'MANUAL':Core.CONDITIONS[state.condition]||'';
+    $('#reviewKicker').textContent=state.analysisStatus==='manual'?'MANUAL':state.judgeShown||'';
     $('#reviewSubtitle').textContent=state.analysisStatus==='manual'?'직접 추가한 영역만 가려집니다. 사진 전체를 확인해 주세요.':'가림 권장 · 검토 권장 '+serious+'건. 기본으로 아무것도 고르지 않았어요. 가릴 항목을 고르세요.';
     $('#riskSummary').classList.toggle('safe',count>0&&selected===count);
     $('#riskSummaryText').textContent=count===0?'탐지 결과가 없어도 개인정보가 없다는 뜻은 아니에요.':selected===count?selected+'개 영역을 가리도록 선택했어요.':selected?(count-selected)+'개 영역은 가리지 않아요.':'아직 가릴 영역을 고르지 않았어요.';
@@ -1455,7 +1524,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     try {
       const file=await uploadFile();
       if(serial!==state.requestSerial)return;
-      const data=await api.redact(file,boxes,state.style,{ticket,signal:state.requestController.signal});
+      const data=await api.redact(file,boxes,state.style,{ticket,judge:Core.judgeField(state.dev),signal:state.requestController.signal});
       if(token!==state.exportToken||serial!==state.requestSerial)return;
       const bytes=Uint8Array.from(atob(data.file),c=>c.charCodeAt(0));
       const blob=new Blob([bytes],{type:'image/jpeg'});
@@ -1520,7 +1589,6 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     $('#payloadButton').disabled=!state.source||phase!=='review'||state.saving;
     $('#analyzeButton').disabled=!state.source||state.saving;
     $('#manualButton').disabled=state.serverImage&&state.analysisStatus==='idle';
-    $('#conditionSelect').disabled=phase==='scanning'||state.saving;
     $('#readyDescription').textContent=state.serverImage&&state.analysisStatus==='idle'?'이 형식은 브라우저가 미리 보지 못해요. 분석하면 서버가 만든 미리보기로 바뀌어요.':'사진을 Privacy Lens 서버로 보내 글자를 읽고 개인정보를 판정해요. 서버는 사진을 디스크에 저장하지 않아요.';
     $('#readyFileInfo').textContent=state.width+' × '+state.height+' px';
     $('#sourceBadge').textContent=state.backend||(state.sample?'가상 샘플':'분석 전');
@@ -1542,20 +1610,23 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     Object.assign(state,{rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,issues:[],groups:[],gps:[],mode:'original',phase:'scanning',analysisStatus:'running',drawing:false,previewState:'none'});
     syncDrawing();render();
     $('#scanningPanel').classList.add('server-analysis');
-    $('#scanPercent').textContent='올리는 중';$('#scanModeLabel').textContent=Core.CONDITIONS[state.condition];
+    const judge=Core.judgeField(state.dev);state.analyzedJudge=judge||'';  // 실패해도 같은 설정으로 다시 돌리지 않게
+    $('#scanPercent').textContent='올리는 중';$('#scanModeLabel').textContent=Core.judgeLabel(state.dev);
+    $('#scanTask3Text').textContent=judge?'LLM 으로 개인정보 판정 ('+Core.JUDGES[state.dev.provider].label+')':'주변 문구로 개인정보 판정';
     [1,2,3].forEach(i=>$('#scanTask'+i).classList.remove('active'));
     const serial=++state.requestSerial,ticket=Api.newTicket();
     state.ticket=ticket;state.requestController=new AbortController();pollSoon();
     try {
       const file=await uploadFile();
       if(serial!==state.requestSerial)return;
-      const data=await api.analyze(file,{mode:state.condition,ticket,signal:state.requestController.signal});
+      const data=await api.analyze(file,{judge,ticket,signal:state.requestController.signal});
       if(serial!==state.requestSerial)return;
       $('#scanTask3').classList.add('active');
       const result=Core.fromReport(data.report);
       if(state.serverImage || result.width!==state.width || result.height!==state.height) await adoptServerImage(data.preview,result.width,result.height);
       if(serial!==state.requestSerial)return;
       Object.assign(state,{rawOcr:result.rawOcr,rawOcrNote:result.rawOcrNote,regions:result.regions,groups:result.groups,gps:result.gps,backend:result.backend,elapsedMs:result.elapsedMs,
+        judgeShown:result.judgeProvider==='rules'?'문맥·결합':result.judge,
         issues:result.partial?['일부 영역은 글자가 흐려 내용을 확인하지 못했어요. 점선 영역을 확대해서 직접 확인해 주세요.']:[],
         analysisStatus:result.regions.length?(result.partial?'partial':'completed'):'empty',phase:'review',focused:result.regions[0]?.id||null});
       invalidate();render();setStep(2);
@@ -1717,7 +1788,45 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   $('#analyzeButton').addEventListener('click',()=>beginAnalysis());
   $('#manualButton').addEventListener('click',startManual);$('#failureManual').addEventListener('click',startManual);
   $('#retryAnalysis').addEventListener('click',()=>beginAnalysis());
-  $('#conditionSelect').addEventListener('change',event=>{state.condition=event.target.value;if(state.source&&(state.phase==='review'||state.phase==='failed')&&state.analysisStatus!=='manual')beginAnalysis();});
+  // 개발자 모드: 판단 모델 종류·모델·키·주소. 바꿀 때마다 이 브라우저에 저장한다.
+  function renderDev() {
+    const id=state.dev.provider,j=Core.JUDGES[id],p=state.dev.providers[id],llm=id!=='rules';
+    $('#judgeProvider').value=id;
+    $('#judgeModelField').classList.toggle('hidden',!llm);$('#judgeKeyField').classList.toggle('hidden',!llm||!j.key);$('#judgeUrlField').classList.toggle('hidden',!llm||!('url' in j));
+    if(llm){
+      if(document.activeElement!==$('#judgeModel'))$('#judgeModel').value=p.model;
+      if(document.activeElement!==$('#judgeKey'))$('#judgeKey').value=p.apiKey;
+      if(document.activeElement!==$('#judgeUrl'))$('#judgeUrl').value=p.baseUrl;
+      $('#judgeModel').placeholder=j.model||'모델 이름';
+      $('#judgeUrl').placeholder=j.url||'http://localhost:1234/v1';
+      $('#judgeKeyLabel').textContent=j.key==='optional'?'API 키 (필요할 때만)':'API 키';
+    }
+    $('#judgeHint').textContent=!llm?'서버의 규칙(정규식·체크섬·주변 문구·결합)으로 판단해요. 기본값이에요.'
+      :id==='ollama'?'이 컴퓨터의 Ollama 로 판단해요. 글자가 컴퓨터 밖으로 나가지 않아요. 모델을 먼저 받아 두세요(ollama pull).'
+      :id==='custom'?'OpenAI 호환 API 주소를 넣어요. 서버가 이 주소 뒤에 /chat/completions 를 붙여 불러요.'
+      :'모델 이름은 예시예요. 쓰는 계정에서 되는 이름으로 바꿔도 돼요. 사진 한 장마다 API 요금이 나갈 수 있어요.';
+    $('#judgeWarning').classList.toggle('hidden',!Core.sendsOutside(state.dev));
+    $('#judgeChipText').textContent=Core.judgeLabel(state.dev);
+    $('#judgeChip').classList.toggle('llm',llm);
+    $('#judgeChip').title='판단: '+(llm?Core.judgeLabel(state.dev):'규칙 기반 판단');
+  }
+  function updateDev(change) {
+    const id=state.dev.provider;
+    if(change.provider)state.dev.provider=change.provider;
+    else Object.assign(state.dev.providers[id],change);
+    state.dev=Core.devSettings(state.dev);saveDev();renderDev();
+  }
+  $('#judgeProvider').addEventListener('change',e=>updateDev({provider:e.target.value}));
+  $('#judgeModel').addEventListener('input',e=>updateDev({model:e.target.value}));
+  $('#judgeKey').addEventListener('input',e=>updateDev({apiKey:e.target.value}));
+  $('#judgeUrl').addEventListener('input',e=>updateDev({baseUrl:e.target.value}));
+  $('#judgeKeyToggle').addEventListener('click',()=>{const k=$('#judgeKey'),show=k.type==='password';k.type=show?'text':'password';$('#judgeKeyToggle').textContent=show?'숨기기':'보기';$('#judgeKeyToggle').setAttribute('aria-pressed',String(show));});
+  $('#judgeClearKeys').addEventListener('click',()=>{Object.values(state.dev.providers).forEach(p=>{p.apiKey='';});$('#judgeKey').value='';saveDev();renderDev();notify('저장된 API 키를 모두 지웠어요.');});
+  // 판단 방법을 바꾸고 닫으면, 이미 분석한 사진은 새 방법으로 다시 분석한다(예전 판정 조건 선택과 같다).
+  $('#devDialog').addEventListener('close',()=>{
+    const k=$('#judgeKey');k.type='password';$('#judgeKeyToggle').textContent='보기';$('#judgeKeyToggle').setAttribute('aria-pressed','false');
+    if(state.source&&(state.phase==='review'||state.phase==='failed')&&state.analysisStatus!=='manual'&&(Core.judgeField(state.dev)||'')!==state.analyzedJudge)beginAnalysis();
+  });
   $('#zoomIn').addEventListener('click',()=>zoomTo(state.zoom+.25));$('#zoomOut').addEventListener('click',()=>zoomTo(state.zoom-.25));
   $('#zoomFit').addEventListener('click',()=>{state.zoom=1;layoutCanvas(false);});
   new ResizeObserver(()=>layoutCanvas()).observe($('#canvasStage'));
@@ -1727,7 +1836,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')pollSoon();});
   window.addEventListener('pagehide',()=>{if(state.ticket)api.cancel(state.ticket);});
 
-  initializeThumbnails();
+  initializeThumbnails();renderDev();
   setStep(1);syncPanels();pollQueue();
 })();
 

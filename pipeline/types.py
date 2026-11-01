@@ -190,6 +190,8 @@ class Report:
     detector: str = ""   # 문서 검출 모델 이름. 검출을 안 썼으면 빈 문자열
     detector_device: str = ""   # 실제 추론 장치(cpu, cuda:0 등)
     raw_ocr: list[TextSpan] = field(default_factory=list)
+    judge: str = "규칙 기반"      # 글자 판단에 쓴 방법. LLM 이면 '공급자 · 모델'
+    judge_provider: str = "rules"
 
     def sorted_findings(self) -> list[Finding]:
         return sorted(self.findings, key=lambda f: (f.severity.rank, f.kind))
@@ -205,6 +207,8 @@ class Report:
             "ocr_backend": self.ocr_backend,
             "detector": self.detector,
             "detector_device": self.detector_device,
+            "judge": self.judge,
+            "judge_provider": self.judge_provider,
             "notes": self.notes,
             "raw_ocr": [span.as_dict() for span in self.raw_ocr],
             "raw_ocr_note": wording.RAW_OCR_NOTE,

@@ -11,7 +11,16 @@
 
 ## POST /analyze
 
-multipart: `image`(원본 파일), `mode`(`full` | `baseline` | `naive`), `ticket`(번호표, 선택).
+multipart: `image`(원본 파일), `ticket`(번호표, 선택), `judge`(개발자 모드 판단 설정, 선택).
+
+- 판정은 '문맥·결합' 하나입니다. 예전 `mode`(`baseline` | `naive`)는 화면·서버에서 뺐고, 비교 실험(`eval`)에서만 씁니다.
+- `judge` 가 없거나 `{"provider":"rules"}` 면 규칙 기반 판단입니다. LLM 판단이면 JSON 문자열
+  `{"provider","model","api_key","base_url"}` 을 보냅니다. provider: `openai`(ChatGPT) · `gemini` · `anthropic`(Claude) ·
+  `openrouter` · `ollama` · `custom`(OpenAI 호환, `base_url` 뒤에 `/chat/completions`). 클라우드 4종은 `api_key` 필수,
+  `ollama` 는 `base_url` 기본값 `http://127.0.0.1:11434`.
+- LLM 판단이면 규칙(정규식·체크섬·문맥)은 돌지 않고 글자 판단을 모두 LLM 이 합니다. 위치정보·QR·문서 검출은 그대로입니다.
+  OCR 원문이 그 공급자에게 전송됩니다(DECISIONS D-15).
+- 설정이 잘못되면 400, 공급자 호출이 실패하면 502 입니다. `detail` 에는 키·원문·공급자 응답을 넣지 않습니다.
 
 ```json
 {
@@ -28,7 +37,7 @@ multipart: `image`(원본 파일), `mode`(`full` | `baseline` | `naive`), `ticke
     "groups": [{"group_id": "g0", "kinds": ["name", "mobile"], "message": "… 함께 노출됨. …", "…": "…"}],
     "elapsed_ms": 132, "ocr_backend": "paddleocr 3.7.0 · PP-OCRv6_medium_det + korean_PP-OCRv5_mobile_rec", "notes": []
   },
-  "preview": "<base64 JPEG, 긴 변 1400px 이하>", "preview_scale": 1.0, "mode": "full"
+  "preview": "<base64 JPEG, 긴 변 1400px 이하>", "preview_scale": 1.0
 }
 ```
 
@@ -37,6 +46,8 @@ multipart: `image`(원본 파일), `mode`(`full` | `baseline` | `naive`), `ticke
   long_digits, qr, barcode, gps,
   document(문서 검출: 못 읽은 문서 영역), face_photo(문서 검출: 증명사진 영역).
   문서 검출 항목은 `detail.source == "detector"` 이고 `certainty` 는 region 입니다.
+- `report.judge`: 글자 판단에 쓴 방법. 규칙이면 `규칙 기반`, LLM 이면 `공급자 · 모델`(예: `Claude · claude-haiku-5-5`).
+  `report.judge_provider`: `rules` 또는 위 provider. LLM 이 낸 항목은 `detail.judge == "llm"` 이고 `kind` 에 `other`(그 밖의 개인정보)가 더 있습니다.
 - `report.detector`: 문서 검출 모델 이름(예: `yolo:v003`). 검출을 쓰지 않았으면 빈 문자열.
 - `report.detector_device`: YOLO가 실제 추론에 사용한 장치(예: `cpu`, `cuda:0`). 검출을 쓰지 않았거나 장치를 알 수 없으면 빈 문자열. 화면 하단에 OCR 모델과 함께 YOLO 버전·장치를 표시하며 검출 미사용 시 `YOLO 꺼짐`으로 표시합니다.
 - `severity`: cover(가림 권장) · review(검토 권장) · info(참고). `certainty`: read · partial · region.
@@ -68,7 +79,7 @@ multipart: `image`, `boxes`(JSON 배열), `style`(`blur` | `solid`). 대기열�
 
 ## POST /redact
 
-multipart: `image`, `boxes`, `style`, `ticket`(선택). 대기열을 거칩니다.
+multipart: `image`, `boxes`, `style`, `ticket`(선택), `judge`(선택, 분석 때와 같은 값). 대기열을 거칩니다. 결과 재검사도 `judge` 의 판단 방법을 씁니다.
 
 ```json
 {"file": "<base64 JPEG, 원본 크기, 메타데이터 없음>", "bytes": 81234,
