@@ -51,6 +51,11 @@
       analyze(image,{ticket,judge,signal}={}) {
         return request('/analyze',{method:'POST',body:form(image,{ticket,judge})},signal);
       },
+      // 개발자 모드: 고른 공급자에서 쓸 수 있는 모델 이름. 사진은 보내지 않는다.
+      models(judge,{signal}={}) {
+        const body=new FormData();body.append('judge',judge);
+        return request('/llm/models',{method:'POST',body},signal);
+      },
       preview(image,boxes,style,{signal}={}) {
         return request('/redact/preview',{method:'POST',body:form(image,{boxes,style})},signal);
       },

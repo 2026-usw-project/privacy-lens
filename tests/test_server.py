@@ -94,6 +94,17 @@ def test_llm_judge_config_checked_before_queue(client):
     assert r.status_code == 400 and r.json()["detail"] == wording.LLM_KEY_MISSING
 
 
+def test_llm_models_endpoint(client, monkeypatch):
+    monkeypatch.setattr(llm_judge, "_http_get", lambda url, headers, timeout: {"data": [{"id": "b"}, {"id": "a"}]})
+    judge = json.dumps({"provider": "openai", "api_key": "sk-test-not-real"})
+    r = client.post("/llm/models", data={"judge": judge})
+    assert r.status_code == 200 and r.json() == {"models": ["a", "b"]}
+    assert "sk-test-not-real" not in r.text
+    r = client.post("/llm/models", data={"judge": json.dumps({"provider": "openai"})})
+    assert r.status_code == 400 and r.json()["detail"] == wording.LLM_KEY_MISSING
+    assert client.post("/llm/models", data={"judge": '{"provider":"rules"}'}).json() == {"models": []}
+
+
 def test_non_image_is_400(client):
     r = client.post("/analyze", files={"image": ("a.txt", b"not an image")})
     assert r.status_code == 400

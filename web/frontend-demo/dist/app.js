@@ -856,7 +856,27 @@
     else Object.assign(state.dev.providers[id],change);
     state.dev=Core.devSettings(state.dev);saveDev();renderDev();
   }
-  $('#judgeProvider').addEventListener('change',e=>updateDev({provider:e.target.value}));
+  // 공급자가 알려 주는 모델 이름을 모델 칸의 추천 목록으로. 칸에는 직접 써도 된다.
+  const modelLists=new Map();
+  function renderModelList() {
+    const names=modelLists.get(state.dev.provider)||[];
+    $('#judgeModelList').innerHTML=names.map(n=>'<option value="'+escapeHTML(n)+'"></option>').join('');
+    $('#judgeModelStatus').textContent=modelLists.has(state.dev.provider)?(names.length?names.length+'개 모델을 불러왔어요. 모델 칸을 눌러 고르세요.':'불러온 모델이 없어요. 이름을 직접 입력하세요.'):'';
+  }
+  async function loadModels() {
+    const id=state.dev.provider,query=Core.modelQuery(state.dev);
+    if(!query)return;
+    const button=$('#judgeLoadModels');button.disabled=true;$('#judgeModelStatus').textContent='모델 목록을 불러오는 중…';
+    try {
+      const data=await api.models(query);
+      modelLists.set(id,Array.isArray(data.models)?data.models.filter(n=>typeof n==='string').slice(0,2000):[]);
+      if(state.dev.provider===id)renderModelList();
+    } catch(error) {
+      if(state.dev.provider===id)$('#judgeModelStatus').textContent=error.message;
+    } finally {button.disabled=false;}
+  }
+  $('#judgeLoadModels').addEventListener('click',loadModels);
+  $('#judgeProvider').addEventListener('change',e=>{updateDev({provider:e.target.value});renderModelList();});
   $('#judgeModel').addEventListener('input',e=>updateDev({model:e.target.value}));
   $('#judgeKey').addEventListener('input',e=>updateDev({apiKey:e.target.value}));
   $('#judgeUrl').addEventListener('input',e=>updateDev({baseUrl:e.target.value}));

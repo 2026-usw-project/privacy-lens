@@ -72,6 +72,20 @@ multipart: `image`(원본 파일), `ticket`(번호표, 선택), `judge`(개발�
   주지 않으며 새 이미지·재분석·초기화 시 원문과 스위치 상태를 지웁니다.
 - 원문은 요청/화면 메모리에서만 사용하며 로그·디스크·브라우저 저장소에 기록하지 않습니다.
 
+## POST /llm/models
+
+multipart: `judge`(JSON 문자열 `{"provider","api_key","base_url"}`, `model` 은 비어도 됨). 개발자 모드의 '목록 불러오기'가 부릅니다.
+사진·OCR 원문은 보내지 않고 대기열도 거치지 않습니다.
+
+```json
+{ "models": ["gpt-4.1-mini", "..."] }
+```
+
+- 공급자 목록 API: OpenAI `GET /v1/models`, OpenRouter `GET /api/v1/models`, Anthropic `GET /v1/models`(쪽 넘김),
+  Gemini `GET /v1beta/models`(generateContent 지원 모델만, `models/` 접두어 뗌), Ollama `GET /api/tags`, Custom `GET {base_url}/models`.
+- 정렬·중복 제거, 최대 2000개. 키는 헤더로만 보냅니다. `rules` 면 빈 목록입니다.
+- 설정이 잘못되면 400, 공급자 호출이 실패하면 502(`/analyze` 와 같은 문구).
+
 ## POST /redact/preview
 
 multipart: `image`, `boxes`(JSON 배열), `style`(`blur` | `solid`). 대기열을 거치지 않습니다.

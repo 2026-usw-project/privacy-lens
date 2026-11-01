@@ -288,6 +288,21 @@ def _judge(raw: str | None) -> llm_judge.JudgeConfig | None:
         raise HTTPException(400, str(exc))
 
 
+@app.post("/llm/models")
+def llm_models(judge: str = Form(...)):
+    """개발자 모드: 고른 공급자에서 쓸 수 있는 모델 이름 목록. 키는 본문으로 받아 이 요청에서만 쓴다.
+
+    OCR 이 없어 대기열을 거치지 않는다. 사진도 원문도 보내지 않는다.
+    """
+    try:
+        cfg = llm_judge.parse_config(judge, need_model=False)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if cfg is None:
+        return {"models": []}
+    return {"models": llm_judge.list_models(cfg)}
+
+
 @app.post("/analyze")
 def analyze_endpoint(
     image: UploadFile = File(...),

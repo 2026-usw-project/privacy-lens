@@ -723,13 +723,12 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <p class="dialog-intro">글자를 읽은 뒤(OCR) 개인정보인지 판단할 방법을 골라요. LLM 을 고르면 규칙 기반 판단은 꺼지고, 모든 글자 판단을 그 모델이 해요. 위치정보·QR·문서 영역 검사는 그대로예요.</p>
 <div class="dev-form">
   <div class="dev-field"><label for="judgeProvider">판단 모델 종류</label><select id="judgeProvider"><option value="rules">규칙 기반 판단</option><option value="openai">ChatGPT</option><option value="gemini">Gemini</option><option value="anthropic">Claude</option><option value="openrouter">OpenRouter</option><option value="ollama">Ollama</option><option value="custom">Custom API</option></select></div>
-  <div class="dev-field" id="judgeModelField"><label for="judgeModel">모델</label><input id="judgeModel" type="text" autocomplete="off" spellcheck="false" maxlength="500"></div>
+  <div class="dev-field" id="judgeModelField"><label for="judgeModel">모델</label><div class="dev-key"><input id="judgeModel" type="text" list="judgeModelList" autocomplete="off" spellcheck="false" maxlength="500"><button type="button" class="text-button" id="judgeLoadModels">목록 불러오기</button></div><datalist id="judgeModelList"></datalist><p class="fine-print" id="judgeModelStatus" role="status"></p></div>
   <div class="dev-field" id="judgeKeyField"><label for="judgeKey" id="judgeKeyLabel">API 키</label><div class="dev-key"><input id="judgeKey" type="password" autocomplete="off" spellcheck="false" maxlength="500"><button type="button" class="text-button" id="judgeKeyToggle" aria-controls="judgeKey" aria-pressed="false">보기</button></div></div>
   <div class="dev-field" id="judgeUrlField"><label for="judgeUrl">API 주소</label><input id="judgeUrl" type="url" autocomplete="off" spellcheck="false" maxlength="500"></div>
   <p class="fine-print" id="judgeHint"></p>
 </div>
 <div class="dialog-callout warn hidden" id="judgeWarning"><svg><use href="#i-info"/></svg><p>사진에서 읽은 글자(OCR 원문)가 선택한 회사 서버로 전송돼요. 실제 개인정보가 담긴 사진에는 쓰지 마세요.</p></div>
-<div class="dialog-callout"><svg><use href="#i-lock"/></svg><p>설정과 API 키는 이 컴퓨터의 이 브라우저(localStorage)에만 저장돼요. 분석·저장할 때만 로컬 서버로 보내고, 서버는 키를 저장하거나 로그에 남기지 않아요.</p></div>
 <div class="export-actions"><button class="button ghost" id="judgeClearKeys">저장된 키 모두 지우기</button><button class="button primary" data-close>완료</button></div></dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"><svg><use href="#i-check"/></svg><span id="toastText"></span></div>
@@ -755,7 +754,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   const JUDGES = {
     rules:{label:'규칙 기반 판단'},
     openai:{label:'ChatGPT',model:'gpt-4.1-mini',key:'required',cloud:true},
-    gemini:{label:'Gemini',model:'gemini-2.5-flash',key:'required',cloud:true},
+    gemini:{label:'Gemini',model:'gemini-flash-latest',key:'required',cloud:true},
     anthropic:{label:'Claude',model:'claude-haiku-5-5',key:'required',cloud:true},
     openrouter:{label:'OpenRouter',model:'openai/gpt-4.1-mini',key:'required',cloud:true},
     ollama:{label:'Ollama',model:'qwen2.5:7b',url:'http://127.0.0.1:11434'},
@@ -788,6 +787,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     if(s.provider==='rules')return false;
     if(j.cloud)return true;
     try{return !['localhost','127.0.0.1','[::1]'].includes(new URL(s.providers[s.provider].baseUrl).hostname);}catch{return false;}
+  }
+  // 모델 목록을 물을 때 보내는 설정. 아직 모델을 고르기 전이라 model 은 비어도 된다.
+  function modelQuery(settings) {
+    const s=devSettings(settings);
+    if(s.provider==='rules')return undefined;
+    const p=s.providers[s.provider];
+    return JSON.stringify({provider:s.provider,model:'',api_key:p.apiKey.trim(),base_url:p.baseUrl.trim()});
   }
   function judgeLabel(settings) {
     const s=devSettings(settings);
@@ -883,7 +889,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     return {image:{width:state.width,height:state.height},style:STYLES.includes(state.style)?state.style:'blur',boxes:boxes(state)};
   }
 
-  globalThis.PrivacyLensCore=Object.freeze({TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,toPixels,fromPixels,screenPoint,fromReport,boxes,payload});
+  globalThis.PrivacyLensCore=Object.freeze({TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload});
 })();
 
 'use strict';
@@ -938,6 +944,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       // judge: 개발자 모드의 LLM 설정(JSON 문자열, API 키 포함). 규칙 기반이면 undefined 라 보내지 않는다.
       analyze(image,{ticket,judge,signal}={}) {
         return request('/analyze',{method:'POST',body:form(image,{ticket,judge})},signal);
+      },
+      // 개발자 모드: 고른 공급자에서 쓸 수 있는 모델 이름. 사진은 보내지 않는다.
+      models(judge,{signal}={}) {
+        const body=new FormData();body.append('judge',judge);
+        return request('/llm/models',{method:'POST',body},signal);
       },
       preview(image,boxes,style,{signal}={}) {
         return request('/redact/preview',{method:'POST',body:form(image,{boxes,style})},signal);
@@ -1816,7 +1827,27 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     else Object.assign(state.dev.providers[id],change);
     state.dev=Core.devSettings(state.dev);saveDev();renderDev();
   }
-  $('#judgeProvider').addEventListener('change',e=>updateDev({provider:e.target.value}));
+  // 공급자가 알려 주는 모델 이름을 모델 칸의 추천 목록으로. 칸에는 직접 써도 된다.
+  const modelLists=new Map();
+  function renderModelList() {
+    const names=modelLists.get(state.dev.provider)||[];
+    $('#judgeModelList').innerHTML=names.map(n=>'<option value="'+escapeHTML(n)+'"></option>').join('');
+    $('#judgeModelStatus').textContent=modelLists.has(state.dev.provider)?(names.length?names.length+'개 모델을 불러왔어요. 모델 칸을 눌러 고르세요.':'불러온 모델이 없어요. 이름을 직접 입력하세요.'):'';
+  }
+  async function loadModels() {
+    const id=state.dev.provider,query=Core.modelQuery(state.dev);
+    if(!query)return;
+    const button=$('#judgeLoadModels');button.disabled=true;$('#judgeModelStatus').textContent='모델 목록을 불러오는 중…';
+    try {
+      const data=await api.models(query);
+      modelLists.set(id,Array.isArray(data.models)?data.models.filter(n=>typeof n==='string').slice(0,2000):[]);
+      if(state.dev.provider===id)renderModelList();
+    } catch(error) {
+      if(state.dev.provider===id)$('#judgeModelStatus').textContent=error.message;
+    } finally {button.disabled=false;}
+  }
+  $('#judgeLoadModels').addEventListener('click',loadModels);
+  $('#judgeProvider').addEventListener('change',e=>{updateDev({provider:e.target.value});renderModelList();});
   $('#judgeModel').addEventListener('input',e=>updateDev({model:e.target.value}));
   $('#judgeKey').addEventListener('input',e=>updateDev({apiKey:e.target.value}));
   $('#judgeUrl').addEventListener('input',e=>updateDev({baseUrl:e.target.value}));
