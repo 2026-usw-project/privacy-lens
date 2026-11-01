@@ -74,7 +74,7 @@ multipart: `image`(원본 파일), `ticket`(번호표, 선택), `judge`(개발�
 
 ## POST /llm/models
 
-multipart: `judge`(JSON 문자열 `{"provider","api_key","base_url"}`, `model` 은 비어도 됨). 개발자 모드의 '목록 불러오기'가 부릅니다.
+multipart: `judge`(JSON 문자열 `{"provider","api_key","base_url"}`, `model` 은 비어도 됨). 개발자 모드의 '목록 불러오기'가 부르고, 받은 이름은 '모델 목록' 선택 칸에 따로 채웁니다(고르면 '직접 입력' 칸에 들어감).
 사진·OCR 원문은 보내지 않고 대기열도 거치지 않습니다.
 
 ```json
