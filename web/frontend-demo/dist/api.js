@@ -93,6 +93,22 @@
       redact(image,boxes,style,{ticket,judge,signal}={}) {
         return request('/redact',{method:'POST',body:form(image,{boxes,style,ticket,judge})},signal);
       },
+      // 진행 상태(SSE). 이벤트마다 onEvent(종류, 상태). 끝(done)·번호표 없음(gone)·연결 실패(error)면 스스로 닫는다.
+      // EventSource 를 못 쓰는 환경이면 null — 화면은 /queue 폴링의 progress 로 같은 값을 받는다.
+      progress(ticket,onEvent,EventSourceImpl=globalThis.EventSource) {
+        if(!ticket||typeof EventSourceImpl!=='function')return null;
+        let source;
+        try{source=new EventSourceImpl(base+'/progress?ticket='+encodeURIComponent(ticket));}catch{return null;}
+        let closed=false;
+        const close=()=>{if(!closed){closed=true;source.close();}};
+        const relay=(type,raw)=>{if(closed)return;let data=null;try{data=raw?JSON.parse(raw):null;}catch{}onEvent(type,data);};
+        source.addEventListener('progress',e=>relay('progress',e.data));
+        source.addEventListener('done',e=>{relay('done',e.data);close();});
+        source.addEventListener('gone',()=>{relay('gone',null);close();});
+        // 끊기면 브라우저가 다시 붙지만, 아예 못 여는 경우(서버가 /progress 를 모름 등)는 폴링으로 넘긴다
+        source.onerror=()=>{if(source.readyState===2){relay('error',null);close();}};
+        return {close};
+      },
       queue(ticket,{signal}={}) {
         return request('/queue'+(ticket?'?ticket='+encodeURIComponent(ticket):''),{method:'GET'},signal);
       },

@@ -162,9 +162,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
         <div id="scanningPanel" class="pane-body hidden" aria-live="polite">
           <h2 class="pane-heading">사진을 살펴보는 중 <span class="mono-tag live" id="scanModeLabel">문맥·결합</span></h2>
-          <div class="scan-readout"><strong class="mono" id="scanPercent">0%</strong></div>
+          <div class="scan-readout"><strong class="mono" id="scanPercent">올리는 중</strong><span id="scanDetail" class="scan-detail"></span></div>
           <div class="scan-progress"><span id="scanProgress"></span></div>
-          <ol class="scan-tasks"><li id="scanTask1"><span class="mono">01</span>서버 대기열에서 차례 기다리기</li><li id="scanTask2"><span class="mono">02</span>글자 찾고 읽기 (OCR)</li><li id="scanTask3"><span class="mono">03</span><span id="scanTask3Text">주변 문구로 개인정보 판정</span></li></ol>
+          <ol class="scan-tasks" id="scanStages"><li class="running"><span class="mono">01</span><span class="stage-name">사진 올리기</span><span class="stage-time"></span></li></ol>
+          <p class="fine-print hidden" id="scanBasis">처음 쓰는 모델이라 다른 모델의 기록으로 추정했어요.</p>
           <button class="button ghost full" id="cancelScan">분석 취소</button>
         </div>
 
