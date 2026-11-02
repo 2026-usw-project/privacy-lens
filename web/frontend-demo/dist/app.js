@@ -17,6 +17,20 @@
   // 개발자 모드 설정(판단 방법·모델·API 키)은 이 브라우저에만 둔다. 서버는 요청마다 받아 쓰고 저장하지 않는다.
   try { state.dev=Core.devSettings(JSON.parse(localStorage.getItem('pl.devMode')||'null')); } catch(_) {}
   function saveDev() { try{localStorage.setItem('pl.devMode',JSON.stringify(state.dev));}catch(_){} }
+
+  // 밝은 화면 / 어두운 화면. 밝은 화면이 기본이고, 사용자가 바꾼 선택만 기억한다.
+  let theme='light';
+  try { const saved=localStorage.getItem('pl.theme');
+    if(saved==='dark'||saved==='light') theme=saved;
+  } catch(_) {}
+  function applyTheme(next) {
+    theme=next;
+    document.documentElement.dataset.theme=next;
+    const button=$('#themeToggle');
+    if(button) { button.setAttribute('aria-pressed',String(next==='light'));
+      button.setAttribute('aria-label',next==='dark'?'밝은 화면으로 바꾸기':'어두운 화면으로 바꾸기'); }
+  }
+  applyTheme(theme);
   const canvas = $('#photoCanvas');
   const ctx = canvas.getContext('2d');
   const protectedCanvas = document.createElement('canvas');   // 서버가 그려 준 가림 미리보기
@@ -346,7 +360,7 @@
       ctx.save();ctx.beginPath();ctx.rect(0,0,split,state.height);ctx.clip();ctx.drawImage(state.source,0,0,state.width,state.height);ctx.restore();
       ctx.fillStyle='#fff';ctx.fillRect(split-1.5,0,3,state.height);
       ctx.beginPath();ctx.arc(split,state.height/2,Math.max(10,state.width*.018),0,Math.PI*2);ctx.fill();
-      const s=Math.max(4,state.width*.004);ctx.strokeStyle='#ef5a1c';ctx.lineWidth=Math.max(2,state.width*.0012);
+      const s=Math.max(4,state.width*.004);ctx.strokeStyle='#1f6feb';ctx.lineWidth=Math.max(2,state.width*.0012);
       ctx.beginPath();ctx.moveTo(split-s,state.height/2-s);ctx.lineTo(split-s,state.height/2+s);ctx.moveTo(split+s,state.height/2-s);ctx.lineTo(split+s,state.height/2+s);ctx.stroke();
     }
     const waiting=state.mode!=='original'&&state.previewState!=='ready';
@@ -431,9 +445,10 @@
     const count=state.regions.length,selected=state.regions.filter(r=>r.enabled).length;
     const serious=state.regions.filter(r=>r.severity==='cover'||r.severity==='review').length;
     $('#resultCount').textContent=count;$('#selectedCount').textContent=selected;
-    $('#resultTitle').textContent=state.analysisStatus==='empty'?'탐지된 영역이 없어요':state.analysisStatus==='manual'?'직접 가릴 정보를 선택해요':state.analysisStatus==='partial'?'일부 정보를 확인해 주세요':'확인이 필요한 정보';
-    $('#reviewKicker').textContent=state.analysisStatus==='manual'?'MANUAL':state.judgeShown||'';
-    $('#reviewSubtitle').textContent=state.analysisStatus==='manual'?'직접 추가한 영역만 가려집니다. 사진 전체를 확인해 주세요.':'가림 권장 · 검토 권장 '+serious+'건. 기본으로 아무것도 고르지 않았어요. 가릴 항목을 고르세요.';
+    // 결과는 문장 하나로 먼저 알린다. 숫자는 문장 안에 넣고, 목록은 그 아래에 둔다.
+    $('#resultTitle').textContent=state.analysisStatus==='empty'?'탐지된 곳이 없어요':state.analysisStatus==='manual'?'가릴 곳을 직접 골라요':state.analysisStatus==='partial'?'일부만 확인했어요':'확인할 곳을 '+count+'곳 찾았어요';
+    $('#reviewKicker').textContent=state.analysisStatus==='manual'?'직접 지정':state.judgeShown||'';
+    $('#reviewSubtitle').textContent=state.analysisStatus==='manual'?'직접 추가한 곳만 가려져요. 사진 전체를 한 번 더 확인해 주세요.':'가림 권장·검토 권장이 '+serious+'건 있어요. 기본으로 아무것도 고르지 않았으니 가릴 곳을 골라 주세요.';
     $('#riskSummary').classList.toggle('safe',count>0&&selected===count);
     $('#riskSummaryText').textContent=count===0?'탐지 결과가 없어도 개인정보가 없다는 뜻은 아니에요.':selected===count?selected+'개 영역을 가리도록 선택했어요.':selected?(count-selected)+'개 영역은 가리지 않아요.':'아직 가릴 영역을 고르지 않았어요.';
     $('#selectAll').textContent=count>0&&selected===count?'모두 해제':'모두 선택';$('#selectAll').disabled=count===0||state.saving;
@@ -529,6 +544,34 @@
      OCR 은 서버에서 한 번에 하나씩 돈다. 분석·저장 요청마다 번호표를 붙여 보내고,
      기다리는 동안 '앞에 몇 건, 약 몇 초'를 보여 준다. 다른 사진을 넣거나 취소하거나
      창을 닫으면 기다리던 요청을 뺀다. */
+  /* 서버는 '남은 시간'을 모른다. 끝난 작업의 평균(avg_s)과 지금 작업이 시작된 뒤
+     흐른 시간으로 추정할 뿐이라, 평균이 없으면 숫자를 지어내지 않고 흐른 시간만 쓴다.
+     추정이 빗나가도 막대가 끝까지 차 버리지 않게 92%에서 멈춘다. */
+  let runStart=null, runTicket=null;
+  const SPAN_CAP=.92;
+  function hms(seconds) {
+    const s=Math.max(0,Math.round(seconds));
+    return s>=60 ? Math.floor(s/60)+'분 '+String(s%60).padStart(2,'0')+'초' : s+'초';
+  }
+  function renderScanProgress(s) {
+    const bar=$('#scanProgress'), track=bar.parentElement, readout=$('#scanPercent');
+    if(s.state==='running') { if(runTicket!==state.ticket){runTicket=state.ticket;runStart=Date.now();} }
+    else { runTicket=null;runStart=null; }
+    if(s.state!=='running' || !runStart) {           // 대기 중이거나 올리는 중
+      track.classList.remove('measured');bar.style.width='';
+      readout.textContent=s.state==='waiting'?'대기 '+s.ahead+'건':s.state==='running'?'검사 중':'올리는 중';
+      return;
+    }
+    const elapsed=(Date.now()-runStart)/1000, avg=s.avg_s;
+    if(avg==null) {                                   // 아직 한 건도 안 끝나 기준이 없다
+      track.classList.remove('measured');bar.style.width='';
+      readout.textContent=hms(elapsed)+' 지남';
+      return;
+    }
+    track.classList.add('measured');
+    bar.style.width=(Math.min(elapsed/avg,SPAN_CAP)*100).toFixed(1)+'%';
+    readout.textContent=elapsed<avg ? '약 '+hms(avg-elapsed)+' 남음' : '거의 다 됐어요';
+  }
   function renderQueue(s) {
     const badge=$('#queueBadge');badge.classList.remove('busy','ready');
     if(!s.engine_ready){$('#queueText').textContent='OCR 엔진 준비 중';badge.classList.add('busy');}
@@ -539,7 +582,7 @@
     const eta=s.eta_s!=null?' · 약 '+s.eta_s+'초':'';
     const text=s.state==='waiting'?'대기 '+s.ahead+'건'+eta:s.state==='running'?(s.engine_ready?(state.saving?'가리고 다시 검사하는 중':'검사하는 중'):'OCR 엔진 준비 중 (서버를 켠 뒤 처음 한 번, 1~2분)'):'사진을 올리는 중';
     if(state.phase==='scanning') {
-      $('#scanPercent').textContent=s.state==='waiting'?'대기 '+s.ahead+'건':s.state==='running'?'검사 중':'올리는 중';
+      renderScanProgress(s);
       $('#scanModeLabel').textContent=text;
       $('#scanTask1').classList.add('active');
       $('#scanTask2').classList.toggle('active',s.state==='running');
@@ -747,6 +790,10 @@
   $('#workspaceNav').addEventListener('click',()=>{$('#workspace').scrollIntoView({behavior:'smooth',block:'start'});});
   $('#changePhoto').addEventListener('click',()=>{reset();notify('새 사진이나 샘플을 선택해 주세요.');});
   $('#fileInput').addEventListener('change',event=>loadFile(event.target.files[0]));
+  $('#themeToggle').addEventListener('click',()=>{
+    applyTheme(theme==='dark'?'light':'dark');
+    try{localStorage.setItem('pl.theme',theme);}catch(_){}
+  });
   $('#dropzone').addEventListener('click',()=>$('#fileInput').click());
   $('#dropzone').addEventListener('keydown',event=>{if(event.key==='Enter' || event.key===' '){event.preventDefault();$('#fileInput').click();}});
   ['dragenter','dragover'].forEach(name=>$('#dropzone').addEventListener(name,event=>{event.preventDefault();$('#dropzone').classList.add('dragover');}));

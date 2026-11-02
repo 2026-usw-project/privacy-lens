@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#f7f6f3">
+<meta name="theme-color" content="#f2f4f6">
 <meta name="description" content="사진 배경의 개인정보를 찾아 위치와 근거를 보여 주고, 가린 사본을 저장하는 프라이버시 렌즈.">
 <title>Privacy Lens · 프라이버시 렌즈</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ef5a1c'/%3E%3Ccircle cx='29' cy='29' r='14' fill='none' stroke='%23fff' stroke-width='5'/%3E%3Cpath d='m40 40 11 11' stroke='%23fff' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231f6feb'/%3E%3Ccircle cx='29' cy='29' r='14' fill='none' stroke='%23fff' stroke-width='5'/%3E%3Cpath d='m40 40 11 11' stroke='%23fff' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
 <script src="core.js" defer></script>
 <script src="api.js" defer></script>
@@ -15,10 +15,10 @@
 <body>
 <!--
 THESIS: 사진 검사는 대시보드의 한 작업 화면이다. 마케팅 히어로·떠 있는 카드·아이브로 라벨을 버리고, 사진과 결과 목록과 저장 버튼이 한 화면에 함께 있는 작업대를 만든다.
-OWN-WORLD: 웜 오프화이트 바탕(#f7f6f3), 흰 작업 면, 1px 헤어라인 격자와 교차점의 + 표시, 주황(#ef5a1c)은 주요 행동·선택·위험 표시와 헤드라인의 한 단어에만. 숫자·좌표·상태는 모노 대괄호 라벨([ 200 OK ] 문법), 본문은 한글 산세리프. 그림자는 떠 있는 입력 막대·사진·대화상자에만, 오프셋+소프트 블러.
+OWN-WORLD: 옅은 회색 바닥(#f2f4f6) 위에 테두리 없는 흰 면 둘(사진 면·결과 면), 큰 글씨 한 줄과 파란 행동 버튼 하나. 파랑은 누르는 것·고른 것·진행, 붉은색은 '가림 권장' 같은 위험 표시에만. 장식은 사진 위 조준선(네 귀퉁이 꺾쇠)이 유일하다. 어두운 화면은 [data-theme="dark"] 에서 같은 이름의 값만 바꾼다.
 STORY: 사진을 고르면 → 박스와 근거 목록을 나란히 보고 → 고치고 → 오른쪽 아래 저장 버튼으로 끝낸다.
-FIRST VIEWPORT: 상단바에 단계 표시와 시연 메뉴, 왼쪽 큰 칸에 업로드 면과 샘플 3칸, 오른쪽 칸에 탐지 대상 설명. 사진이 들어오면 왼쪽은 사진이 화면 높이를 채우고 오른쪽 패널은 고정되어 저장 버튼이 항상 보인다.
-FORM: 사용자 지정: 확인 답변 (1) Firecrawl 스타일만 차용, 브랜드 요소는 쓰지 않음 — 컨셉 롤 면제.
+FIRST VIEWPORT: 상단바에 단계 표시, 왼쪽 큰 면에 업로드 판과 샘플 3칸, 오른쪽 면에 탐지 대상 설명. 사진이 들어오면 왼쪽은 사진이 화면 높이를 채우고 오른쪽 패널은 고정되어 저장 버튼이 항상 보인다.
+FORM: 사용자 지정: 토스 앱의 화면 말투(회색 바닥·흰 면·큰 글씨·해요체)만 참고했고, 로고·아이콘·글꼴 등 브랜드 요소는 쓰지 않음.
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 -->
 <svg class="icon-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
@@ -44,7 +44,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5C8 2 3 3 2 4v15c3-2 7-1 10 1 3-2 7-3 10-1V4c-1-1-6-2-10 1Zm0 0v15"/></symbol>
 <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 2 9 5v10l-9 5-9-5V7l9-5Zm0 10 9-5M3 7l9 5v10M7.5 4.5l9 5V14"/></symbol>
 <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 11a9 9 0 1 1 2 7M3 4v7h7"/></symbol>
-<symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.4v2.2M12 19.4v2.2M4.2 12H2M22 12h-2.2M6.5 6.5 4.9 4.9M19.1 19.1l-1.6-1.6M17.5 6.5l1.6-1.6M4.9 19.1l1.6-1.6"/></symbol><symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.3A8.6 8.6 0 0 1 9.7 3.5a8.6 8.6 0 1 0 10.8 10.8Z"/></symbol>
 <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5-12-7.5Z"/></symbol>
 <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5m8-10 5 5-5 5"/></symbol>
 </svg>
@@ -73,6 +73,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     <div class="topbar-right">
       <span class="queue-badge mono-label" id="queueBadge" role="status" aria-live="polite"><i></i><span id="queueText">대기열 확인 중</span></span>
       <button class="chip-button judge-chip" id="judgeChip" data-dialog="devDialog" aria-label="판단 방법 · 개발자 모드 열기"><svg><use href="#i-code"/></svg><span id="judgeChipText">문맥·결합</span></button>
+      <button class="chip-button icon-only theme-toggle" id="themeToggle" aria-label="어두운 화면으로 바꾸기" aria-pressed="false"><svg class="when-dark"><use href="#i-sun"/></svg><svg class="when-light"><use href="#i-moon"/></svg></button>
       <button class="chip-button icon-only" data-dialog="guideDialog" aria-label="이용 안내"><svg><use href="#i-info"/></svg></button>
     </div>
   </header>
@@ -102,7 +103,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             <span class="mono-label">JPG · PNG · WEBP · HEIC &nbsp;/&nbsp; 최대 20 MB · 24 MP</span>
           </div>
           <div class="samples">
-            <div class="samples-head"><h2>샘플로 체험하기</h2><span class="mono-label">[ 가상 데이터 ]</span></div>
+            <div class="samples-head"><h2>샘플로 체험하기</h2><span class="mono-label">가상 데이터예요</span></div>
             <div class="sample-grid">
               <button class="sample-card" data-sample="parcel"><canvas id="thumb-parcel" width="320" height="190" aria-hidden="true"></canvas><span class="sample-text"><strong>택배 송장<svg><use href="#i-arrow"/></svg></strong><small>이름 · 주소 · 연락처</small></span></button>
               <button class="sample-card" data-sample="student"><canvas id="thumb-student" width="320" height="190" aria-hidden="true"></canvas><span class="sample-text"><strong>학생증<svg><use href="#i-arrow"/></svg></strong><small>이름 · 학번 · 소속</small></span></button>
