@@ -94,12 +94,13 @@ class ObjectBox:
 class FaceDetector:
     name = "yunet"
 
-    def __init__(self, model: Path):
+    def __init__(self, model: Path, score: float | None = None):
         import cv2
         if not hasattr(cv2, "FaceDetectorYN"):
             raise RuntimeError("OpenCV 4.5.4 이상이 필요합니다(FaceDetectorYN)")
         self._cv2 = cv2
-        self._det = cv2.FaceDetectorYN.create(str(model), "", (320, 320), FACE_SCORE, 0.3, 5000)
+        self.score = FACE_SCORE if score is None else score
+        self._det = cv2.FaceDetectorYN.create(str(model), "", (320, 320), self.score, 0.3, 5000)
         self._lock = threading.Lock()
 
     def detect(self, image: Image.Image) -> list[ObjectBox]:
@@ -125,15 +126,16 @@ class FaceDetector:
 
 
 class PlateDetector:
-    def __init__(self, model: Path):
+    def __init__(self, model: Path, conf: float | None = None):
         from ultralytics import YOLO
         self.model = YOLO(str(model), task="detect")
+        self.conf = PLATE_CONF if conf is None else conf
         self.name = f"plate:{model.name}"
         self._lock = threading.Lock()
 
     def detect(self, image: Image.Image) -> list[ObjectBox]:
         with self._lock:
-            r = self.model.predict(image.convert("RGB"), conf=PLATE_CONF, verbose=False)[0]
+            r = self.model.predict(image.convert("RGB"), conf=self.conf, verbose=False)[0]
         out = []
         for p, (x0, y0, x1, y1) in zip(r.boxes.conf.tolist(), r.boxes.xyxy.tolist()):
             out.append(ObjectBox("plate", Box(int(x0), int(y0), int(x1 - x0), int(y1 - y0)), float(p)))
