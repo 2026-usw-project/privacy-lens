@@ -51,6 +51,11 @@ class ThreadBoundBackend:
             self._engine = None
             raise OcrUnavailable(type(exc).__name__) from None
 
+    @property
+    def ready(self) -> bool:
+        """엔진이 만들어져 있는가. 아니면 다음 read 가 엔진을 만드는 시간까지 먹는다(시간 기록에서 뺀다)."""
+        return self._engine is not None
+
     def read(self, image: Image.Image):
         return self._executor.submit(self._read, image).result()
 
