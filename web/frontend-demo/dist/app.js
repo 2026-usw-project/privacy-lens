@@ -14,7 +14,7 @@
     backend:'', elapsedMs:0, zoom:1, loadToken:0, exportToken:0, exportUrl:null, nextId:1, toastTimer:null,
     requestController:null, requestSerial:0, saving:false, saveError:'', ticket:null, previewState:'none', previewSeq:0 };
   try { const saved=localStorage.getItem('pl.maskStyle'); if(Core.STYLES.includes(saved)) state.style=saved; } catch(_) {}
-  // 개발자 모드 설정(판단 방법·모델·API 키)은 이 브라우저에만 둔다. 서버는 요청마다 받아 쓰고 저장하지 않는다.
+  // 판단 모델 창 설정(판단 방법·모델·API 키)은 이 브라우저에만 둔다. 서버는 요청마다 받아 쓰고 저장하지 않는다.
   try { state.dev=Core.devSettings(JSON.parse(localStorage.getItem('pl.devMode')||'null')); } catch(_) {}
   function saveDev() { try{localStorage.setItem('pl.devMode',JSON.stringify(state.dev));}catch(_){} }
 
@@ -889,7 +889,7 @@
   $('#analyzeButton').addEventListener('click',()=>beginAnalysis());
   $('#manualButton').addEventListener('click',startManual);$('#failureManual').addEventListener('click',startManual);
   $('#retryAnalysis').addEventListener('click',()=>beginAnalysis());
-  // 개발자 모드: 판단 모델 종류·모델·키·주소. 바꿀 때마다 이 브라우저에 저장한다.
+  // 판단 모델 창: 판단 모델 종류·모델·키·주소. 바꿀 때마다 이 브라우저에 저장한다.
   function renderDev() {
     const id=state.dev.provider,j=Core.JUDGES[id],p=state.dev.providers[id],llm=id!=='rules';
     $('#judgeProvider').value=id;

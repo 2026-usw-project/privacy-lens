@@ -473,7 +473,7 @@ async def llm_failed(request: Request, exc: llm_judge.LlmJudgeError):
 
 
 def _judge(raw: str | None) -> llm_judge.JudgeConfig | None:
-    """개발자 모드의 판단 설정. 비었으면 규칙 기반. 키는 이 요청에서만 쓰고 저장하지 않는다."""
+    """판단 모델 창의 판단 설정. 비었으면 규칙 기반. 키는 이 요청에서만 쓰고 저장하지 않는다."""
     try:
         return llm_judge.parse_config(raw)
     except ValueError as exc:
@@ -482,7 +482,7 @@ def _judge(raw: str | None) -> llm_judge.JudgeConfig | None:
 
 @app.post("/llm/models")
 def llm_models(judge: str = Form(...)):
-    """개발자 모드: 고른 공급자에서 쓸 수 있는 모델 이름 목록. 키는 본문으로 받아 이 요청에서만 쓴다.
+    """판단 모델 창: 고른 공급자에서 쓸 수 있는 모델 이름 목록. 키는 본문으로 받아 이 요청에서만 쓴다.
 
     OCR 이 없어 대기열을 거치지 않는다. 사진도 원문도 보내지 않는다.
     """

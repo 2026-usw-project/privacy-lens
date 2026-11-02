@@ -1,7 +1,7 @@
 'use strict';
 (() => {
   // Privacy Lens 서버 통신. 화면과 같은 주소에서 나오므로 서버 주소 설정이 없다.
-  //   POST /analyze          사진 원본 + 번호표 (+ 개발자 모드 판단 설정) → 분석 결과(JSON)
+  //   POST /analyze          사진 원본 + 번호표 (+ 판단 모델 창의 설정) → 분석 결과(JSON)
   //   POST /redact/preview   가린 모습 축소본(JSON, base64 JPEG). OCR 이 없어 대기열을 거치지 않는다
   //   POST /redact           가린 사진(JSON, base64 JPEG) + 다시 검사한 결과
   //   GET  /queue            대기열 상태. 번호표를 주면 내 앞에 몇 건인지
@@ -78,11 +78,11 @@
       return body;
     }
     return {
-      // judge: 개발자 모드의 LLM 설정(JSON 문자열, API 키 포함). 규칙 기반이면 undefined 라 보내지 않는다.
+      // judge: 판단 모델 창의 LLM 설정(JSON 문자열, API 키 포함). 규칙 기반이면 undefined 라 보내지 않는다.
       analyze(image,{ticket,judge,signal}={}) {
         return request('/analyze',{method:'POST',body:form(image,{ticket,judge})},signal);
       },
-      // 개발자 모드: 고른 공급자에서 쓸 수 있는 모델 이름. 사진은 보내지 않는다.
+      // 판단 모델 창: 고른 공급자에서 쓸 수 있는 모델 이름. 사진은 보내지 않는다.
       models(judge,{signal}={}) {
         const body=new FormData();body.append('judge',judge);
         return request('/llm/models',{method:'POST',body},signal);
