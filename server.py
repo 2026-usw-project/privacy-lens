@@ -45,6 +45,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from starlette.formparsers import MultiPartParser
 
 from jobqueue import Cancelled, QueueFull, WorkQueue
+from timing import TimingStore, default_path
 
 from pipeline import analyze as pl
 from pipeline import detect, llm_judge, metadata, ocr, redact, wording
@@ -93,6 +94,42 @@ mimetypes.add_type("font/woff2", ".woff2")
 _backend = None
 _backend_lock = threading.Lock()
 
+# 단계별 걸린 시간(남은 시간 추정용). 숫자와 단계 키만 파일에 남긴다(D-17). PL_TIMING=off 면 메모리에만
+TIMING = TimingStore(None if os.environ.get("PL_TIMING", "").lower() == "off" else default_path())
+
+
+def _recorder(engine):
+    """analyze 의 on_stage 콜백. 끝난 단계의 시간을 기록한다.
+
+    엔진이 아직 준비되지 않았으면 이번 OCR 은 엔진을 만드는 시간까지 먹으므로 OCR 기록에서 뺀다.
+    """
+    warm = getattr(engine, "ready", True)
+
+    def on_stage(event: str, name: str, units: float, seconds: float | None) -> None:
+        if event != "end" or seconds is None:
+            return
+        if name.startswith("ocr") and not warm:
+            return
+        TIMING.record(name, units, seconds)
+
+    return on_stage
+
+
+class _Timed:
+    """서버에서 직접 재는 단계(사진 열기·가리기·파일 만들기)."""
+
+    def __init__(self, name: str):
+        self.name, self.units = name, 0.0
+
+    def __enter__(self) -> "_Timed":
+        self.started = time.perf_counter()
+        return self
+
+    def __exit__(self, exc_type, *_):
+        if exc_type is None:
+            TIMING.record(self.name, self.units, time.perf_counter() - self.started)
+        return False
+
 
 def backend():
     # 요청이 스레드풀에서 동시에 들어와도 엔진은 하나만 만든다.
@@ -131,6 +168,7 @@ async def _lifespan(_app: FastAPI):
         # 준비 중에 종료해도 전용 스레드를 남기지 않는다.
         await asyncio.to_thread(warmup.join)
         await asyncio.to_thread(_close_backend)
+        await asyncio.to_thread(TIMING.flush)
 
 
 app = FastAPI(title="Privacy Lens", lifespan=_lifespan)
@@ -380,8 +418,12 @@ def analyze_endpoint(
     cfg = _judge(judge)
 
     with _Turn(_ticket(ticket)):
-        img = _open(data)
-        report = pl.analyze(img, backend=backend(), judge=cfg, llm_trace=[] if cfg else None)
+        with _Timed("decode") as t:
+            img = _open(data)
+            t.units = pl.megapixels(img)
+        engine = backend()
+        report = pl.analyze(img, backend=engine, judge=cfg, llm_trace=[] if cfg else None,
+                            on_stage=_recorder(engine))
     preview, scale = _preview(img)
 
     return JSONResponse({
@@ -428,19 +470,26 @@ def redact_endpoint(
     cfg = _judge(judge)  # 가린 결과를 다시 검사할 때도 분석과 같은 판단 방법을 쓴다
 
     with _Turn(_ticket(ticket)):
-        img = _open(data)
+        with _Timed("decode") as t:
+            img = _open(data)
+            t.units = pl.megapixels(img)
         wanted = _parse_boxes(boxes, img.size)
 
-        masked = redact.apply_masks(img, wanted, style)
-        out = redact.export(masked)
+        with _Timed("mask") as t:
+            t.units = pl.megapixels(img)
+            masked = redact.apply_masks(img, wanted, style)
+        with _Timed("export") as t:
+            t.units = pl.megapixels(img)
+            out = redact.export(masked)
 
         # 원본 전체를 다시 분석하지 않는다. 검증에 필요한 건 '원본에 위치정보가
         # 있었는가' 뿐이고, 그건 EXIF 만 읽으면 된다. OCR 은 결과 파일에 한 번만.
         had_gps = bool(metadata.check_exif(img))
         trace: list = []
+        engine = backend()
         check = redact.verify(
-            wanted, out, lambda im: pl.analyze(im, backend=backend(), judge=cfg,
-                                               llm_trace=trace if cfg else None), had_gps=had_gps
+            wanted, out, lambda im: pl.analyze(im, backend=engine, judge=cfg, llm_trace=trace if cfg else None,
+                                               on_stage=_recorder(engine)), had_gps=had_gps
         )
 
     return JSONResponse({

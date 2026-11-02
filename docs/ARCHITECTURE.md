@@ -13,6 +13,7 @@
        ▼
   server.py (FastAPI, 무상태)
        ├─ jobqueue.py      OCR 대기열 (순서·번호표·취소·한도)
+       ├─ timing.py        단계별 걸린 시간 기록·추정 (~/.privacy-lens/timing.json, 숫자만)
        └─ pipeline/
             ocr.py         Tesseract / PaddleOCR (외곽선 poly 포함)
             detect.py      (선택) YOLO 문서 검출 → 확대 재판독 · 못 읽은 문서 영역 경고
@@ -27,6 +28,7 @@
 ```
 
 DB 는 없습니다. 사진은 요청 처리 함수 안에서만 존재하고, 디스크(임시 파일 포함)·로그에 남기지 않습니다.
+디스크에 남는 것은 처리 단계별 걸린 시간 통계 파일 하나뿐입니다(단계 키와 숫자, D-17).
 
 ## 2. 처리 흐름
 
