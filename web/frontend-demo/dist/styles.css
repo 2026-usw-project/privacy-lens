@@ -276,8 +276,13 @@ main{padding:8px 24px 16px}
 .scan-tasks{list-style:none;margin:0 0 20px;padding:0}
 .scan-tasks li{display:flex;align-items:center;gap:12px;padding:10px 0;font-size:15px;font-weight:500;color:var(--muted)}
 .scan-tasks li .mono{display:grid;place-items:center;flex-shrink:0;width:26px;height:26px;border-radius:50%;background:var(--surface-2);font-size:12px;font-weight:700}
-.scan-tasks li.active{color:var(--ink)}
-.scan-tasks li.active .mono{background:var(--primary-tint);color:var(--primary-ink)}
+.scan-tasks li.active,.scan-tasks li.running{color:var(--ink)}
+.scan-tasks li.active .mono,.scan-tasks li.running .mono{background:var(--primary-tint);color:var(--primary-ink)}
+.scan-tasks li.done{color:var(--ink-2)}
+.scan-tasks li.done .mono{background:var(--surface-2);color:var(--ok)}
+.scan-tasks .stage-time{margin-left:auto;font-family:var(--mono);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap}
+.scan-tasks li.running .stage-time{color:var(--primary-ink)}
+.scan-detail{display:block;margin-top:4px;font-size:14px;color:var(--muted)}
 
 .review{display:flex;flex-direction:column;min-height:0;flex:1}
 .review-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:26px 24px 0}
