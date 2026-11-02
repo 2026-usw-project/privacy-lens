@@ -270,3 +270,25 @@ def test_promotion_blocked_without_real_val_or_test():
     assert decide_promotion(False, n_val=3, n_test=2, has_current=True) == (False, False)
     # --force 는 언제나 교체
     assert decide_promotion(False, n_val=0, n_test=0, has_current=True, force=True) == (True, False)
+
+
+def test_choose_base_restarts_from_yolo26_when_family_or_classes_differ(tmp_path):
+    from vision.train import DEFAULT_BASE, choose_base
+    cur = tmp_path / "v004" / "best.pt"
+    assert DEFAULT_BASE == "yolo26n.pt"
+    assert choose_base(None, same_classes=False, family="") == (DEFAULT_BASE, "")
+    base, why = choose_base(cur, same_classes=True, family="yolo11")  # 예전 YOLO11 모델
+    assert base == DEFAULT_BASE and "yolo11" in why
+    base, why = choose_base(cur, same_classes=False, family="yolo26")
+    assert base == DEFAULT_BASE and "클래스" in why
+    assert choose_base(cur, same_classes=True, family="yolo26") == (str(cur), "")
+
+
+def test_model_family_reads_yaml_file_name():
+    from types import SimpleNamespace
+    from pipeline.detect import model_family
+    wrap = lambda name: SimpleNamespace(model=SimpleNamespace(yaml={"yaml_file": name}))  # noqa: E731
+    assert model_family(wrap("yolo26n.yaml")) == "yolo26"
+    assert model_family(wrap("yolo11s.yaml")) == "yolo11"
+    assert model_family(wrap("yolov8n.yaml")) == "yolov8"
+    assert model_family(SimpleNamespace(model=SimpleNamespace())) == ""

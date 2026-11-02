@@ -1,7 +1,8 @@
 """③ dataset 으로 학습하고 ④ models 에 새 버전을 남긴다.
 
 순서
-  1. 지금 모델(current)이 있으면 그 가중치에서 이어서 학습, 없으면 yolo11n.pt 에서 시작
+  1. 지금 모델(current)이 있으면 그 가중치에서 이어서 학습, 없으면 yolo26n.pt 에서 시작
+     (current 가 다른 계열(YOLO11)이거나 클래스가 다르면 yolo26n.pt 부터 새로 학습)
   2. models/vNNN/ 에 best.pt · 학습 기록 · 평가 결과 저장
   3. 새 모델과 지금 모델을 **같은 시험 데이터**(test, 없으면 val)로 다시 채점
   4. 새 모델이 같거나 나으면 current 로 바꾼다. 나빠졌으면 저장만 하고 바꾸지 않는다
@@ -25,7 +26,9 @@ from .build import write_lists
 from .classes import NAMES
 from .workspace import Workspace
 
-DEFAULT_BASE = "yolo11n.pt"
+# 2026-11-02 YOLO11 → YOLO26 전환(D-16). YOLO26 가중치는 ultralytics 8.4 부터 들어 있다
+DEFAULT_BASE = "yolo26n.pt"
+DEFAULT_FAMILY = "yolo26"
 
 
 def _in_colab() -> bool:
@@ -56,6 +59,29 @@ def _same_classes(weights: Path) -> bool:
 
     names = YOLO(str(weights)).names
     return {int(k): v for k, v in names.items()} == NAMES
+
+
+def _family(weights: Path) -> str:
+    from ultralytics import YOLO
+
+    from pipeline.detect import model_family
+    return model_family(YOLO(str(weights)))
+
+
+def choose_base(current: Path | None, *, same_classes: bool, family: str) -> tuple[str, str]:
+    """(시작 가중치, 처음부터 학습하는 이유). 이어서 학습할 수 있으면 current, 아니면 DEFAULT_BASE.
+
+    이어서 학습하려면 클래스 목록과 모델 계열(yolo26)이 모두 같아야 한다.
+    YOLO11 가중치를 YOLO26 구조에 이어 붙일 수는 없다(D-16).
+    """
+    if current is None:
+        return DEFAULT_BASE, ""
+    if family != DEFAULT_FAMILY:
+        return DEFAULT_BASE, (f"지금 모델은 {family or '알 수 없는 계열'} 입니다. "
+                              f"{DEFAULT_FAMILY} 로 바꾸기로 해서 처음({DEFAULT_BASE})부터 학습합니다.")
+    if not same_classes:
+        return DEFAULT_BASE, f"클래스 목록이 바뀌어 처음({DEFAULT_BASE})부터 학습합니다."
+    return str(current), ""
 
 
 def add_extra(data_dir: Path, extra: Path, limit: int | None = None, seed: int = 0) -> int:
@@ -123,13 +149,12 @@ def run(
 
     # 시작 가중치
     current = ws.current_model()
+    current_family = _family(current) if current else ""
     if base is None:
-        if current and _same_classes(current):
-            base = str(current)
-        else:
-            if current:
-                print("⚠ 클래스 목록이 바뀌어 처음(yolo11n.pt)부터 학습합니다.")
-            base = DEFAULT_BASE
+        base, why = choose_base(current, same_classes=bool(current) and _same_classes(current),
+                                family=current_family)
+        if why:
+            print(f"⚠ {why}")
     print(f"시작 가중치: {base}")
     print(f"사진: 학습 {n_train} · 검증 {n_val} · 시험 {n_test}")
 
@@ -196,6 +221,7 @@ def run(
         "previous": {"version": ws.current_version(), "score": old_score} if old_score else None,
         "promoted": promoted,
         "unmeasured": unmeasured,
+        "family": _family(out_dir / "best.pt"),
     }
     (out_dir / "metrics.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -227,6 +253,9 @@ def run(
     elif blocked:
         print("  → 실사 검증·시험 사진이 0장이라 어느 모델이 나은지 알 수 없어 교체하지 않았습니다.\n"
               "    실사 묶음을 5개 이상 검수해 넣으면 val·test 가 생깁니다. (--force 로 강제 교체 가능)")
+        if current_family and current_family != info["family"]:
+            print(f"    계열 전환({current_family} → {info['family']})은 팀 결정(D-16)이므로 "
+                  "새 계열 첫 모델은 --force 로 올려도 됩니다.")
     else:
         print("  → 기존 모델보다 낮아 교체하지 않았습니다. (--force 로 강제 교체 가능)")
     print(f"  저장 위치: {out_dir}")

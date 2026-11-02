@@ -56,7 +56,7 @@ multipart: `image`(원본 파일), `ticket`(번호표, 선택), `judge`(개발�
   `linked`(`linked_kinds` 에 함께 있는 항목 종류) · `honorific` · `format`(근거 없음 또는 서버 확인 실패).
   여러 조각으로 나뉜 값(4자리씩 끊긴 카드번호 등)은 한 항목이며 `detail.parts` 에 조각 수, `box` 는 조각들을 덮는 상자입니다.
   LLM 판단에서는 `kind` 에 `other`(그 밖의 개인정보)가 더 있습니다.
-- `report.detector`: 문서 검출 모델 이름(예: `yolo:v003`). 검출을 쓰지 않았으면 빈 문자열.
+- `report.detector`: 문서 검출 모델 이름(예: `yolo:v003`, YOLO26 부터 `yolo:v005·yolo26`). 검출을 쓰지 않았으면 빈 문자열.
 - `report.detector_device`: YOLO가 실제 추론에 사용한 장치(예: `cpu`, `cuda:0`). 검출을 쓰지 않았거나 장치를 알 수 없으면 빈 문자열. 화면 하단에 OCR 모델과 함께 YOLO 버전·장치를 표시하며 검출 미사용 시 `YOLO 꺼짐`으로 표시합니다.
 - `severity`: cover(가림 권장) · review(검토 권장) · info(참고). `certainty`: read · partial · region.
 - `evidence_text` 는 글자를 못 읽었으면 `null` 입니다. 화면은 내용을 지어내지 않습니다.

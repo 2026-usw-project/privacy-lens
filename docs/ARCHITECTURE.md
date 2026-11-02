@@ -60,7 +60,7 @@ DB 는 없습니다. 사진은 요청 처리 함수 안에서만 존재하고, �
 | 백엔드 | FastAPI, Pillow, NumPy, OpenCV(QR·바코드), pillow-heif(선택) |
 | OCR | PaddleOCR 3.7(`PP-OCRv6_medium_det` + `korean_PP-OCRv5_mobile_rec`, `paddlepaddle<3.3`) 또는 Tesseract 5 |
 | 판정 | 정규식·체크섬(주민번호·카드 Luhn·사업자번호) + 문맥 규칙. NER 없음 |
-| 문서 검출(선택) | Ultralytics YOLO11n, 팀 공유 폴더에서 지속 학습(`vision/`) |
+| 문서·이미지 객체 검출(선택) | Ultralytics YOLO26n(2026-11-02 YOLO11n 에서 전환), 팀 공유 폴더에서 지속 학습(`vision/`). 역할은 이미지 객체 위주로 전환 중(D-16) |
 | 화면 | 의존성 없는 HTML/CSS/JS, Canvas(표시·편집만, 가림은 서버) |
 | 검사 | pytest(백엔드), Node 스크립트(화면 정적·계약 검사) |
 
