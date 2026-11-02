@@ -96,6 +96,11 @@ class WorkQueue:
 
     # ------------------------------------------------------------ 상태
 
+    def order(self) -> tuple[list[str], list[str]]:
+        """(처리 중, 기다리는 순서). 남은 시간을 작업마다 따로 더하는 데 쓴다(progress.py)."""
+        with self._cond:
+            return list(self._running), list(self._waiting)
+
     def status(self, ticket: Optional[str] = None) -> dict:
         with self._cond:
             out = {

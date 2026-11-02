@@ -197,6 +197,21 @@ OCR_UNAVAILABLE = assert_safe("문자 인식 처리에 실패했습니다. 잠�
 NO_FINDINGS = "추가로 탐지된 항목이 없습니다"
 
 
+# 처리 단계 이름(남은 시간 표시용). 키는 timing.py 의 단계 키 머리
+STAGE_LABEL = {
+    "decode": "사진 열기",
+    "ocr": "글자 읽기",
+    "detect": "문서·객체 찾기",
+    "reread": "작은 문서 확대해 다시 읽기",
+    "judge:rules": "개인정보 판단",
+    "judge:llm": "LLM 판단",
+    "codes": "QR·바코드 검사",
+    "mask": "가리기",
+    "export": "파일 만들기",
+    "other": "처리",
+}
+
+
 # LLM 판단(개발자 모드) 오류. 키·원문·공급자 응답 본문은 넣지 않는다.
 LLM_CONFIG_INVALID = assert_safe("판단 모델 설정 형식이 올바르지 않습니다.")
 LLM_MODEL_MISSING = assert_safe("개발자 모드에서 모델 이름을 입력해 주세요.")
