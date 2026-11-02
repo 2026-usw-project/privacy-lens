@@ -294,8 +294,13 @@ main{padding:8px 24px 16px}
 .scan-tasks{list-style:none;margin:0 0 20px;padding:0}
 .scan-tasks li{display:flex;align-items:center;gap:12px;padding:10px 0;font-size:15px;font-weight:500;color:var(--muted)}
 .scan-tasks li .mono{display:grid;place-items:center;flex-shrink:0;width:26px;height:26px;border-radius:50%;background:var(--surface-2);font-size:12px;font-weight:700}
-.scan-tasks li.active{color:var(--ink)}
-.scan-tasks li.active .mono{background:var(--primary-tint);color:var(--primary-ink)}
+.scan-tasks li.active,.scan-tasks li.running{color:var(--ink)}
+.scan-tasks li.active .mono,.scan-tasks li.running .mono{background:var(--primary-tint);color:var(--primary-ink)}
+.scan-tasks li.done{color:var(--ink-2)}
+.scan-tasks li.done .mono{background:var(--surface-2);color:var(--ok)}
+.scan-tasks .stage-time{margin-left:auto;font-family:var(--mono);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap}
+.scan-tasks li.running .stage-time{color:var(--primary-ink)}
+.scan-detail{display:block;margin-top:4px;font-size:14px;color:var(--muted)}
 
 /* 결과 패널은 통째로 스크롤된다. 목록만 따로 스크롤하면 머리말이 길 때 저장 영역이 패널 밖으로 밀려 잘렸다.
    저장 영역은 아래에 붙어(sticky) 항상 보이고, 화면이 낮으면 함께 스크롤된다. */
@@ -493,7 +498,7 @@ dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
 .queue-badge i{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0}
 .queue-badge.busy i{background:#d99a1e}
 .queue-badge.ready i{background:var(--ok)}
-/* 판단 방법 칩과 개발자 모드 대화상자(main 에서 들어온 구성)를 같은 말투로 맞춘다. */
+/* 판단 방법 칩과 판단 모델 창 대화상자(main 에서 들어온 구성)를 같은 말투로 맞춘다. */
 .judge-chip span{max-width:220px;overflow:hidden;text-overflow:ellipsis}
 .judge-chip.llm{background:var(--warn-bg);color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn-line)}
 .dev-form{display:grid;gap:16px}
@@ -661,7 +666,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     <button class="nav-item active" id="workspaceNav"><svg><use href="#i-scan"/></svg><span>사진 검사</span></button>
     <button class="nav-item" data-dialog="targetsDialog"><svg><use href="#i-grid"/></svg><span>탐지 항목</span><span class="nav-count">9</span></button>
     <button class="nav-item" data-dialog="guideDialog"><svg><use href="#i-book"/></svg><span>이용 안내</span></button>
-    <button class="nav-item" data-dialog="devDialog"><svg><use href="#i-code"/></svg><span>개발자 모드</span></button>
+    <button class="nav-item" data-dialog="devDialog"><svg><use href="#i-code"/></svg><span>판단 모델</span></button>
   </nav>
   <div class="sidebar-bottom">
     <div class="private-card"><svg><use href="#i-lock"/></svg><div><strong>남기지 않아요.</strong><p>분석·저장할 때만 사진을 이 서버로 보내요. 디스크에 쓰지 않고 로그에도 남기지 않아요.</p></div></div>
@@ -678,7 +683,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     </ol>
     <div class="topbar-right">
       <span class="queue-badge mono-label" id="queueBadge" role="status" aria-live="polite"><i></i><span id="queueText">대기열 확인 중</span></span>
-      <button class="chip-button judge-chip" id="judgeChip" data-dialog="devDialog" aria-label="판단 방법 · 개발자 모드 열기"><svg><use href="#i-code"/></svg><span id="judgeChipText">문맥·결합</span></button>
+      <button class="chip-button judge-chip" id="judgeChip" data-dialog="devDialog" aria-label="판단 모델 열기"><svg><use href="#i-code"/></svg><span id="judgeChipText">문맥·결합</span></button>
       <button class="chip-button icon-only theme-toggle" id="themeToggle" aria-label="어두운 화면으로 바꾸기" aria-pressed="false"><svg class="when-dark"><use href="#i-sun"/></svg><svg class="when-light"><use href="#i-moon"/></svg></button>
       <button class="chip-button icon-only" data-dialog="guideDialog" aria-label="이용 안내"><svg><use href="#i-info"/></svg></button>
     </div>
@@ -768,9 +773,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
         <div id="scanningPanel" class="pane-body hidden" aria-live="polite">
           <h2 class="pane-heading">사진을 살펴보는 중 <span class="mono-tag live" id="scanModeLabel">문맥·결합</span></h2>
-          <div class="scan-readout"><strong class="mono" id="scanPercent">0%</strong></div>
+          <div class="scan-readout"><strong class="mono" id="scanPercent">올리는 중</strong><span id="scanDetail" class="scan-detail"></span></div>
           <div class="scan-progress"><span id="scanProgress"></span></div>
-          <ol class="scan-tasks"><li id="scanTask1"><span class="mono">01</span>서버 대기열에서 차례 기다리기</li><li id="scanTask2"><span class="mono">02</span>글자 찾고 읽기 (OCR)</li><li id="scanTask3"><span class="mono">03</span><span id="scanTask3Text">주변 문구로 개인정보 판정</span></li></ol>
+          <ol class="scan-tasks" id="scanStages"><li class="running"><span class="mono">01</span><span class="stage-name">사진 올리기</span><span class="stage-time"></span></li></ol>
+          <p class="fine-print hidden" id="scanBasis">처음 쓰는 모델이라 다른 모델의 기록으로 추정했어요.</p>
           <button class="button ghost full" id="cancelScan">분석 취소</button>
         </div>
 
@@ -810,7 +816,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <dialog id="exportDialog"><div class="dialog-header"><h2>저장 전 마지막 확인</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><p id="exportOrigin" class="mono-label"></p><div class="export-preview"><img id="exportPreview" alt="가림 처리가 적용된 최종 이미지"></div><dl class="export-details"><div><dt>가림 처리</dt><dd id="exportRegionCount"></dd></div><div><dt>촬영 메타데이터</dt><dd id="exportMetadata">원본 정보 제외</dd></div><div><dt>파일 형식</dt><dd>JPEG</dd></div></dl><div class="export-warning" id="exportWarning"></div><div class="export-actions"><button class="button ghost" data-close>계속 편집</button><button class="button primary" id="downloadButton"><svg><use href="#i-download"/></svg>다운로드</button></div></dialog>
 <dialog id="payloadDialog"><div class="dialog-header"><h2>최종 영역 데이터</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><p class="dialog-intro" id="payloadSummary"></p><pre id="payloadJson" tabindex="0" aria-label="최종 영역 JSON"></pre><div class="dialog-callout"><svg><use href="#i-info"/></svg><p>방향을 보정한 원본의 왼쪽 위가 (0, 0)입니다. 선택 해제·삭제한 영역은 빠져요. 저장할 때 이 영역(기울어진 글자는 외곽선 poly 포함)과 원본 사진을 서버로 보내요.</p></div><button class="button primary full" id="downloadPayload">영역 JSON 다운로드</button></dialog>
 
-<dialog id="devDialog" aria-labelledby="devTitle"><div class="dialog-header"><h2 id="devTitle">개발자 모드</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div>
+<dialog id="devDialog" aria-labelledby="devTitle"><div class="dialog-header"><h2 id="devTitle">판단 모델</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div>
 <p class="dialog-intro">글자를 읽은 뒤(OCR) 개인정보인지 판단할 방법을 골라요. LLM 을 고르면 규칙 기반 판단은 꺼지고, 모든 글자 판단을 그 모델이 해요. 위치정보·QR·문서 영역 검사는 그대로예요.</p>
 <div class="dev-form">
   <div class="dev-field"><label for="judgeProvider">판단 모델 종류</label><select id="judgeProvider"><option value="rules">규칙 기반 판단</option><option value="openai">ChatGPT</option><option value="gemini">Gemini</option><option value="anthropic">Claude</option><option value="openrouter">OpenRouter</option><option value="ollama">Ollama</option><option value="custom">Custom API</option></select></div>
@@ -841,7 +847,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     document:['UNKNOWN','문서 영역'],face_photo:['UNKNOWN','증명사진'],other:['UNKNOWN','개인정보 후보']
   };
   const SEVERITY = { cover:'가림 권장',review:'검토 권장',info:'참고' };
-  // 판단 방법(개발자 모드). rules 는 서버의 문맥·결합 규칙, 나머지는 LLM 이 모든 글자 판단을 맡는다.
+  // 판단 방법(판단 모델 창). rules 는 서버의 문맥·결합 규칙, 나머지는 LLM 이 모든 글자 판단을 맡는다.
   // cloud: 사진에서 읽은 글자가 그 회사 서버로 나간다. 모델 기본값은 고쳐 쓸 수 있는 예시다.
   const JUDGES = {
     rules:{label:'규칙 기반 판단'},
@@ -854,7 +860,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   };
   const MAX_FIELD = 500;
   const field = v => typeof v==='string' ? v.slice(0,MAX_FIELD) : '';
-  // 브라우저에 저장된 개발자 모드 설정을 믿지 않고 다듬는다. 공급자마다 모델·키·주소를 따로 기억한다.
+  // 브라우저에 저장된 판단 모델 창 설정을 믿지 않고 다듬는다. 공급자마다 모델·키·주소를 따로 기억한다.
   function devSettings(raw) {
     const src=raw&&typeof raw==='object'?raw:{};
     const provider=Object.hasOwn(JUDGES,src.provider)?src.provider:'rules';
@@ -981,13 +987,65 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     return {image:{width:state.width,height:state.height},style:STYLES.includes(state.style)?state.style:'blur',boxes:boxes(state)};
   }
 
-  globalThis.PrivacyLensCore=Object.freeze({TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload});
+  // ---------------- 남은 시간(서버 /progress 의 상태 → 화면 표시)
+  // 서버가 단계별 추정으로 남은 시간을 계산해 보낸다. 화면은 받은 뒤 흐른 시간(since)만큼 줄여 보여 주다가
+  // 다음 이벤트로 다시 맞춘다. 서버가 숫자를 못 주면(기록 없음) 흐른 시간만 보여 준다.
+  const PROGRESS_CAP=.95;
+  const num=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
+  function hms(seconds) {
+    const s=Math.max(0,Math.round(seconds));
+    return s>=60 ? Math.floor(s/60)+'분 '+String(s%60).padStart(2,'0')+'초' : s+'초';
+  }
+  const about=seconds=>seconds<.5?'1초 미만':'약 '+hms(seconds);
+  function progressView(snap,since=0) {
+    if(!snap || typeof snap!=='object')return null;
+    since=Math.max(0,num(since)||0);
+    const stages=Array.isArray(snap.stages)?snap.stages.slice(0,20):[];
+    const current=Number.isInteger(snap.current)?snap.current:-1;
+    const stageElapsed=(num(snap.stage_elapsed_s)??0)+since;
+    const view={state:String(snap.state||''),headline:'',detail:'',fraction:null,remaining:null,stages:[]};
+    view.stages=stages.map((st,i)=>{
+      const est=num(st.estimate_s),took=num(st.took_s),label=String(st.label||'처리').slice(0,40);
+      const state=st.state==='done'?'done':i===current&&view.state==='running'?'running':'todo';
+      let time='';
+      if(state==='done')time=took!==null?took.toFixed(1)+'초':'';
+      else if(state==='running')time=est===null?hms(stageElapsed)+' 지남':stageElapsed<=est?about(est-stageElapsed)+' 남음':'추정보다 '+hms(stageElapsed-est)+' 늦음';
+      else time=est!==null?about(est):'';
+      return {label,state,time,borrowed:!!st.borrowed};
+    });
+    if(view.state==='waiting') {
+      const eta=num(snap.eta_s);
+      view.remaining=eta===null?null:Math.max(0,eta-since);
+      view.headline='대기 '+(Number.isInteger(snap.ahead)?snap.ahead:0)+'건';
+      view.detail=view.remaining===null?'앞 작업을 기다리는 중':'약 '+hms(view.remaining)+' 뒤 끝나요';
+      return view;
+    }
+    if(view.state==='running') {
+      const rem=num(snap.remaining_s),total=num(snap.total_s);
+      const cur=view.stages[current];
+      view.remaining=rem===null?null:Math.max(0,rem-since);
+      view.headline=view.remaining===null?hms((num(snap.elapsed_s)??0)+since)+' 지남':view.remaining>0?'약 '+hms(view.remaining)+' 남음':'거의 다 됐어요';
+      view.detail=cur?cur.label+(cur.time?' · '+cur.time:''):'';
+      if(view.remaining!==null&&total)view.fraction=Math.min(PROGRESS_CAP,Math.max(0,(total-view.remaining)/total));
+      return view;
+    }
+    if(view.state==='done'||view.state==='failed') {
+      view.fraction=view.state==='done'?1:null;
+      view.headline=view.state==='done'?'끝났어요':'처리하지 못했어요';
+      view.detail=num(snap.took_s)!==null?snap.took_s.toFixed(1)+'초 걸림':'';
+      return view;
+    }
+    view.headline='올리는 중';
+    return view;
+  }
+
+  globalThis.PrivacyLensCore=Object.freeze({TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
 })();
 
 'use strict';
 (() => {
   // Privacy Lens 서버 통신. 화면과 같은 주소에서 나오므로 서버 주소 설정이 없다.
-  //   POST /analyze          사진 원본 + 번호표 (+ 개발자 모드 판단 설정) → 분석 결과(JSON)
+  //   POST /analyze          사진 원본 + 번호표 (+ 판단 모델 창의 설정) → 분석 결과(JSON)
   //   POST /redact/preview   가린 모습 축소본(JSON, base64 JPEG). OCR 이 없어 대기열을 거치지 않는다
   //   POST /redact           가린 사진(JSON, base64 JPEG) + 다시 검사한 결과
   //   GET  /queue            대기열 상태. 번호표를 주면 내 앞에 몇 건인지
@@ -1064,11 +1122,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       return body;
     }
     return {
-      // judge: 개발자 모드의 LLM 설정(JSON 문자열, API 키 포함). 규칙 기반이면 undefined 라 보내지 않는다.
+      // judge: 판단 모델 창의 LLM 설정(JSON 문자열, API 키 포함). 규칙 기반이면 undefined 라 보내지 않는다.
       analyze(image,{ticket,judge,signal}={}) {
         return request('/analyze',{method:'POST',body:form(image,{ticket,judge})},signal);
       },
-      // 개발자 모드: 고른 공급자에서 쓸 수 있는 모델 이름. 사진은 보내지 않는다.
+      // 판단 모델 창: 고른 공급자에서 쓸 수 있는 모델 이름. 사진은 보내지 않는다.
       models(judge,{signal}={}) {
         const body=new FormData();body.append('judge',judge);
         return request('/llm/models',{method:'POST',body},signal);
@@ -1078,6 +1136,22 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       },
       redact(image,boxes,style,{ticket,judge,signal}={}) {
         return request('/redact',{method:'POST',body:form(image,{boxes,style,ticket,judge})},signal);
+      },
+      // 진행 상태(SSE). 이벤트마다 onEvent(종류, 상태). 끝(done)·번호표 없음(gone)·연결 실패(error)면 스스로 닫는다.
+      // EventSource 를 못 쓰는 환경이면 null — 화면은 /queue 폴링의 progress 로 같은 값을 받는다.
+      progress(ticket,onEvent,EventSourceImpl=globalThis.EventSource) {
+        if(!ticket||typeof EventSourceImpl!=='function')return null;
+        let source;
+        try{source=new EventSourceImpl(base+'/progress?ticket='+encodeURIComponent(ticket));}catch{return null;}
+        let closed=false;
+        const close=()=>{if(!closed){closed=true;source.close();}};
+        const relay=(type,raw)=>{if(closed)return;let data=null;try{data=raw?JSON.parse(raw):null;}catch{}onEvent(type,data);};
+        source.addEventListener('progress',e=>relay('progress',e.data));
+        source.addEventListener('done',e=>{relay('done',e.data);close();});
+        source.addEventListener('gone',()=>{relay('gone',null);close();});
+        // 끊기면 브라우저가 다시 붙지만, 아예 못 여는 경우(서버가 /progress 를 모름 등)는 폴링으로 넘긴다
+        source.onerror=()=>{if(source.readyState===2){relay('error',null);close();}};
+        return {close};
       },
       queue(ticket,{signal}={}) {
         return request('/queue'+(ticket?'?ticket='+encodeURIComponent(ticket):''),{method:'GET'},signal);
@@ -1108,7 +1182,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     backend:'', elapsedMs:0, zoom:1, loadToken:0, exportToken:0, exportUrl:null, nextId:1, toastTimer:null,
     requestController:null, requestSerial:0, saving:false, saveError:'', ticket:null, previewState:'none', previewSeq:0 };
   try { const saved=localStorage.getItem('pl.maskStyle'); if(Core.STYLES.includes(saved)) state.style=saved; } catch(_) {}
-  // 개발자 모드 설정(판단 방법·모델·API 키)은 이 브라우저에만 둔다. 서버는 요청마다 받아 쓰고 저장하지 않는다.
+  // 판단 모델 창 설정(판단 방법·모델·API 키)은 이 브라우저에만 둔다. 서버는 요청마다 받아 쓰고 저장하지 않는다.
   try { state.dev=Core.devSettings(JSON.parse(localStorage.getItem('pl.devMode')||'null')); } catch(_) {}
   function saveDev() { try{localStorage.setItem('pl.devMode',JSON.stringify(state.dev));}catch(_){} }
 
@@ -1638,33 +1712,55 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
      OCR 은 서버에서 한 번에 하나씩 돈다. 분석·저장 요청마다 번호표를 붙여 보내고,
      기다리는 동안 '앞에 몇 건, 약 몇 초'를 보여 준다. 다른 사진을 넣거나 취소하거나
      창을 닫으면 기다리던 요청을 뺀다. */
-  /* 서버는 '남은 시간'을 모른다. 끝난 작업의 평균(avg_s)과 지금 작업이 시작된 뒤
-     흐른 시간으로 추정할 뿐이라, 평균이 없으면 숫자를 지어내지 않고 흐른 시간만 쓴다.
-     추정이 빗나가도 막대가 끝까지 차 버리지 않게 92%에서 멈춘다. */
-  let runStart=null, runTicket=null;
-  const SPAN_CAP=.92;
-  function hms(seconds) {
-    const s=Math.max(0,Math.round(seconds));
-    return s>=60 ? Math.floor(s/60)+'분 '+String(s%60).padStart(2,'0')+'초' : s+'초';
+  /* 남은 시간은 서버가 단계별 기록(timing.py)으로 계산해 /progress(SSE)로 보낸다. 이 화면은
+     받은 값을 1초씩 줄여 보여 주다가 다음 이벤트로 다시 맞춘다. SSE 를 못 쓰면 /queue 폴링에
+     붙어 오는 같은 값(progress)을 쓴다. 서버가 숫자를 못 주면(기록 없음) 흐른 시간만 보여 준다. */
+  let liveTimer=null;
+  function startLive(ticket) {
+    stopLive();
+    state.live={snap:null,at:0,ticket};
+    state.liveStream=api.progress(ticket,(type,data)=>{
+      if(state.live?.ticket!==ticket)return;
+      if((type==='progress'||type==='done')&&data)applyLive(data);
+      if(type==='gone'||type==='error'){state.liveStream=null;pollSoon();}   // 폴링으로 넘어간다
+    });
+    liveTimer=setInterval(renderLive,1000);
+    renderLive();
   }
-  function renderScanProgress(s) {
-    const bar=$('#scanProgress'), track=bar.parentElement, readout=$('#scanPercent');
-    if(s.state==='running') { if(runTicket!==state.ticket){runTicket=state.ticket;runStart=Date.now();} }
-    else { runTicket=null;runStart=null; }
-    if(s.state!=='running' || !runStart) {           // 대기 중이거나 올리는 중
-      track.classList.remove('measured');bar.style.width='';
-      readout.textContent=s.state==='waiting'?'대기 '+s.ahead+'건':s.state==='running'?'검사 중':'올리는 중';
-      return;
+  function stopLive() {
+    state.liveStream?.close();state.liveStream=null;state.live=null;
+    clearInterval(liveTimer);liveTimer=null;
+  }
+  function applyLive(snap) {
+    if(!state.live)return;
+    state.live.snap=snap;state.live.at=Date.now();
+    renderLive();
+  }
+  function renderLive() {
+    if(!state.live)return;
+    const {snap,at}=state.live;
+    const view=snap?Core.progressView(snap,(Date.now()-at)/1000):{state:'uploading',headline:'올리는 중',detail:'',fraction:null,stages:[]};
+    if(state.phase==='scanning') {
+      const bar=$('#scanProgress'),track=bar.parentElement;
+      track.classList.toggle('measured',view.fraction!==null);
+      bar.style.width=view.fraction!==null?(view.fraction*100).toFixed(1)+'%':'';
+      $('#scanPercent').textContent=view.headline;
+      $('#scanDetail').textContent=view.detail;
+      renderStages(view.stages.length?view.stages:[{label:view.state==='waiting'?'서버 대기열에서 차례 기다리기':'사진 올리기',state:'running',time:''}]);
+      $('#scanBasis').classList.toggle('hidden',!view.stages.some(st=>st.borrowed&&st.state!=='done'));
     }
-    const elapsed=(Date.now()-runStart)/1000, avg=s.avg_s;
-    if(avg==null) {                                   // 아직 한 건도 안 끝나 기준이 없다
-      track.classList.remove('measured');bar.style.width='';
-      readout.textContent=hms(elapsed)+' 지남';
-      return;
-    }
-    track.classList.add('measured');
-    bar.style.width=(Math.min(elapsed/avg,SPAN_CAP)*100).toFixed(1)+'%';
-    readout.textContent=elapsed<avg ? '약 '+hms(avg-elapsed)+' 남음' : '거의 다 됐어요';
+    if(state.saving)$('#saveStateText').textContent=view.headline+(view.detail?' · '+view.detail:'');
+  }
+  function renderStages(stages) {
+    const list=$('#scanStages');
+    list.replaceChildren(...stages.map((st,i)=>{
+      const li=document.createElement('li'),n=document.createElement('span'),name=document.createElement('span'),time=document.createElement('span');
+      li.className=st.state;n.className='mono';name.className='stage-name';time.className='stage-time';
+      n.textContent=st.state==='done'?'✓':String(i+1).padStart(2,'0');
+      name.textContent=st.label;time.textContent=st.time;
+      if(st.state==='running')li.setAttribute('aria-current','step');
+      li.append(n,name,time);return li;
+    }));
   }
   function renderQueue(s) {
     const badge=$('#queueBadge');badge.classList.remove('busy','ready');
@@ -1673,15 +1769,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     else {$('#queueText').textContent='처리 중 '+s.running+' · 대기 '+s.waiting;badge.classList.add('busy');}
     badge.title=$('#queueText').textContent;
     if(!state.ticket || !s.state) return;
-    const eta=s.eta_s!=null?' · 약 '+s.eta_s+'초':'';
-    const text=s.state==='waiting'?'대기 '+s.ahead+'건'+eta:s.state==='running'?(s.engine_ready?(state.saving?'가리고 다시 검사하는 중':'검사하는 중'):'OCR 엔진 준비 중 (서버를 켠 뒤 처음 한 번, 1~2분)'):'사진을 올리는 중';
-    if(state.phase==='scanning') {
-      renderScanProgress(s);
-      $('#scanModeLabel').textContent=text;
-      $('#scanTask1').classList.add('active');
-      $('#scanTask2').classList.toggle('active',s.state==='running');
-    }
-    if(state.saving) $('#saveStateText').textContent=s.state==='waiting'?'대기 중 — 앞에 '+s.ahead+'건'+eta:text;
+    // SSE 가 없거나 끊겼으면 폴링에 붙어 온 같은 진행 상태를 쓴다
+    if(s.progress && state.live && !state.liveStream) applyLive(s.progress);
+    if(state.phase==='scanning' && !s.engine_ready) $('#scanModeLabel').textContent='OCR 엔진 준비 중 (서버를 켠 뒤 처음 한 번, 1~2분)';
   }
   async function pollQueue() {
     clearTimeout(queueTimer);
@@ -1696,7 +1786,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     state.saving=true;state.saveError='';$('#cancelExport').classList.remove('hidden');
     $('#saveState').classList.remove('hidden');$('#saveStateText').textContent='사진을 올리는 중';syncPanels();
     const boxes=Core.boxes(state),ticket=Api.newTicket();
-    state.ticket=ticket;state.requestController=new AbortController();pollSoon();
+    state.ticket=ticket;state.requestController=new AbortController();startLive(ticket);pollSoon();
     let candidateUrl;
     try {
       const file=await uploadFile();
@@ -1717,7 +1807,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       if(serial===state.requestSerial && error.name!=='AbortError' && error.status!==409) {state.saveError=error.message||'저장하지 못했어요. 다시 시도해 주세요.';notify(state.saveError,true);}
     } finally {
       if(candidateUrl)URL.revokeObjectURL(candidateUrl);
-      if(serial===state.requestSerial){state.saving=false;state.requestController=null;state.ticket=null;$('#saveState').classList.toggle('hidden',!state.saveError);$('#saveStateText').textContent=state.saveError;$('#cancelExport').classList.toggle('hidden',!!state.saveError);syncPanels();pollSoon();}
+      if(serial===state.requestSerial){stopLive();state.saving=false;state.requestController=null;state.ticket=null;$('#saveState').classList.toggle('hidden',!state.saveError);$('#saveStateText').textContent=state.saveError;$('#cancelExport').classList.toggle('hidden',!!state.saveError);syncPanels();pollSoon();}
     }
   }
   // 서버가 결과 파일을 실제로 다시 읽어 검사한 결과. 통과 기준은 '선택한 영역마다 다시
@@ -1748,6 +1838,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
   function cancelRequests() {
     if(state.ticket) api.cancel(state.ticket);
+    stopLive();
     state.ticket=null;state.requestSerial++;state.requestController?.abort();state.requestController=null;state.saving=false;state.previewSeq++;clearTimeout(previewTimer);
   }
   function imageBlob(source) {
@@ -1788,17 +1879,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     syncDrawing();render();
     $('#scanningPanel').classList.add('server-analysis');
     const judge=Core.judgeField(state.dev);state.analyzedJudge=judge||'';  // 실패해도 같은 설정으로 다시 돌리지 않게
-    $('#scanPercent').textContent='올리는 중';$('#scanModeLabel').textContent=Core.judgeLabel(state.dev);
-    $('#scanTask3Text').textContent=judge?'LLM 으로 개인정보 판정 ('+Core.JUDGES[state.dev.provider].label+')':'주변 문구로 개인정보 판정';
-    [1,2,3].forEach(i=>$('#scanTask'+i).classList.remove('active'));
+    $('#scanModeLabel').textContent=Core.judgeLabel(state.dev);
     const serial=++state.requestSerial,ticket=Api.newTicket();
-    state.ticket=ticket;state.requestController=new AbortController();pollSoon();
+    state.ticket=ticket;state.requestController=new AbortController();startLive(ticket);pollSoon();
     try {
       const file=await uploadFile();
       if(serial!==state.requestSerial)return;
       const data=await api.analyze(file,{judge,ticket,signal:state.requestController.signal});
       if(serial!==state.requestSerial)return;
-      $('#scanTask3').classList.add('active');
       const result=Core.fromReport(data.report);
       if(state.serverImage || result.width!==state.width || result.height!==state.height) await adoptServerImage(data.preview,result.width,result.height);
       if(serial!==state.requestSerial)return;
@@ -1809,7 +1897,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       invalidate();render();setStep(2);
       notify(result.regions.length?result.regions.length+'개 항목을 찾았어요. 가릴 항목을 고르세요.':'탐지된 항목이 없어요. 사진을 직접 확인해 주세요.');
     } catch(error) {if(serial===state.requestSerial && error.name!=='AbortError' && error.status!==409)analysisFailure(error.message);}
-    finally {if(serial===state.requestSerial){state.requestController=null;state.ticket=null;pollSoon();}}
+    finally {if(serial===state.requestSerial){stopLive();state.requestController=null;state.ticket=null;pollSoon();}}
   }
   function analysisFailure(message) {
     state.phase='failed';state.analysisStatus='failed';$('#failureMessage').textContent=message;
@@ -1970,7 +2058,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   $('#analyzeButton').addEventListener('click',()=>beginAnalysis());
   $('#manualButton').addEventListener('click',startManual);$('#failureManual').addEventListener('click',startManual);
   $('#retryAnalysis').addEventListener('click',()=>beginAnalysis());
-  // 개발자 모드: 판단 모델 종류·모델·키·주소. 바꿀 때마다 이 브라우저에 저장한다.
+  // 판단 모델 창: 판단 모델 종류·모델·키·주소. 바꿀 때마다 이 브라우저에 저장한다.
   function renderDev() {
     const id=state.dev.provider,j=Core.JUDGES[id],p=state.dev.providers[id],llm=id!=='rules';
     $('#judgeProvider').value=id;

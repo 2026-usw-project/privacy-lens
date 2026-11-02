@@ -197,11 +197,26 @@ OCR_UNAVAILABLE = assert_safe("문자 인식 처리에 실패했습니다. 잠�
 NO_FINDINGS = "추가로 탐지된 항목이 없습니다"
 
 
-# LLM 판단(개발자 모드) 오류. 키·원문·공급자 응답 본문은 넣지 않는다.
+# 처리 단계 이름(남은 시간 표시용). 키는 timing.py 의 단계 키 머리
+STAGE_LABEL = {
+    "decode": "사진 열기",
+    "ocr": "글자 읽기",
+    "detect": "문서·객체 찾기",
+    "reread": "작은 문서 확대해 다시 읽기",
+    "judge:rules": "개인정보 판단",
+    "judge:llm": "LLM 판단",
+    "codes": "QR·바코드 검사",
+    "mask": "가리기",
+    "export": "파일 만들기",
+    "other": "처리",
+}
+
+
+# LLM 판단(판단 모델 창) 오류. 키·원문·공급자 응답 본문은 넣지 않는다.
 LLM_CONFIG_INVALID = assert_safe("판단 모델 설정 형식이 올바르지 않습니다.")
-LLM_MODEL_MISSING = assert_safe("개발자 모드에서 모델 이름을 입력해 주세요.")
-LLM_KEY_MISSING = assert_safe("개발자 모드에서 API 키를 입력해 주세요.")
-LLM_URL_MISSING = assert_safe("개발자 모드에서 http(s) 로 시작하는 API 주소를 입력해 주세요.")
+LLM_MODEL_MISSING = assert_safe("판단 모델 창에서 모델 이름을 입력해 주세요.")
+LLM_KEY_MISSING = assert_safe("판단 모델 창에서 API 키를 입력해 주세요.")
+LLM_URL_MISSING = assert_safe("판단 모델 창에서 http(s) 로 시작하는 API 주소를 입력해 주세요.")
 LLM_AUTH_FAILED = assert_safe("판단 모델 API 가 키를 거부했습니다. 키와 권한을 확인해 주세요.")
 LLM_MODEL_NOT_FOUND = assert_safe("판단 모델 API 가 이 모델을 찾지 못했습니다. '목록 불러오기'로 쓸 수 있는 모델을 골라 주세요.")
 LLM_RATE_LIMITED = assert_safe("판단 모델 API 사용 한도에 걸렸습니다. 잠시 후 다시 시도해 주세요.")

@@ -14,7 +14,7 @@
     document:['UNKNOWN','문서 영역'],face_photo:['UNKNOWN','증명사진'],other:['UNKNOWN','개인정보 후보']
   };
   const SEVERITY = { cover:'가림 권장',review:'검토 권장',info:'참고' };
-  // 판단 방법(개발자 모드). rules 는 서버의 문맥·결합 규칙, 나머지는 LLM 이 모든 글자 판단을 맡는다.
+  // 판단 방법(판단 모델 창). rules 는 서버의 문맥·결합 규칙, 나머지는 LLM 이 모든 글자 판단을 맡는다.
   // cloud: 사진에서 읽은 글자가 그 회사 서버로 나간다. 모델 기본값은 고쳐 쓸 수 있는 예시다.
   const JUDGES = {
     rules:{label:'규칙 기반 판단'},
@@ -27,7 +27,7 @@
   };
   const MAX_FIELD = 500;
   const field = v => typeof v==='string' ? v.slice(0,MAX_FIELD) : '';
-  // 브라우저에 저장된 개발자 모드 설정을 믿지 않고 다듬는다. 공급자마다 모델·키·주소를 따로 기억한다.
+  // 브라우저에 저장된 판단 모델 창 설정을 믿지 않고 다듬는다. 공급자마다 모델·키·주소를 따로 기억한다.
   function devSettings(raw) {
     const src=raw&&typeof raw==='object'?raw:{};
     const provider=Object.hasOwn(JUDGES,src.provider)?src.provider:'rules';
@@ -154,5 +154,57 @@
     return {image:{width:state.width,height:state.height},style:STYLES.includes(state.style)?state.style:'blur',boxes:boxes(state)};
   }
 
-  globalThis.PrivacyLensCore=Object.freeze({TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload});
+  // ---------------- 남은 시간(서버 /progress 의 상태 → 화면 표시)
+  // 서버가 단계별 추정으로 남은 시간을 계산해 보낸다. 화면은 받은 뒤 흐른 시간(since)만큼 줄여 보여 주다가
+  // 다음 이벤트로 다시 맞춘다. 서버가 숫자를 못 주면(기록 없음) 흐른 시간만 보여 준다.
+  const PROGRESS_CAP=.95;
+  const num=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
+  function hms(seconds) {
+    const s=Math.max(0,Math.round(seconds));
+    return s>=60 ? Math.floor(s/60)+'분 '+String(s%60).padStart(2,'0')+'초' : s+'초';
+  }
+  const about=seconds=>seconds<.5?'1초 미만':'약 '+hms(seconds);
+  function progressView(snap,since=0) {
+    if(!snap || typeof snap!=='object')return null;
+    since=Math.max(0,num(since)||0);
+    const stages=Array.isArray(snap.stages)?snap.stages.slice(0,20):[];
+    const current=Number.isInteger(snap.current)?snap.current:-1;
+    const stageElapsed=(num(snap.stage_elapsed_s)??0)+since;
+    const view={state:String(snap.state||''),headline:'',detail:'',fraction:null,remaining:null,stages:[]};
+    view.stages=stages.map((st,i)=>{
+      const est=num(st.estimate_s),took=num(st.took_s),label=String(st.label||'처리').slice(0,40);
+      const state=st.state==='done'?'done':i===current&&view.state==='running'?'running':'todo';
+      let time='';
+      if(state==='done')time=took!==null?took.toFixed(1)+'초':'';
+      else if(state==='running')time=est===null?hms(stageElapsed)+' 지남':stageElapsed<=est?about(est-stageElapsed)+' 남음':'추정보다 '+hms(stageElapsed-est)+' 늦음';
+      else time=est!==null?about(est):'';
+      return {label,state,time,borrowed:!!st.borrowed};
+    });
+    if(view.state==='waiting') {
+      const eta=num(snap.eta_s);
+      view.remaining=eta===null?null:Math.max(0,eta-since);
+      view.headline='대기 '+(Number.isInteger(snap.ahead)?snap.ahead:0)+'건';
+      view.detail=view.remaining===null?'앞 작업을 기다리는 중':'약 '+hms(view.remaining)+' 뒤 끝나요';
+      return view;
+    }
+    if(view.state==='running') {
+      const rem=num(snap.remaining_s),total=num(snap.total_s);
+      const cur=view.stages[current];
+      view.remaining=rem===null?null:Math.max(0,rem-since);
+      view.headline=view.remaining===null?hms((num(snap.elapsed_s)??0)+since)+' 지남':view.remaining>0?'약 '+hms(view.remaining)+' 남음':'거의 다 됐어요';
+      view.detail=cur?cur.label+(cur.time?' · '+cur.time:''):'';
+      if(view.remaining!==null&&total)view.fraction=Math.min(PROGRESS_CAP,Math.max(0,(total-view.remaining)/total));
+      return view;
+    }
+    if(view.state==='done'||view.state==='failed') {
+      view.fraction=view.state==='done'?1:null;
+      view.headline=view.state==='done'?'끝났어요':'처리하지 못했어요';
+      view.detail=num(snap.took_s)!==null?snap.took_s.toFixed(1)+'초 걸림':'';
+      return view;
+    }
+    view.headline='올리는 중';
+    return view;
+  }
+
+  globalThis.PrivacyLensCore=Object.freeze({TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
 })();

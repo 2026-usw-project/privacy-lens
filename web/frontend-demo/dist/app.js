@@ -14,7 +14,7 @@
     backend:'', elapsedMs:0, zoom:1, loadToken:0, exportToken:0, exportUrl:null, nextId:1, toastTimer:null,
     requestController:null, requestSerial:0, saving:false, saveError:'', ticket:null, previewState:'none', previewSeq:0 };
   try { const saved=localStorage.getItem('pl.maskStyle'); if(Core.STYLES.includes(saved)) state.style=saved; } catch(_) {}
-  // 개발자 모드 설정(판단 방법·모델·API 키)은 이 브라우저에만 둔다. 서버는 요청마다 받아 쓰고 저장하지 않는다.
+  // 판단 모델 창 설정(판단 방법·모델·API 키)은 이 브라우저에만 둔다. 서버는 요청마다 받아 쓰고 저장하지 않는다.
   try { state.dev=Core.devSettings(JSON.parse(localStorage.getItem('pl.devMode')||'null')); } catch(_) {}
   function saveDev() { try{localStorage.setItem('pl.devMode',JSON.stringify(state.dev));}catch(_){} }
 
@@ -544,33 +544,55 @@
      OCR 은 서버에서 한 번에 하나씩 돈다. 분석·저장 요청마다 번호표를 붙여 보내고,
      기다리는 동안 '앞에 몇 건, 약 몇 초'를 보여 준다. 다른 사진을 넣거나 취소하거나
      창을 닫으면 기다리던 요청을 뺀다. */
-  /* 서버는 '남은 시간'을 모른다. 끝난 작업의 평균(avg_s)과 지금 작업이 시작된 뒤
-     흐른 시간으로 추정할 뿐이라, 평균이 없으면 숫자를 지어내지 않고 흐른 시간만 쓴다.
-     추정이 빗나가도 막대가 끝까지 차 버리지 않게 92%에서 멈춘다. */
-  let runStart=null, runTicket=null;
-  const SPAN_CAP=.92;
-  function hms(seconds) {
-    const s=Math.max(0,Math.round(seconds));
-    return s>=60 ? Math.floor(s/60)+'분 '+String(s%60).padStart(2,'0')+'초' : s+'초';
+  /* 남은 시간은 서버가 단계별 기록(timing.py)으로 계산해 /progress(SSE)로 보낸다. 이 화면은
+     받은 값을 1초씩 줄여 보여 주다가 다음 이벤트로 다시 맞춘다. SSE 를 못 쓰면 /queue 폴링에
+     붙어 오는 같은 값(progress)을 쓴다. 서버가 숫자를 못 주면(기록 없음) 흐른 시간만 보여 준다. */
+  let liveTimer=null;
+  function startLive(ticket) {
+    stopLive();
+    state.live={snap:null,at:0,ticket};
+    state.liveStream=api.progress(ticket,(type,data)=>{
+      if(state.live?.ticket!==ticket)return;
+      if((type==='progress'||type==='done')&&data)applyLive(data);
+      if(type==='gone'||type==='error'){state.liveStream=null;pollSoon();}   // 폴링으로 넘어간다
+    });
+    liveTimer=setInterval(renderLive,1000);
+    renderLive();
   }
-  function renderScanProgress(s) {
-    const bar=$('#scanProgress'), track=bar.parentElement, readout=$('#scanPercent');
-    if(s.state==='running') { if(runTicket!==state.ticket){runTicket=state.ticket;runStart=Date.now();} }
-    else { runTicket=null;runStart=null; }
-    if(s.state!=='running' || !runStart) {           // 대기 중이거나 올리는 중
-      track.classList.remove('measured');bar.style.width='';
-      readout.textContent=s.state==='waiting'?'대기 '+s.ahead+'건':s.state==='running'?'검사 중':'올리는 중';
-      return;
+  function stopLive() {
+    state.liveStream?.close();state.liveStream=null;state.live=null;
+    clearInterval(liveTimer);liveTimer=null;
+  }
+  function applyLive(snap) {
+    if(!state.live)return;
+    state.live.snap=snap;state.live.at=Date.now();
+    renderLive();
+  }
+  function renderLive() {
+    if(!state.live)return;
+    const {snap,at}=state.live;
+    const view=snap?Core.progressView(snap,(Date.now()-at)/1000):{state:'uploading',headline:'올리는 중',detail:'',fraction:null,stages:[]};
+    if(state.phase==='scanning') {
+      const bar=$('#scanProgress'),track=bar.parentElement;
+      track.classList.toggle('measured',view.fraction!==null);
+      bar.style.width=view.fraction!==null?(view.fraction*100).toFixed(1)+'%':'';
+      $('#scanPercent').textContent=view.headline;
+      $('#scanDetail').textContent=view.detail;
+      renderStages(view.stages.length?view.stages:[{label:view.state==='waiting'?'서버 대기열에서 차례 기다리기':'사진 올리기',state:'running',time:''}]);
+      $('#scanBasis').classList.toggle('hidden',!view.stages.some(st=>st.borrowed&&st.state!=='done'));
     }
-    const elapsed=(Date.now()-runStart)/1000, avg=s.avg_s;
-    if(avg==null) {                                   // 아직 한 건도 안 끝나 기준이 없다
-      track.classList.remove('measured');bar.style.width='';
-      readout.textContent=hms(elapsed)+' 지남';
-      return;
-    }
-    track.classList.add('measured');
-    bar.style.width=(Math.min(elapsed/avg,SPAN_CAP)*100).toFixed(1)+'%';
-    readout.textContent=elapsed<avg ? '약 '+hms(avg-elapsed)+' 남음' : '거의 다 됐어요';
+    if(state.saving)$('#saveStateText').textContent=view.headline+(view.detail?' · '+view.detail:'');
+  }
+  function renderStages(stages) {
+    const list=$('#scanStages');
+    list.replaceChildren(...stages.map((st,i)=>{
+      const li=document.createElement('li'),n=document.createElement('span'),name=document.createElement('span'),time=document.createElement('span');
+      li.className=st.state;n.className='mono';name.className='stage-name';time.className='stage-time';
+      n.textContent=st.state==='done'?'✓':String(i+1).padStart(2,'0');
+      name.textContent=st.label;time.textContent=st.time;
+      if(st.state==='running')li.setAttribute('aria-current','step');
+      li.append(n,name,time);return li;
+    }));
   }
   function renderQueue(s) {
     const badge=$('#queueBadge');badge.classList.remove('busy','ready');
@@ -579,15 +601,9 @@
     else {$('#queueText').textContent='처리 중 '+s.running+' · 대기 '+s.waiting;badge.classList.add('busy');}
     badge.title=$('#queueText').textContent;
     if(!state.ticket || !s.state) return;
-    const eta=s.eta_s!=null?' · 약 '+s.eta_s+'초':'';
-    const text=s.state==='waiting'?'대기 '+s.ahead+'건'+eta:s.state==='running'?(s.engine_ready?(state.saving?'가리고 다시 검사하는 중':'검사하는 중'):'OCR 엔진 준비 중 (서버를 켠 뒤 처음 한 번, 1~2분)'):'사진을 올리는 중';
-    if(state.phase==='scanning') {
-      renderScanProgress(s);
-      $('#scanModeLabel').textContent=text;
-      $('#scanTask1').classList.add('active');
-      $('#scanTask2').classList.toggle('active',s.state==='running');
-    }
-    if(state.saving) $('#saveStateText').textContent=s.state==='waiting'?'대기 중 — 앞에 '+s.ahead+'건'+eta:text;
+    // SSE 가 없거나 끊겼으면 폴링에 붙어 온 같은 진행 상태를 쓴다
+    if(s.progress && state.live && !state.liveStream) applyLive(s.progress);
+    if(state.phase==='scanning' && !s.engine_ready) $('#scanModeLabel').textContent='OCR 엔진 준비 중 (서버를 켠 뒤 처음 한 번, 1~2분)';
   }
   async function pollQueue() {
     clearTimeout(queueTimer);
@@ -602,7 +618,7 @@
     state.saving=true;state.saveError='';$('#cancelExport').classList.remove('hidden');
     $('#saveState').classList.remove('hidden');$('#saveStateText').textContent='사진을 올리는 중';syncPanels();
     const boxes=Core.boxes(state),ticket=Api.newTicket();
-    state.ticket=ticket;state.requestController=new AbortController();pollSoon();
+    state.ticket=ticket;state.requestController=new AbortController();startLive(ticket);pollSoon();
     let candidateUrl;
     try {
       const file=await uploadFile();
@@ -623,7 +639,7 @@
       if(serial===state.requestSerial && error.name!=='AbortError' && error.status!==409) {state.saveError=error.message||'저장하지 못했어요. 다시 시도해 주세요.';notify(state.saveError,true);}
     } finally {
       if(candidateUrl)URL.revokeObjectURL(candidateUrl);
-      if(serial===state.requestSerial){state.saving=false;state.requestController=null;state.ticket=null;$('#saveState').classList.toggle('hidden',!state.saveError);$('#saveStateText').textContent=state.saveError;$('#cancelExport').classList.toggle('hidden',!!state.saveError);syncPanels();pollSoon();}
+      if(serial===state.requestSerial){stopLive();state.saving=false;state.requestController=null;state.ticket=null;$('#saveState').classList.toggle('hidden',!state.saveError);$('#saveStateText').textContent=state.saveError;$('#cancelExport').classList.toggle('hidden',!!state.saveError);syncPanels();pollSoon();}
     }
   }
   // 서버가 결과 파일을 실제로 다시 읽어 검사한 결과. 통과 기준은 '선택한 영역마다 다시
@@ -654,6 +670,7 @@
 
   function cancelRequests() {
     if(state.ticket) api.cancel(state.ticket);
+    stopLive();
     state.ticket=null;state.requestSerial++;state.requestController?.abort();state.requestController=null;state.saving=false;state.previewSeq++;clearTimeout(previewTimer);
   }
   function imageBlob(source) {
@@ -694,17 +711,14 @@
     syncDrawing();render();
     $('#scanningPanel').classList.add('server-analysis');
     const judge=Core.judgeField(state.dev);state.analyzedJudge=judge||'';  // 실패해도 같은 설정으로 다시 돌리지 않게
-    $('#scanPercent').textContent='올리는 중';$('#scanModeLabel').textContent=Core.judgeLabel(state.dev);
-    $('#scanTask3Text').textContent=judge?'LLM 으로 개인정보 판정 ('+Core.JUDGES[state.dev.provider].label+')':'주변 문구로 개인정보 판정';
-    [1,2,3].forEach(i=>$('#scanTask'+i).classList.remove('active'));
+    $('#scanModeLabel').textContent=Core.judgeLabel(state.dev);
     const serial=++state.requestSerial,ticket=Api.newTicket();
-    state.ticket=ticket;state.requestController=new AbortController();pollSoon();
+    state.ticket=ticket;state.requestController=new AbortController();startLive(ticket);pollSoon();
     try {
       const file=await uploadFile();
       if(serial!==state.requestSerial)return;
       const data=await api.analyze(file,{judge,ticket,signal:state.requestController.signal});
       if(serial!==state.requestSerial)return;
-      $('#scanTask3').classList.add('active');
       const result=Core.fromReport(data.report);
       if(state.serverImage || result.width!==state.width || result.height!==state.height) await adoptServerImage(data.preview,result.width,result.height);
       if(serial!==state.requestSerial)return;
@@ -715,7 +729,7 @@
       invalidate();render();setStep(2);
       notify(result.regions.length?result.regions.length+'개 항목을 찾았어요. 가릴 항목을 고르세요.':'탐지된 항목이 없어요. 사진을 직접 확인해 주세요.');
     } catch(error) {if(serial===state.requestSerial && error.name!=='AbortError' && error.status!==409)analysisFailure(error.message);}
-    finally {if(serial===state.requestSerial){state.requestController=null;state.ticket=null;pollSoon();}}
+    finally {if(serial===state.requestSerial){stopLive();state.requestController=null;state.ticket=null;pollSoon();}}
   }
   function analysisFailure(message) {
     state.phase='failed';state.analysisStatus='failed';$('#failureMessage').textContent=message;
@@ -876,7 +890,7 @@
   $('#analyzeButton').addEventListener('click',()=>beginAnalysis());
   $('#manualButton').addEventListener('click',startManual);$('#failureManual').addEventListener('click',startManual);
   $('#retryAnalysis').addEventListener('click',()=>beginAnalysis());
-  // 개발자 모드: 판단 모델 종류·모델·키·주소. 바꿀 때마다 이 브라우저에 저장한다.
+  // 판단 모델 창: 판단 모델 종류·모델·키·주소. 바꿀 때마다 이 브라우저에 저장한다.
   function renderDev() {
     const id=state.dev.provider,j=Core.JUDGES[id],p=state.dev.providers[id],llm=id!=='rules';
     $('#judgeProvider').value=id;
