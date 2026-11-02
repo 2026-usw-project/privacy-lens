@@ -747,7 +747,8 @@
       if(box){const b=box.getBoundingClientRect(),v=viewport.getBoundingClientRect();viewport.scrollLeft+=b.left+b.width/2-v.left-viewport.clientWidth/2;viewport.scrollTop+=b.top+b.height/2-v.top-viewport.clientHeight/2;}
     } else {
       const row=$$('.region-item').find(el=>el.dataset.region===id);
-      if(row){const list=$('#regionList');list.scrollTop=row.offsetTop-list.offsetTop;}
+      // 결과 패널은 목록이 아니라 패널 전체가 스크롤된다(저장 영역은 아래에 고정)
+      if(row){const pane=$('#reviewPanel');pane.scrollTop+=row.getBoundingClientRect().top-pane.getBoundingClientRect().top-12;}
     }
   }
   function openPayload() {

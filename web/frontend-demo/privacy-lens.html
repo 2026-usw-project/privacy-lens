@@ -151,7 +151,7 @@ main{padding:8px 24px 16px}
 
 /* Workspace: 회색 바닥 위에 흰 면 둘. 사진 면과 결과 면이 서로 떨어져 있다. */
 .workspace{position:relative;display:grid;grid-template-columns:minmax(0,1fr) var(--side);gap:16px;align-items:start}
-.editor{min-width:0;display:flex;flex-direction:column;border-radius:var(--radius);background:var(--surface);overflow:hidden}
+.editor{min-width:0;display:flex;flex-direction:column;border-radius:var(--radius);background:var(--surface);overflow:hidden;container:editor/inline-size}
 .pane-head{display:flex;align-items:center;gap:12px;height:60px;padding:0 24px}
 .pane-title{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
 .pane-title svg{color:var(--muted)}
@@ -185,23 +185,31 @@ main{padding:8px 24px 16px}
 .samples .fine-print{margin-top:14px}
 
 /* Image editor */
-.image-toolbar{display:flex;align-items:center;gap:12px;min-height:52px;padding:8px 20px}
-.segmented{display:inline-flex;gap:2px;padding:4px;border-radius:12px;background:var(--surface-2)}
+/* 도구줄은 줄바꿈한다. 상태 문구는 말줄임 없이 다 보이고, 확대 버튼은 줄 끝에 붙는다.
+   사진 면이 좁으면(@container editor) 상태 문구가 아랫줄로 내려간다. */
+.image-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;min-height:52px;padding:8px 20px}
+.segmented{display:inline-flex;flex-shrink:0;gap:2px;padding:4px;border-radius:12px;background:var(--surface-2)}
 .segmented button{height:32px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:600;color:var(--muted);transition:background .15s,color .15s}
 .segmented button.selected{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px #0000001f}
-.status-line{display:flex;align-items:center;gap:8px;min-width:0;margin-right:auto;font-size:13px;color:var(--ink-2)}
-.status-line>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.status-line{display:flex;align-items:center;gap:8px;flex:1 1 180px;min-width:0;font-size:13px;line-height:1.45;color:var(--ink-2)}
+.status-line>span:last-child{min-width:0;text-wrap:pretty}
 .status-dot{width:7px;height:7px;border-radius:50%;background:var(--primary);flex-shrink:0}
 .status-line[data-state=error]{color:var(--error)}.status-line[data-state=error] .status-dot{background:var(--error)}
 .status-line[data-state=warning]{color:var(--warn)}.status-line[data-state=warning] .status-dot{background:#d99a1e}
-.zoom-controls{display:flex;align-items:center;border-radius:11px;overflow:hidden;background:var(--surface-2)}
+.zoom-controls{display:flex;align-items:center;flex-shrink:0;margin-left:auto;border-radius:11px;overflow:hidden;background:var(--surface-2)}
 .zoom-controls button{display:grid;place-items:center;min-width:34px;height:34px;padding:0 9px;font-size:13px;font-weight:600;color:var(--ink-2)}
 .zoom-controls svg{width:15px;height:15px}
 .zoom-controls button:hover:not(:disabled){background:var(--surface-3);color:var(--ink)}
 .zoom-controls output{min-width:48px;text-align:center;font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ink)}
-#zoomFit{font-size:13px}
+#zoomFit{font-size:13px;white-space:nowrap}
 /* 사진과 목록의 스크롤 끝에서는 바깥 페이지로 스크롤을 이어 준다. */
 .canvas-stage{display:block;height:clamp(340px,calc(100dvh - 268px - var(--guide)),1100px);overflow:auto;margin:0 16px;padding:16px;border-radius:16px;background:var(--stage);scrollbar-color:var(--stage-line) transparent}
+/* 상태 문구가 아랫줄로 내려간 만큼(약 28px) 사진 판을 줄여 페이지가 넘치지 않게 한다.
+   좁은 화면(820px 이하)의 사진 판 높이는 아래 미디어 쿼리가 정한다. */
+@container editor (max-width:720px){
+  .status-line{order:3;flex-basis:100%}
+  .canvas-stage{height:clamp(320px,calc(100dvh - 296px - var(--guide)),1100px)}
+}
 .canvas-sizer{display:flex;align-items:center;justify-content:center;position:relative}
 .canvas-wrap{position:relative;flex:0 0 auto;line-height:0;user-select:none;isolation:isolate;box-shadow:var(--photo-shadow);touch-action:pan-x pan-y}
 .canvas-wrap canvas{display:block;width:100%;height:100%;touch-action:pan-x pan-y}
@@ -289,7 +297,10 @@ main{padding:8px 24px 16px}
 .scan-tasks li.active{color:var(--ink)}
 .scan-tasks li.active .mono{background:var(--primary-tint);color:var(--primary-ink)}
 
-.review{display:flex;flex-direction:column;min-height:0;flex:1}
+/* 결과 패널은 통째로 스크롤된다. 목록만 따로 스크롤하면 머리말이 길 때 저장 영역이 패널 밖으로 밀려 잘렸다.
+   저장 영역은 아래에 붙어(sticky) 항상 보이고, 화면이 낮으면 함께 스크롤된다. */
+.review{display:flex;flex-direction:column;min-height:0;flex:1;overflow-y:auto}
+.review>*{flex-shrink:0}
 .review-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:26px 24px 0}
 .review-title{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 10px;min-width:0}
 /* 결과는 문장 하나가 크게. 숫자는 문장 안에 들어 있어 따로 보이지 않는다. */
@@ -305,7 +316,7 @@ main{padding:8px 24px 16px}
 /* ponytail: '가림 N' repeats the risk summary sentence; #selectedCount stays for app.js */
 .list-head-right .mono-label{display:none}
 .list-head .risk-summary{min-width:0}
-.region-list{flex:1;min-height:132px;overflow:auto}
+.region-list{flex:1 0 auto}
 /* 사진 위 조준선과 목록 행이 같은 항목임을 알리는 가장 강한 신호는 왼쪽 띠다. */
 .region-item{position:relative;padding:14px 24px 16px;border-bottom:1px solid var(--line);border-left:3px solid transparent;transition:background .14s,border-left-color .14s}
 .region-item:hover{background:var(--surface-2)}
@@ -342,7 +353,7 @@ main{padding:8px 24px 16px}
 .empty-regions{display:grid;justify-items:center;gap:8px;margin:16px 24px;padding:24px;border-radius:14px;background:var(--surface-2);text-align:center;font-size:13px;line-height:1.7;color:var(--muted)}
 .empty-regions svg{color:var(--primary)}
 /* 긴 안내 문구가 저장 영역의 그리드 최소 너비를 늘리지 않도록 제한한다. */
-.review-foot{display:grid;grid-template-columns:minmax(0,1fr);min-width:0;gap:14px;padding:16px 24px 24px;border-top:1px solid var(--line);background:var(--surface)}
+.review-foot{position:sticky;bottom:0;z-index:2;margin-top:auto;display:grid;grid-template-columns:minmax(0,1fr);min-width:0;gap:14px;padding:16px 24px 24px;border-top:1px solid var(--line);background:var(--surface)}
 .redaction-settings{display:grid;grid-template-columns:minmax(0,1fr);min-width:0;gap:8px}
 .style-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 .style-options>button{display:flex;align-items:center;justify-content:center;gap:8px;height:44px;border-radius:12px;background:var(--surface-2);font-size:14px;font-weight:600;color:var(--ink-2);white-space:nowrap;transition:background .15s,color .15s,box-shadow .15s}
@@ -444,8 +455,10 @@ dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
 @media(max-width:1020px){
   .steps li:not(.current) .step-label{display:none}
   .steps li+li:before{width:16px;margin:0 8px}
-  .image-toolbar{flex-wrap:wrap}
-  .status-line{order:3;flex-basis:100%}
+}
+/* 화면이 낮으면 붙어 있는 저장 영역이 목록을 거의 다 덮는다. 그때는 저장 영역도 같이 스크롤한다. */
+@media(max-height:560px){
+  .review-foot{position:static}
 }
 /* ---- Privacy Lens 서버 연동: 심각도·확실성·외곽선·대기열 ----
    색은 기존 토큰만 쓴다. 가림 권장 = 붉은색(accent), 검토 권장 = 호박(warn), 참고 = 회색(muted).
@@ -566,6 +579,8 @@ dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
   .export-actions{display:grid;grid-template-columns:1fr 1.3fr}
   .judge-chip{width:38px;padding:0;justify-content:center}
   .judge-chip span{display:none}
+  /* 판단 방법 칩이 같은 대화상자를 열고 LLM 사용 여부도 색으로 보여 주므로, 위쪽 메뉴의 같은 아이콘은 뺀다. */
+  .side-nav [data-dialog=devDialog]{display:none}
   /* 대기열은 점만. 글자는 title·화면 낭독기로, 분석 중에는 오른쪽 패널에 '대기 N건' */
   .queue-badge{padding:0}
   .queue-badge span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -1826,7 +1841,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       if(box){const b=box.getBoundingClientRect(),v=viewport.getBoundingClientRect();viewport.scrollLeft+=b.left+b.width/2-v.left-viewport.clientWidth/2;viewport.scrollTop+=b.top+b.height/2-v.top-viewport.clientHeight/2;}
     } else {
       const row=$$('.region-item').find(el=>el.dataset.region===id);
-      if(row){const list=$('#regionList');list.scrollTop=row.offsetTop-list.offsetTop;}
+      // 결과 패널은 목록이 아니라 패널 전체가 스크롤된다(저장 영역은 아래에 고정)
+      if(row){const pane=$('#reviewPanel');pane.scrollTop+=row.getBoundingClientRect().top-pane.getBoundingClientRect().top-12;}
     }
   }
   function openPayload() {
