@@ -247,14 +247,18 @@ def verify(selected: list[Box], masked_bytes: bytes, analyze_fn, *, had_gps: boo
     ]
     # 문서 검출의 '영역' 경고는 종이 모양을 본 것이지 내용이 읽힌 것이 아니다.
     # 가린 학생증도 여전히 학생증 모양이라, 선택 영역 안의 것은 누출로 세지 않는다.
+    # 이미지 객체(얼굴·번호판 모양, detail.source == "object")도 같다. 가린 자리에도 모양은 남는다.
+    def shape(f) -> bool:
+        return f.kind in ("document", "face_photo", "face") or f.detail.get("source") == "object"
+
     leaked = [
         f for f in serious
-        if f.kind not in ("document", "face_photo")
+        if not shape(f)
         and any(_overlap(f.box, b) >= OVERLAP_RATIO for b in selected)
     ]
     covered_shapes = [
         f for f in serious
-        if f.kind in ("document", "face_photo")
+        if shape(f)
         and any(_overlap(f.box, b) >= OVERLAP_RATIO for b in selected)
     ]
     elsewhere = [f for f in serious if f not in leaked and f not in covered_shapes]

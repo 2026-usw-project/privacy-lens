@@ -164,6 +164,13 @@ def main() -> int:
     if not font_ok:
         return 1
 
+    try:
+        from pipeline import objects
+        for line in objects.status():
+            print(f"{OK if '없음' not in line else WARN} {line}")
+    except Exception as exc:
+        print(f"{WARN} 이미지 객체 검출 점검 실패: {exc}")
+
     make_samples(force="--samples" in args)
 
     if not ocr_ok:
