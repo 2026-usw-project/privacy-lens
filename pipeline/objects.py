@@ -45,7 +45,7 @@ YUNET_URL = ("https://media.githubusercontent.com/media/opencv/opencv_zoo/main/m
              "face_detection_yunet/face_detection_yunet_2023mar.onnx")
 YUNET_SHA256 = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
 
-FACE_SCORE = 0.7
+FACE_SCORE = 0.6           # 2026-11-02 Open Images 얼굴 500장: 0.6 정밀도 0.875·재현율 0.808 (0.7 은 0.910·0.780). 놓침이 더 나빠 0.6
 FACE_SCALES = (1600, 640)     # 긴 변을 이만큼으로 줄여 두 번. 작은 얼굴과 큰 얼굴을 다 받으려고
 CARD_CONTEXT_EM = 4.0         # 얼굴 높이의 이 배수 안에 카드 단서가 있으면 증명사진
 CARD_WORDS = (kp.CONTEXT_DOCUMENT["student"] + kp.CONTEXT_DOCUMENT["badge"]
