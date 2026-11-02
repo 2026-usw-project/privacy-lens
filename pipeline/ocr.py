@@ -208,6 +208,8 @@ class PaddleBackend:
       PL_PADDLE_DET   검출 모델. 기본 PP-OCRv6_medium_det.
                       'auto' 면 PaddleOCR 가 lang 으로 고르는 것(PP-OCRv5_server_det)
       PL_PADDLE_REC   인식 모델. 예: korean_PP-OCRv5_mobile_rec
+      PL_PADDLE_THREADS  엔진 하나가 쓰는 CPU 스레드 수(3.x). 비우면 PaddleOCR 기본(10).
+                      엔진을 여러 개 띄울 때 코어를 나눠 쓰게 한다(eval/workers.py 로 잰다)
 
     주의: PaddleOCR 3.x 는 모델 이름을 **하나라도** 넘기면 lang 을 무시한다.
     검출만 바꾸면 인식이 한국어를 모르는 기본 모델(PP-OCRv6_medium_rec)로
@@ -274,6 +276,10 @@ class PaddleBackend:
         else:
             kwargs.pop("text_detection_model_name", None)
             kwargs.pop("text_recognition_model_name", None)
+
+        threads = os.environ.get("PL_PADDLE_THREADS", "").strip()
+        if threads and by_name:  # 3.x 는 cpu_threads 를 **kwargs 로 받는다(시그니처에는 없다)
+            kwargs["cpu_threads"] = max(1, int(threads))
 
         self._engine = PaddleOCR(**kwargs)
         self._predict = getattr(self._engine, "predict", None) or self._engine.ocr
