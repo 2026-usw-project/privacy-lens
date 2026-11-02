@@ -25,6 +25,27 @@
   (증명사진·얼굴·번호판·보안 표식 등) 쪽으로 옮기기로 했습니다. 아래 문서 클래스(송장·카드·명찰·화면)는 **지금 모델로 동결**하고
   새 학습 투자는 하지 않습니다. 새 클래스 목록은 D-16 미결 항목에서 정합니다(클래스는 맨 뒤에만 추가).
 
+### 이미지 객체 — 학습 전에 공개 모델부터
+
+- 얼굴·증명사진: `pipeline/objects.py` 가 OpenCV YuNet 을 그대로 쓴다(학습 없음). `python -m pipeline.objects download`
+- 번호판: `vision/colab_objects.ipynb` 가 공개 YOLO26 번호판 모델(ONNX)과 Open Images 로 직접 학습한 모델을 **같은 검증 사진**으로 비교한다.
+  남이 올린 `.pt` 는 pickle 이라 여는 순간 안의 코드가 실행될 수 있으므로 **ONNX 만 받고 커밋·해시를 기록**한다(노트북 2번 칸).
+
+#### 첫 측정 (2026-11-02, Colab T4, Open Images 검증 300장 = 번호판 403개)
+
+| 모델 | 정밀도 | 재현율 | mAP50 | mAP50-95 |
+|---|---|---|---|---|
+| 공개 `ishaqinu/yolo26n-license-plate-detection` `alpr_26n.onnx` (AGPL-3.0) | 0.949 | 0.744 | 0.811 | 0.433 |
+| 우리 YOLO26n (Open Images test 분할 2000장, 30 epoch) `objects/plate_v001/best.onnx` | 0.908 | **0.876** | **0.918** | **0.661** |
+
+| 얼굴 YuNet (20px 이상 얼굴 516개, IoU≥0.5) | 재현율 0.781 | 정밀도 0.606 |
+|---|---|---|
+
+- 공개 모델 출처: 커밋 `b9162ec575eae48a1c3c3d42cd24e87fea83214b`, SHA-256 `f42b5d16…7d4e624a`(`objects/plate_model_source.json`).
+- 우리 모델은 검증 사진과 **같은 출처(Open Images)** 로 학습해 유리하다. 공개 모델은 다른 데이터로 학습했다.
+- YuNet 정밀도는 낮게 나온다: 20px 미만 얼굴을 정답에서 뺐는데 그 얼굴을 찾은 것도 오탐으로 셌고, Open Images 얼굴 라벨이 빠진 경우도 있다.
+- 모두 해외 사진 숫자다. **한국 번호판·실사는 따로 재야 한다.** 결과 파일: 드라이브 `PrivacyLens-YOLO/objects/objects_eval.json`.
+
 ## 클래스
 
 | 번호 | 이름 | 라벨링 기준 |

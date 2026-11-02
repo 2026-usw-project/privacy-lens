@@ -50,6 +50,7 @@ KIND_NOUN = {
     "gps": "촬영 위치 좌표",
     "document": "문서 영역",
     "face_photo": "증명사진",
+    "face": "얼굴",
     "other": "개인정보로 보이는 문자열",
 }
 
@@ -166,6 +167,14 @@ def face_photo_region() -> str:
     return assert_safe("카드나 서류에 인쇄된 증명사진으로 보이는 영역이 있음")
 
 
+def face_region() -> str:
+    return assert_safe("사람 얼굴로 보이는 영역이 있음. 공유해도 되는 사람인지 확인하세요")
+
+
+def plate_region() -> str:
+    return assert_safe("차량 번호판으로 보이는 영역이 있으나 번호를 읽지 못했습니다")
+
+
 def qr_undecoded() -> str:
     return assert_safe("QR코드 또는 바코드로 보이는 영역이 있으나 해독하지 못했습니다")
 
@@ -206,6 +215,7 @@ STAGE_LABEL = {
     "judge:rules": "개인정보 판단",
     "judge:llm": "LLM 판단",
     "codes": "QR·바코드 검사",
+    "objects": "얼굴·번호판 찾기",
     "mask": "가리기",
     "export": "파일 만들기",
     "other": "처리",
@@ -242,6 +252,6 @@ def all_templates() -> list[str]:
         out += [region_only(doc), document_unconfirmed(doc), combined(doc, ["휴대전화번호", "도로명주소"])]
     for kind in ("url", "vcard", "wifi", "tel", "text", "unknown"):
         out.append(qr_decoded(kind))
-    out += [qr_undecoded(), face_photo_region(), qr_contains(["휴대전화번호"]), barcode_decoded(),
+    out += [qr_undecoded(), face_photo_region(), face_region(), plate_region(), qr_contains(["휴대전화번호"]), barcode_decoded(),
             gps_present(37.5, 127.0), NO_FINDINGS, llm_http_failed(500)]
     return out

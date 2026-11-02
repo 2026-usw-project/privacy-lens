@@ -175,7 +175,7 @@ def test_analyze_reports_stages_with_sizes():
                     on_stage=lambda *e: events.append(e))
     ends = {name: (units, secs) for ev, name, units, secs in events if ev == "end"}
     starts = [name for ev, name, *_ in events if ev == "start"]
-    assert starts == ["ocr:scripted", "judge:rules", "codes"]
+    assert starts == ["ocr:scripted", "judge:rules", "codes", "objects"]
     assert ends["ocr:scripted"][0] == pytest.approx(2.0)          # 메가픽셀
     assert ends["judge:rules"][0] == 2                             # 조각 수
     assert all(secs >= 0 for _, secs in ends.values())
