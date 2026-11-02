@@ -31,6 +31,17 @@
   --stage:#f2f4f6;--stage-line:#e5e8eb;--stage-ink:#4e5968;--stage-dim:#5f6b7a;--stage-fg:#191f28;--tag-dim:#5f6b7a;
   --photo-shadow:0 1px 2px #0000000f,0 10px 28px #00000014;
   --toast-bg:#191f28;--toast-ink:#fff;--toast-icon:#5ee0a0;
+  /* 부드러운 입체: 빛은 위에서 온다. 새 색이 아니라 기존 값을 섞어 만든다.
+     윗면 하이라이트 1px(--hi), 아랫면 두께 2px(--lip), 넓고 옅은 바닥 그림자(--drop). 누르면 내려앉고 놓으면 튕겨 돌아온다(--spring). */
+  --lip:color-mix(in srgb,var(--primary-solid) 72%,#0a2a66);--hi:rgb(255 255 255/.3);--hi-soft:rgb(255 255 255/.9);
+  --drop:rgb(25 31 40/.07);--drop-blue:color-mix(in srgb,var(--primary-solid) 26%,transparent);--tile-top:#fff;
+  --duo-tint:color-mix(in srgb,var(--primary) 20%,transparent);--spring:cubic-bezier(.34,1.56,.64,1);
+  --raise-primary:inset 0 1px 0 var(--hi),inset 0 -1px 0 rgb(0 0 0/.12),0 2px 0 var(--lip),0 8px 18px -4px var(--drop-blue);
+  --raise-primary-hover:inset 0 1px 0 var(--hi),inset 0 -1px 0 rgb(0 0 0/.12),0 3px 0 var(--lip),0 12px 22px -6px var(--drop-blue);
+  --press-primary:inset 0 1px 0 rgb(255 255 255/.18),inset 0 2px 6px rgb(0 0 0/.18),0 0 0 var(--lip),0 3px 8px -4px var(--drop-blue);
+  --raise-soft:inset 0 1px 0 var(--hi-soft),inset 0 0 0 1px var(--line),0 2px 0 var(--line-strong),0 6px 14px -6px var(--drop);
+  --press-soft:inset 0 2px 5px var(--drop),inset 0 0 0 1px var(--line),0 0 0 var(--line-strong);
+  --well:inset 0 2px 6px var(--drop),inset 0 -1px 0 var(--hi-soft);
   --sans:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",system-ui,-apple-system,"Segoe UI",sans-serif;
   /* 숫자·상태 라벨도 본문과 같은 글꼴에 고정폭 숫자만 쓴다. 코드(인식한 문자열, JSON)만 모노. */
   --mono:var(--sans);
@@ -48,6 +59,7 @@
   --stage:#121217;--stage-line:#2b2b34;--stage-ink:#c3c9d1;--stage-dim:#98a2ae;--stage-fg:#f2f4f6;
   --photo-shadow:0 0 0 1px #ffffff1a,0 14px 36px #00000066;
   --toast-bg:#e5e8eb;--toast-ink:#191f28;--toast-icon:#137a4c;
+  --lip:#0e3a85;--hi:rgb(255 255 255/.16);--hi-soft:rgb(255 255 255/.06);--drop:rgb(0 0 0/.35);--drop-blue:rgb(0 0 0/.4);--tile-top:#383843;
   color-scheme:dark;
 }
 ::selection{background:var(--primary-tint);color:var(--ink)}
@@ -71,21 +83,27 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 .fine-print{font-size:13px;line-height:1.7;color:var(--muted)}
 
 /* Buttons */
-.button{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;padding:0 20px;border-radius:14px;font-size:15px;font-weight:700;white-space:nowrap;transition:background .15s,transform .12s}
+.button{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:48px;padding:0 20px;border-radius:14px;font-size:15px;font-weight:700;white-space:nowrap;transition:transform .26s var(--spring),box-shadow .2s ease-out,background .15s}
 .button svg{width:18px;height:18px}
-.button:active:not(:disabled){transform:scale(.98)}
-.primary{background:var(--primary-solid);color:#fff}
-.primary:hover:not(:disabled){background:var(--primary-hover)}
-.ghost{background:var(--surface-2);color:var(--ink-2)}
-.ghost:hover:not(:disabled){background:var(--surface-3);color:var(--ink)}
+.button:hover:not(:disabled){transform:translateY(-1px)}
+.button:active:not(:disabled){transform:translateY(2px);transition-duration:.06s}
+.button:disabled{box-shadow:none}
+/* 그라데이션은 --primary-solid 에서 더 진한 쪽으로만 내려간다. 흰 글자 대비 4.6~5.9:1 */
+.primary{background:linear-gradient(180deg,var(--primary-solid),var(--primary-hover));color:#fff;box-shadow:var(--raise-primary)}
+.primary:hover:not(:disabled){box-shadow:var(--raise-primary-hover)}
+.primary:active:not(:disabled){box-shadow:var(--press-primary)}
+.ghost{background:linear-gradient(180deg,var(--tile-top),var(--surface-2));color:var(--ink-2);box-shadow:var(--raise-soft)}
+.ghost:hover:not(:disabled){color:var(--ink)}
+.ghost:active:not(:disabled){box-shadow:var(--press-soft)}
 .button.small{height:38px;padding:0 14px;border-radius:11px;font-size:13px}
 .button.big{height:56px;border-radius:16px;font-size:16px}
 .full{width:100%}
 .text-button{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 6px;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap}
 .text-button:hover:not(:disabled){color:var(--primary-ink);background:var(--primary-wash)}
 .text-button svg{width:15px;height:15px}
-.chip-button{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 13px;border-radius:12px;background:var(--surface);font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap;transition:background .15s,transform .12s}
-.chip-button:active:not(:disabled){transform:scale(.97)}
+.chip-button{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 13px;border-radius:12px;background:var(--surface);font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap;
+  box-shadow:inset 0 1px 0 var(--hi-soft),0 1px 0 var(--line-strong),0 4px 10px -6px var(--drop);transition:background .15s,transform .22s var(--spring),box-shadow .15s}
+.chip-button:active:not(:disabled){transform:translateY(1px);transition-duration:.06s;box-shadow:inset 0 1px 3px var(--drop)}
 /* 바꾼 뒤의 모습을 아이콘으로 보여 준다. 밝은 화면에서는 달, 어두운 화면에서는 해. */
 .theme-toggle .when-dark{display:none}
 :root[data-theme="dark"] .theme-toggle .when-dark{display:block}
@@ -100,8 +118,12 @@ input[type=range]{accent-color:var(--primary);cursor:pointer}
 /* Sidebar */
 .sidebar{position:fixed;inset:0 auto 0 0;width:var(--sidebar);display:flex;flex-direction:column;padding:16px 12px;background:var(--bg);z-index:20}
 .brand{display:flex;align-items:center;gap:10px;height:40px;padding:0 8px;margin-bottom:20px}
-.brand-mark{width:32px;height:32px;border-radius:10px;background:var(--primary-solid);color:#fff;display:grid;place-items:center}
-.brand-mark svg{width:19px;height:19px;stroke-width:2.2}
+/* 로고: 유광 렌즈. 위쪽 반사광은 :before 한 겹이고, 렌즈 안은 흰빛으로 옅게 채운다. */
+.brand-mark{position:relative;overflow:hidden;width:32px;height:32px;border-radius:10px;color:#fff;display:grid;place-items:center;
+  background:linear-gradient(160deg,var(--primary) 0%,var(--primary-solid) 55%,var(--primary-hover) 100%);
+  box-shadow:inset 0 1px 0 rgb(255 255 255/.4),inset 0 -2px 0 rgb(0 0 0/.15),0 2px 0 var(--lip),0 6px 14px -6px var(--drop-blue)}
+.brand-mark:before{content:"";position:absolute;left:-30%;top:-60%;width:120%;height:90%;border-radius:50%;background:linear-gradient(180deg,rgb(255 255 255/.32),transparent)}
+.brand-mark svg{position:relative;width:19px;height:19px;stroke-width:2.2;--duo:rgb(255 255 255/.22)}
 .brand-name{font-size:18px;font-weight:700;letter-spacing:-.03em}
 .side-nav{display:grid;gap:4px}
 .nav-item{display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border-radius:12px;font-size:14px;font-weight:600;color:var(--ink-2);text-align:left;transition:background .15s,color .15s}
@@ -121,12 +143,14 @@ input[type=range]{accent-color:var(--primary);cursor:pointer}
 .steps{display:flex;align-items:center;gap:0;list-style:none;margin:0;padding:0;min-width:0}
 .steps li{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap}
 .steps li+li:before{content:"";width:28px;height:2px;border-radius:2px;background:var(--line-strong);margin:0 12px}
-.step-number{width:24px;height:24px;border-radius:50%;background:var(--surface-3);display:grid;place-items:center;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--muted)}
+/* 단계 숫자는 동전: 위가 밝고 아래에 얇은 두께. 지금 단계만 파란 동전이 도드라진다. */
+.step-number{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--muted);
+  background:linear-gradient(180deg,var(--tile-top),var(--surface-3));box-shadow:inset 0 1px 0 var(--hi-soft),0 1px 0 var(--line-strong)}
 .step-number svg{width:13px;height:13px;stroke-width:2.6}
 .steps .current{color:var(--ink)}
-.steps .current .step-number{background:var(--primary-solid);color:#fff}
+.steps .current .step-number{color:#fff;background:linear-gradient(180deg,var(--primary-solid),var(--primary-hover));box-shadow:inset 0 1px 0 var(--hi),0 2px 0 var(--lip),0 4px 10px -3px var(--drop-blue)}
 .steps .done{color:var(--ink-2)}
-.steps .done .step-number{background:var(--primary-tint);color:var(--primary-ink)}
+.steps .done .step-number{color:var(--primary-ink);background:linear-gradient(180deg,var(--tile-top),var(--primary-tint));box-shadow:inset 0 1px 0 var(--hi-soft),0 1px 0 color-mix(in srgb,var(--primary) 30%,transparent)}
 .topbar-right{display:flex;align-items:center;gap:8px}
 
 /* Presentation tools: folded under the top bar */
@@ -164,9 +188,10 @@ main{padding:8px 24px 16px}
 .drop-copy h2{font-size:clamp(30px,4.2vw,46px);font-weight:800;letter-spacing:-.045em;line-height:1.25;color:var(--ink);text-wrap:balance}
 .drop-copy em{font-style:normal;color:var(--primary)}
 .drop-copy p{margin:16px auto 0;max-width:42ch;font-size:16px;line-height:1.7;color:var(--muted);text-wrap:pretty}
-/* 누를 곳은 회색 판 하나. 안의 파란 버튼이 눈에 가장 먼저 들어온다. */
-.drop-bar{position:relative;display:flex;align-items:center;gap:12px;width:min(560px,100%);height:72px;padding:0 12px 0 22px;border-radius:20px;background:var(--surface-2);transition:background .16s,transform .16s}
-.dropzone:hover .drop-bar{background:var(--surface-3);transform:translateY(-2px)}
+/* 누를 곳은 오목한 홈 하나, 그 위로 파란 키가 튀어나와 있다. '여기에 놓는다'가 모양으로 읽힌다. */
+.drop-bar{position:relative;display:flex;align-items:center;gap:12px;width:min(560px,100%);height:72px;padding:0 12px 0 22px;border-radius:20px;background:var(--surface-2);box-shadow:var(--well);transition:background .16s}
+.dropzone:hover .drop-bar{background:var(--surface-3)}
+.dropzone:hover .drop-action{transform:translateY(-1px);box-shadow:var(--raise-primary-hover)}
 .drop-bar>svg{color:var(--muted)}
 .drop-hint{flex:1;text-align:left;font-size:14px;font-weight:500;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .samples{padding:4px 28px 32px;background:var(--surface)}
@@ -188,15 +213,17 @@ main{padding:8px 24px 16px}
 /* 도구줄은 줄바꿈한다. 상태 문구는 말줄임 없이 다 보이고, 확대 버튼은 줄 끝에 붙는다.
    사진 면이 좁으면(@container editor) 상태 문구가 아랫줄로 내려간다. */
 .image-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;min-height:52px;padding:8px 20px}
-.segmented{display:inline-flex;flex-shrink:0;gap:2px;padding:4px;border-radius:12px;background:var(--surface-2)}
-.segmented button{height:32px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:600;color:var(--muted);transition:background .15s,color .15s}
-.segmented button.selected{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px #0000001f}
+/* 전환 버튼과 확대 버튼 묶음은 오목한 홈, 고른 칸만 그 위로 튀어나온다. */
+.segmented{display:inline-flex;flex-shrink:0;gap:2px;padding:4px;border-radius:12px;background:var(--surface-2);box-shadow:inset 0 1px 3px var(--drop)}
+.segmented button{height:32px;padding:0 14px;border-radius:9px;font-size:13px;font-weight:600;color:var(--muted);transition:background .15s,color .15s,box-shadow .15s}
+.segmented button.selected{background:linear-gradient(180deg,var(--tile-top),var(--surface));color:var(--ink);box-shadow:inset 0 1px 0 var(--hi-soft),0 1px 0 var(--line-strong),0 3px 8px -2px var(--drop)}
 .status-line{display:flex;align-items:center;gap:8px;flex:1 1 180px;min-width:0;font-size:13px;line-height:1.45;color:var(--ink-2)}
 .status-line>span:last-child{min-width:0;text-wrap:pretty}
 .status-dot{width:7px;height:7px;border-radius:50%;background:var(--primary);flex-shrink:0}
 .status-line[data-state=error]{color:var(--error)}.status-line[data-state=error] .status-dot{background:var(--error)}
 .status-line[data-state=warning]{color:var(--warn)}.status-line[data-state=warning] .status-dot{background:#d99a1e}
-.zoom-controls{display:flex;align-items:center;flex-shrink:0;margin-left:auto;border-radius:11px;overflow:hidden;background:var(--surface-2)}
+.zoom-controls{display:flex;align-items:center;flex-shrink:0;margin-left:auto;border-radius:11px;overflow:hidden;background:var(--surface-2);box-shadow:inset 0 1px 3px var(--drop)}
+.zoom-controls button:active:not(:disabled){box-shadow:inset 0 2px 4px var(--drop)}
 .zoom-controls button{display:grid;place-items:center;min-width:34px;height:34px;padding:0 9px;font-size:13px;font-weight:600;color:var(--ink-2)}
 .zoom-controls svg{width:15px;height:15px}
 .zoom-controls button:hover:not(:disabled){background:var(--surface-3);color:var(--ink)}
@@ -270,7 +297,10 @@ main{padding:8px 24px 16px}
 .pane-sub{margin:8px 0 22px;font-size:15px;line-height:1.7;color:var(--ink-2)}
 .watch-list{list-style:none;margin:0 0 14px;padding:0}
 .watch-list li{display:flex;gap:14px;align-items:flex-start;padding:12px 0}
-.watch-list svg{width:42px;height:42px;padding:11px;border-radius:14px;background:var(--primary-tint);color:var(--primary)}
+/* 아이콘 타일: 위가 밝은 판, 안쪽 하이라이트와 바닥 그림자. 아이콘은 닫힌 도형만 옅게 채운 두 톤(--duo). */
+.watch-list svg{width:42px;height:42px;padding:11px;border-radius:14px;color:var(--primary-ink);--duo:var(--duo-tint);
+  background:linear-gradient(165deg,var(--tile-top) 0%,var(--primary-tint) 92%);
+  box-shadow:inset 0 1px 0 var(--hi-soft),inset 0 -2px 0 color-mix(in srgb,var(--primary) 14%,transparent),0 1px 2px var(--drop),0 8px 16px -8px var(--drop-blue)}
 .watch-list strong{font-size:15px;font-weight:700}
 .watch-list p{margin-top:2px;font-size:13px;line-height:1.6;color:var(--muted)}
 .row-link{display:flex;align-items:center;justify-content:space-between;width:100%;padding:16px 18px;border-radius:14px;background:var(--surface-2);font-size:14px;font-weight:600;color:var(--ink-2);transition:background .15s}
@@ -293,11 +323,12 @@ main{padding:8px 24px 16px}
 .scan-progress.measured>span{animation:none;transform:none;transition:width .9s linear}
 .scan-tasks{list-style:none;margin:0 0 20px;padding:0}
 .scan-tasks li{display:flex;align-items:center;gap:12px;padding:10px 0;font-size:15px;font-weight:500;color:var(--muted)}
-.scan-tasks li .mono{display:grid;place-items:center;flex-shrink:0;width:26px;height:26px;border-radius:50%;background:var(--surface-2);font-size:12px;font-weight:700}
+.scan-tasks li .mono{display:grid;place-items:center;flex-shrink:0;width:26px;height:26px;border-radius:50%;font-size:12px;font-weight:700;
+  background:linear-gradient(180deg,var(--tile-top),var(--surface-2));box-shadow:inset 0 1px 0 var(--hi-soft),0 1px 0 var(--line-strong)}
 .scan-tasks li.active,.scan-tasks li.running{color:var(--ink)}
-.scan-tasks li.active .mono,.scan-tasks li.running .mono{background:var(--primary-tint);color:var(--primary-ink)}
+.scan-tasks li.active .mono,.scan-tasks li.running .mono{color:var(--primary-ink);background:linear-gradient(180deg,var(--tile-top),var(--primary-tint));box-shadow:inset 0 1px 0 var(--hi-soft),0 1px 0 color-mix(in srgb,var(--primary) 30%,transparent)}
 .scan-tasks li.done{color:var(--ink-2)}
-.scan-tasks li.done .mono{background:var(--surface-2);color:var(--ok)}
+.scan-tasks li.done .mono{color:var(--ok)}
 .scan-tasks .stage-time{margin-left:auto;font-family:var(--mono);font-size:13px;font-weight:500;color:var(--muted);white-space:nowrap}
 .scan-tasks li.running .stage-time{color:var(--primary-ink)}
 .scan-detail{display:block;margin-top:4px;font-size:14px;color:var(--muted)}
@@ -361,9 +392,13 @@ main{padding:8px 24px 16px}
 .review-foot{position:sticky;bottom:0;z-index:2;margin-top:auto;display:grid;grid-template-columns:minmax(0,1fr);min-width:0;gap:14px;padding:16px 24px 24px;border-top:1px solid var(--line);background:var(--surface)}
 .redaction-settings{display:grid;grid-template-columns:minmax(0,1fr);min-width:0;gap:8px}
 .style-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-.style-options>button{display:flex;align-items:center;justify-content:center;gap:8px;height:44px;border-radius:12px;background:var(--surface-2);font-size:14px;font-weight:600;color:var(--ink-2);white-space:nowrap;transition:background .15s,color .15s,box-shadow .15s}
-.style-options>button:hover{background:var(--surface-3)}
-.style-options>button.selected{background:var(--primary-wash);box-shadow:inset 0 0 0 2px var(--primary);color:var(--primary-ink)}
+/* 가림 방식: 고른 것은 '눌려 들어간' 키. 색을 구분하지 못해도 모양으로 어느 쪽인지 안다. */
+.style-options>button{display:flex;align-items:center;justify-content:center;gap:8px;height:44px;border-radius:12px;font-size:14px;font-weight:600;color:var(--ink-2);white-space:nowrap;
+  background:linear-gradient(180deg,var(--tile-top),var(--surface-2));box-shadow:inset 0 1px 0 var(--hi-soft),inset 0 0 0 1px var(--line),0 2px 0 var(--line-strong);
+  transition:transform .22s var(--spring),background .15s,color .15s,box-shadow .15s}
+.style-options>button:hover{color:var(--ink)}
+.style-options>button.selected{transform:translateY(2px);background:var(--primary-wash);color:var(--primary-ink);
+  box-shadow:inset 0 2px 6px color-mix(in srgb,var(--primary) 22%,transparent),inset 0 0 0 2px var(--primary),0 0 0 var(--line-strong)}
 .swatch{width:16px;height:16px;border-radius:4px;flex-shrink:0}
 .pixel-swatch{background:conic-gradient(#a8a398 25%,#dcd8d0 0 50%,#8a857c 0 75%,#c4c0b7 0) 0 0/7px 7px}
 .blur-swatch{background:linear-gradient(45deg,#d9dde3,#7a8594);filter:blur(1.5px)}
@@ -396,19 +431,22 @@ dialog::backdrop{background:#191f2873}
 dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
 .dialog-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}
 .dialog-header h2{font-size:22px;font-weight:800;letter-spacing:-.035em}
-.icon-button{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--surface-2);color:var(--ink-2)}
-.icon-button:hover{background:var(--surface-3);color:var(--ink)}
+.icon-button{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;color:var(--ink-2);
+  background:linear-gradient(180deg,var(--tile-top),var(--surface-2));box-shadow:inset 0 1px 0 var(--hi-soft),0 1px 0 var(--line-strong);transition:transform .2s var(--spring)}
+.icon-button:hover{color:var(--ink)}
+.icon-button:active{transform:translateY(1px);transition-duration:.06s;box-shadow:inset 0 1px 3px var(--drop)}
 .icon-button svg{width:16px;height:16px}
 .dialog-intro{margin-bottom:20px;font-size:15px;line-height:1.7;color:var(--ink-2)}
 .targets-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .target-tile{padding:16px;border-radius:16px;background:var(--surface-2)}
-.target-tile>svg{width:22px;height:22px;color:var(--primary);margin-bottom:10px}
+.target-tile>svg{width:22px;height:22px;color:var(--primary);margin-bottom:10px;--duo:var(--duo-tint)}
 .target-tile h3{font-size:14px;font-weight:700}
 .target-tile p{margin-top:4px;font-size:13px;line-height:1.6;color:var(--muted)}
 .dialog-callout{display:flex;gap:10px;margin-top:20px;padding:14px 16px;border-radius:14px;background:var(--surface-2);font-size:13px;line-height:1.7;color:var(--ink-2)}
 .dialog-callout svg{width:16px;height:16px;color:var(--primary);margin-top:2px}
 .guide-step{display:flex;gap:14px;padding:14px 0}
-.guide-step>span{display:grid;place-items:center;flex-shrink:0;width:28px;height:28px;border-radius:50%;background:var(--primary-tint);font-size:13px;font-weight:700;color:var(--primary-ink)}
+.guide-step>span{display:grid;place-items:center;flex-shrink:0;width:28px;height:28px;border-radius:50%;font-size:13px;font-weight:700;color:var(--primary-ink);
+  background:linear-gradient(180deg,var(--tile-top),var(--primary-tint));box-shadow:inset 0 1px 0 var(--hi-soft),0 1px 0 color-mix(in srgb,var(--primary) 30%,transparent)}
 .guide-step h3{font-size:16px;font-weight:700;margin-bottom:4px}
 .guide-step p{font-size:14px;line-height:1.7;color:var(--ink-2)}
 #guideDialog>.button{margin-top:22px}
@@ -633,27 +671,27 @@ FORM: 사용자 지정: 토스 앱의 화면 말투(회색 바닥·흰 면·큰 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 -->
 <svg class="icon-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-<symbol id="i-lens" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+<symbol id="i-lens" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" style="fill:var(--duo,none)"/><path d="m16 16 5 5"/></symbol>
 <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></symbol>
 <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m21 16-5-5L5 21"/></symbol>
 <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></symbol>
 <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v13m-5-5 5 5 5-5M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></symbol>
 <symbol id="i-scan" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m8 0h3a2 2 0 0 0 2-2v-3M2 12h20"/></symbol>
-<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" style="fill:var(--duo,none)"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1" style="fill:var(--duo,none)"/></symbol>
 <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.2"/></symbol>
 <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
 <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
 <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
 <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-6-6 6 6-6 6"/></symbol>
 <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
-<symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H5v18h14V8l-5-5Zm0 0v5h5M8 12h8m-8 4h5"/></symbol>
-<symbol id="i-id" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="10" r="2"/><path d="M5 16c0-4 6-4 6 0m3-6h5m-5 4h4"/></symbol>
-<symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M12 17v4m-5 0h10"/></symbol>
-<symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></symbol>
-<symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H5v18h14V8l-5-5Z" style="fill:var(--duo,none)"/><path d="M14 3v5h5M8 12h8m-8 4h5"/></symbol>
+<symbol id="i-id" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2" style="fill:var(--duo,none)"/><circle cx="8" cy="10" r="2"/><path d="M5 16c0-4 6-4 6 0m3-6h5m-5 4h4"/></symbol>
+<symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2" style="fill:var(--duo,none)"/><path d="M12 17v4m-5 0h10"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z" style="fill:var(--duo,none)"/><circle cx="12" cy="10" r="2.5"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2" style="fill:var(--duo,none)"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></symbol>
 <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/></symbol>
 <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5C8 2 3 3 2 4v15c3-2 7-1 10 1 3-2 7-3 10-1V4c-1-1-6-2-10 1Zm0 0v15"/></symbol>
-<symbol id="i-box" viewBox="0 0 24 24"><path d="m12 2 9 5v10l-9 5-9-5V7l9-5Zm0 10 9-5M3 7l9 5v10M7.5 4.5l9 5V14"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="m12 2 9 5v10l-9 5-9-5V7l9-5Z" style="fill:var(--duo,none)"/><path d="m12 12 9-5M3 7l9 5v10M7.5 4.5l9 5V14"/></symbol>
 <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 11a9 9 0 1 1 2 7M3 4v7h7"/></symbol>
 <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.4v2.2M12 19.4v2.2M4.2 12H2M22 12h-2.2M6.5 6.5 4.9 4.9M19.1 19.1l-1.6-1.6M17.5 6.5l1.6-1.6M4.9 19.1l1.6-1.6"/></symbol><symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.3A8.6 8.6 0 0 1 9.7 3.5a8.6 8.6 0 1 0 10.8 10.8Z"/></symbol>
 <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5-12-7.5Z"/></symbol>
