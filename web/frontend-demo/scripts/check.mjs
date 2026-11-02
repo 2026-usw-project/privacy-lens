@@ -16,7 +16,7 @@ check('All static element references exist', staticSelectors.every(id=>ids.inclu
 const symbols = Array.from(html.matchAll(/<symbol id="([^"]+)"/g),m=>m[1]);
 check('SVG references resolve', Array.from(html.matchAll(/<use href="#([^"]+)"/g),m=>m[1]).every(id=>symbols.includes(id)));
 check('No remote assets required', Array.from(html.matchAll(/(?:src|href)="([^"]+)"/g),m=>m[1]).every(url=>!/^https?:/.test(url)));
-// 서버 통신은 api.js 한 곳에서만. 브라우저 저장은 가리는 방식(pl.maskStyle), 개발자 모드 설정(pl.devMode), 화면 밝기(pl.theme)뿐.
+// 서버 통신은 api.js 한 곳에서만. 브라우저 저장은 가리는 방식(pl.maskStyle), 판단 모델 창 설정(pl.devMode), 화면 밝기(pl.theme)뿐.
 check('Network access only through api.js', !/\bfetch\s*\(|XMLHttpRequest|sendBeacon/.test(app));
 check('Browser storage only for display preferences and developer mode', !/sessionStorage|indexedDB/.test(app) && Array.from(app.matchAll(/localStorage\.(?:get|set)Item\('([^']+)'/g),m=>m[1]).every(k=>k==='pl.maskStyle'||k==='pl.devMode'||k==='pl.theme'));
 check('Comparison conditions removed from screen', !/conditionSelect|CONDITIONS|정규식만|심각도표/.test(html+app));

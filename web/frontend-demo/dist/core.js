@@ -14,7 +14,7 @@
     document:['UNKNOWN','문서 영역'],face_photo:['UNKNOWN','증명사진'],other:['UNKNOWN','개인정보 후보']
   };
   const SEVERITY = { cover:'가림 권장',review:'검토 권장',info:'참고' };
-  // 판단 방법(개발자 모드). rules 는 서버의 문맥·결합 규칙, 나머지는 LLM 이 모든 글자 판단을 맡는다.
+  // 판단 방법(판단 모델 창). rules 는 서버의 문맥·결합 규칙, 나머지는 LLM 이 모든 글자 판단을 맡는다.
   // cloud: 사진에서 읽은 글자가 그 회사 서버로 나간다. 모델 기본값은 고쳐 쓸 수 있는 예시다.
   const JUDGES = {
     rules:{label:'규칙 기반 판단'},
@@ -27,7 +27,7 @@
   };
   const MAX_FIELD = 500;
   const field = v => typeof v==='string' ? v.slice(0,MAX_FIELD) : '';
-  // 브라우저에 저장된 개발자 모드 설정을 믿지 않고 다듬는다. 공급자마다 모델·키·주소를 따로 기억한다.
+  // 브라우저에 저장된 판단 모델 창 설정을 믿지 않고 다듬는다. 공급자마다 모델·키·주소를 따로 기억한다.
   function devSettings(raw) {
     const src=raw&&typeof raw==='object'?raw:{};
     const provider=Object.hasOwn(JUDGES,src.provider)?src.provider:'rules';
