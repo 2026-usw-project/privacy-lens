@@ -39,6 +39,7 @@ await test('YOLO version and actual device shown with OCR',()=>{
   assert.match(active.backend,/PP-OCRv6/);
   assert.match(active.backend,/YOLO v004 \(CUDA:0\)/);
   assert.match(C.fromReport({...report,detector:'yolo:v004',detector_device:'cpu'}).backend,/YOLO v004 \(CPU\)/);
+  assert.match(C.fromReport({...report,detector:'yolo:v005·yolo26',detector_device:'cpu'}).backend,/YOLO v005·yolo26 \(CPU\)/);
   assert.match(result.backend,/YOLO 꺼짐/);
 });
 const byKind=k=>result.regions.find(r=>r.finding===k);

@@ -3,7 +3,7 @@
 번호가 곧 라벨 파일의 첫 숫자다. **이미 있는 번호는 절대 바꾸거나 지우지 않는다.**
 번호를 바꾸면 그동안 만든 라벨 전부가 다른 물건을 가리키게 된다.
 새 클래스는 맨 뒤에 붙인다. 붙인 뒤에는 기존 모델로 이어서 학습할 수 없으니
-`python -m vision train --base yolo11n.pt` 로 처음부터 다시 학습한다.
+`python -m vision train --base yolo26n.pt` 로 처음부터 다시 학습한다.
 """
 
 from __future__ import annotations

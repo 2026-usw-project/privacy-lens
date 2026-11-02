@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--epochs", type=int, default=60)
     p.add_argument("--imgsz", type=int, default=1280)
     p.add_argument("--batch", type=int, default=-1, help="-1 = GPU 메모리에 맞춰 자동")
-    p.add_argument("--base", help="시작 가중치 (기본: current 모델, 없으면 yolo11n.pt)")
+    p.add_argument("--base", help="시작 가중치 (기본: current 모델, 없거나 계열이 다르면 yolo26n.pt)")
     p.add_argument("--device", help="0 = 첫 GPU, cpu = CPU (기본: 자동)")
     p.add_argument("--force", action="store_true", help="점수가 낮아도 current 로 교체")
     p.add_argument("--no-copy", action="store_true", help="로컬 디스크로 복사하지 않고 학습")

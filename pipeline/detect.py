@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import statistics
 import sys
 import threading
@@ -68,6 +69,17 @@ class Detection:
         return self.name in DOC_CLASSES
 
 
+def model_family(model) -> str:
+    """Ultralytics 모델의 계열 이름('yolo26', 'yolo11'). 알 수 없으면 빈 문자열.
+
+    가중치 안에 학습할 때 쓴 구조 파일 이름(yolo26n.yaml 등)이 들어 있다.
+    """
+    inner = getattr(model, "model", model)
+    yaml = getattr(inner, "yaml", None) or {}
+    m = re.match(r"(yolo(?:v)?\d+)", str(yaml.get("yaml_file", "")).lower())
+    return m.group(1) if m else ""
+
+
 class YoloDetector:
     def __init__(self, weights: str | os.PathLike, conf: float | None = None,
                  imgsz: int | None = None):
@@ -79,7 +91,9 @@ class YoloDetector:
         self.conf = conf if conf is not None else float(os.environ.get("PL_YOLO_CONF", "0.35"))
         self.imgsz = imgsz or _imgsz_for(self.path)
         version = self.path.parent.name if self.path.parent.name.startswith("v") else self.path.stem
-        self.name = f"yolo:{version}"
+        self.family = model_family(self.model)
+        # 화면 하단에 'YOLO v005·yolo26 (CPU)' 처럼 보인다. YOLO11 로 학습한 예전 모델과 구분하려고
+        self.name = f"yolo:{version}·{self.family}" if self.family else f"yolo:{version}"
         self.device = ""
         self._lock = threading.Lock()
 
