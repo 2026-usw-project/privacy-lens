@@ -127,7 +127,7 @@ class FaceDetector:
 
 
 class PlateDetector:
-    """rotations: 0 외에 90·270 도 돌려서도 찾는다(회전 정보가 지워진 누운 사진용, PL_PLATE_ROTATE=1).
+    """rotations: 0 외에 90·270 도 돌려서도 찾는다(회전 정보가 지워진 누운 사진용). 기본 켬, PL_PLATE_ROTATE=0 으로 끈다.
 
     2026-11-03 한국 주차장 평가: 누운 사진에서 재현율 0.15~0.2 → 돌려 보면 0.55~0.6."""
 
@@ -136,7 +136,7 @@ class PlateDetector:
         self.model = YOLO(str(model), task="detect")
         self.conf = PLATE_CONF if conf is None else conf
         if rotations is None:
-            rotations = (0, 90, 270) if os.environ.get("PL_PLATE_ROTATE", "0") == "1" else (0,)
+            rotations = (0,) if os.environ.get("PL_PLATE_ROTATE", "1") == "0" else (0, 90, 270)
         self.rotations = rotations
         self.name = f"plate:{model.name}"
         self._lock = threading.Lock()
