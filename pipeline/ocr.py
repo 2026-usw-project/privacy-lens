@@ -253,16 +253,25 @@ class PaddleBackend:
             det_model = det_model or default_det
             rec_model = rec_model or default_rec
 
+        # 글자 줄 방향 판별(줄이 뒤집혔다고 보면 180도 돌려 읽는다). PL_PADDLE_TEXTLINE=auto|on|off
+        #   on   모든 줄에 판별기. 누운(90°)·뒤집힌(180°) 사진을 읽지만, 똑바른 줄을 뒤집힌 줄로 잘못 보고
+        #        거꾸로 읽는 일이 실사에서 잦았다('010-6706-4686' → '9894-9029-010', 학번·카드번호도)
+        #   off  판별기 없음. 똑바른 사진은 가장 잘 읽지만 90°·180° 사진은 하나도 못 읽는다
+        #   auto 끄고 읽은 뒤, 확신도 낮은 줄이 많을 때만 켜고 다시 읽어 줄마다 확신도 높은 쪽을 쓴다(기본)
+        self.textline = os.environ.get("PL_PADDLE_TEXTLINE", "auto").strip().lower()
+        if self.textline not in ("auto", "on", "off"):
+            self.textline = "auto"
+        textline = self.textline != "off"
         wanted = {
             "lang": lang,
             # 3.x 이름
             "text_detection_model_name": det_model,
             "text_recognition_model_name": rec_model,
-            "use_textline_orientation": True,
+            "use_textline_orientation": textline,
             "use_doc_orientation_classify": False,  # 추가 모델 다운로드 회피
             "use_doc_unwarping": False,             # 스캔 문서용이라 생활 사진에 부적합
             # 2.x 이름
-            "use_angle_cls": True,
+            "use_angle_cls": textline,
             "show_log": False,
         }
         kwargs = {k: v for k, v in wanted.items() if k in allowed}
@@ -283,6 +292,15 @@ class PaddleBackend:
 
         self._engine = PaddleOCR(**kwargs)
         self._predict = getattr(self._engine, "predict", None) or self._engine.ocr
+        # 판별기를 호출마다 켜고 끌 수 있어야 auto 가 된다(3.x predict 의 인자). 안 되면 만든 대로(on)
+        if self.textline == "auto":
+            predict = getattr(self._engine, "predict", None)
+            try:
+                per_call = predict is not None and "use_textline_orientation" in inspect.signature(predict).parameters
+            except (TypeError, ValueError):
+                per_call = False
+            if not per_call:
+                self.textline = "on"
         self._lock = threading.Lock()
 
         # 화면과 비교 실험에 실제로 쓴 모델 이름을 남긴다. 'paddleocr' 만으로는
@@ -324,11 +342,20 @@ class PaddleBackend:
     def read(self, image: Image.Image) -> list[TextSpan]:
         import numpy as np
 
+        pixels = np.array(image.convert("RGB"))
         # Paddle 추론기는 스레드 안전하지 않다. 서버가 요청을 스레드풀에서 돌리므로
         # 두 요청이 동시에 들어오면 서로의 중간 텐서를 덮어써서
         # 'Broadcast dimension mismatch' 로 죽는다(실제로 겪었다). 한 번에 하나씩.
         with self._lock:
-            result = self._predict(np.array(image.convert("RGB")))
+            if self.textline != "auto":
+                return self._parse(self._predict(pixels))
+            upright = self._parse(self._predict(pixels, use_textline_orientation=False))
+            if not needs_flip(upright):
+                return upright
+            flipped = self._parse(self._predict(pixels, use_textline_orientation=True))
+        return merge_by_confidence(upright, flipped)
+
+    def _parse(self, result) -> list[TextSpan]:
         spans: list[TextSpan] = []
 
         for page in result or []:
@@ -376,6 +403,47 @@ class PaddleBackend:
                 )
 
         return spans
+
+
+# 판별기를 끄고 읽었을 때 확신도가 이보다 낮은 줄이 FLIP_SHARE 이상이면 누운·뒤집힌 글자로 보고 다시 읽는다
+FLIP_LOW_CONF = 0.8
+FLIP_SHARE = 0.3
+
+
+def needs_flip(spans: list[TextSpan]) -> bool:
+    """뒤집히거나 누운 글자를 판별기 없이 읽으면 엉뚱한 글자가 낮은 확신도로 나온다."""
+    lines = [s for s in spans if len(s.text.strip()) >= 2]
+    if not lines:
+        return False
+    low = sum(1 for s in lines if s.ocr_confidence < FLIP_LOW_CONF)
+    return low / len(lines) >= FLIP_SHARE
+
+
+def _iou(a: Box, b: Box) -> float:
+    ix = max(0, min(a.x + a.w, b.x + b.w) - max(a.x, b.x))
+    iy = max(0, min(a.y + a.h, b.y + b.h) - max(a.y, b.y))
+    inter = ix * iy
+    union = a.w * a.h + b.w * b.h - inter
+    return inter / union if union else 0.0
+
+
+def merge_by_confidence(upright: list[TextSpan], flipped: list[TextSpan]) -> list[TextSpan]:
+    """같은 자리의 줄은 확신도 높은 읽기를 쓴다. 검출은 같으므로 상자가 거의 겹친다.
+    한쪽에만 있는 줄은 그대로 둔다(판별기 유무로 줄 나뉨이 달라질 수 있다)."""
+    out: list[TextSpan] = []
+    used: set[int] = set()
+    for u in upright:
+        best, best_iou = None, 0.5
+        for j, f in enumerate(flipped):
+            if j not in used and (iou := _iou(u.box, f.box)) >= best_iou:
+                best, best_iou = j, iou
+        if best is None:
+            out.append(u)
+            continue
+        used.add(best)
+        out.append(flipped[best] if flipped[best].ocr_confidence > u.ocr_confidence else u)
+    out.extend(f for j, f in enumerate(flipped) if j not in used)
+    return out
 
 
 def _paddle_defaults(PaddleOCR, lang: str) -> tuple[str | None, str | None]:
