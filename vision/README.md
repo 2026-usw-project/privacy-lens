@@ -144,6 +144,23 @@ CC BY-SA 2.5, 얼굴은 생성 얼굴, `ftp://smartengines.com/midv-2020`)을 �
 - 바로 선 사진에서도 18~24% 를 놓친다. 정밀도가 낮은 것은 신분증의 작은 보조 사진(유령 사진)을 찾은 것도 오탐으로 세서일 수 있다(확인 안 함).
 - 다음 후보: MIDV-2020 으로 YOLO26 증명사진(face_photo) 클래스 학습(`python -m vision import-midv`), 한국 신분증·학생증 실사로 다시 재기.
 
+#### 다음 학습 준비 (2026-11-03, `vision/colab_next.ipynb`)
+
+GPU 한도가 풀리면 노트북을 위에서부터 돌린다. 칸마다 혼자 돌아 런타임이 끊겨도 그 칸만 다시 하면 된다(`vision/next_steps.py`).
+1. 데이터 준비(CPU): Open Images 번호판, 한국 zip, 합성, 90도 회전 사본, MIDV-2020 증명사진 데이터(`vision/face_photo_data.py`: 문서 종류로 학습/검증을 나눔 — 검증은 처음 보는 srb_passport·svk_id, 멀리 찍힌 사본·90도 사본 포함)
+2. 증명사진 YOLO26n 학습 → `objects/face_photo_v001/`, 3. YuNet 과 비교 평가
+4. 번호판 v004(v003 + 회전 사본) 학습, 5. 한국 방향별·해외 평가 → 돌려 찾기 없이도 되는지
+
+새 클래스 후보 — 서명(OCR 이 못 읽는 개인 식별 정보):
+
+| 데이터 | 장수 | 라이선스 | 비고 |
+|---|---|---|---|
+| [ICFAI Signature Detection](https://universe.roboflow.com/icfai-zxp7l/signature-detection-b5ydm) | 5,564 | CC BY 4.0 | 클래스에 사람 이름이 섞임(전부 '서명'으로 합침) |
+| [GlCVCapstone Signature Detection](https://universe.roboflow.com/glcvcapstone/signature-detection-1geyl) | 약 2,300 | MIT | |
+| [tech4humans/signature-detection](https://huggingface.co/datasets/tech4humans/signature-detection) | 2,819 | Apache-2.0 | 스캔 문서(Tobacco800) 위주, 동의 후 받기 |
+
+모두 스캔·문서 사진이라 '사진 속 영수증·송장의 서명'과는 거리가 있다. 받으려면 Roboflow 로그인(본인)이 필요하다.
+
 ## 클래스
 
 | 번호 | 이름 | 라벨링 기준 |
