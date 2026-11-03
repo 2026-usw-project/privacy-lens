@@ -307,7 +307,7 @@ python -m eval.rotation
 | `PL_YOLO_CONF` | `0.35` | 문서 검출 기준값 |
 | `PL_UNLABELED_NAMES` | `context` | 라벨 없는 이름 판단. `off`(라벨 뒤 이름만) · `context`(연락처·주소 옆, 명찰·학생증 단서, 호칭이 있을 때) · `all`(단서 없는 이름 후보도 검토 권장, 오탐 증가). [D-12](docs/DECISIONS.md#d-12-가림-기준표-확정) |
 | `PL_FACES` | `card` | 얼굴 검출(YuNet). `card`(증명사진만) · `all`(모든 얼굴 검토 권장) · `off`. 모델은 `python -m pipeline.objects download` 로 받습니다. [D-17](docs/DECISIONS.md) |
-| `PL_PLATE_MODEL` | 없음 | 번호판 검출 모델 경로(.onnx 권장). 없으면 번호판 영역 검출을 하지 않습니다(글자는 OCR 이 읽음) |
+| `PL_PLATE_MODEL` | `models/plate.onnx` 가 있으면 그것 | 번호판 검출 모델 경로(.onnx 권장), `off` 면 끔. 모델이 없으면 번호판 영역 검출을 하지 않습니다(글자는 OCR 이 읽음). 받는 법은 `vision/README.md` |
 | `PL_QUEUE_MAX` | `12` | 최대 대기 요청 수. 초과 시 HTTP 503을 반환합니다. |
 | `PORT` | `8000` | 서버 포트 |
 

@@ -31,6 +31,13 @@
 - 번호판: `vision/colab_objects.ipynb` 가 공개 YOLO26 번호판 모델(ONNX)과 Open Images 로 직접 학습한 모델을 **같은 검증 사진**으로 비교한다.
   남이 올린 `.pt` 는 pickle 이라 여는 순간 안의 코드가 실행될 수 있으므로 **ONNX 만 받고 커밋·해시를 기록**한다(노트북 2번 칸).
 
+#### 서버에 붙이기
+
+1. 얼굴: `python -m pipeline.objects download` (YuNet, SHA-256 확인).
+2. 번호판: 팀 드라이브 `PrivacyLens-YOLO/objects/plate_v002/best.onnx` 를 받아 저장소의 `models/plate.onnx` 로 둔다
+   (`*.onnx` 는 git 무시). 다른 경로면 `PL_PLATE_MODEL=<경로>`, 끄려면 `PL_PLATE_MODEL=off`.
+3. `python run.py --check` 에 `얼굴 검출 YuNet (card)`, `번호판 검출 …plate.onnx` 가 보이면 된다.
+
 #### 첫 측정 (2026-11-02, Colab T4, Open Images 검증 300장 = 번호판 403개)
 
 | 모델 | 정밀도 | 재현율 | mAP50 | mAP50-95 |

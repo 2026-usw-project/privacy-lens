@@ -6,7 +6,8 @@ OCR 이 못 하는 일만 맡는다. 직접 학습하지 않고 성능이 공개
           10~300px 얼굴용이라 사진을 두 크기로 줄여 두 번 찾는다.
   증명사진 얼굴이 카드 위에 있으면(문서 검출의 학생증·카드 상자 안, 또는 근처 OCR 글자에
           '학생증·주민등록증·성명' 같은 단서나 이름·주민번호·학번 항목이 있으면) 증명사진으로 본다.
-  번호판  선택. PL_PLATE_MODEL 에 YOLO 번호판 모델(.onnx 권장)을 주면 쓴다.
+  번호판  선택. models/plate.onnx 가 있거나 PL_PLATE_MODEL 에 YOLO 번호판 모델(.onnx 권장)을 주면 쓴다.
+          PL_PLATE_MODEL=off 로 끈다. 우리 모델은 팀 드라이브 objects/plate_vNNN/ 에 있다(vision/README.md).
           글자는 OCR 이 차량번호로 이미 잡으므로, 글자를 못 읽은 번호판만 영역으로 알린다.
 
 어떤 얼굴을 알릴지는 팀 정책(D-17)이라 환경변수로 고른다.
@@ -183,11 +184,24 @@ def get_face_detector():
     return _load(f"face:{path}", lambda: FaceDetector(path))
 
 
-def get_plate_detector():
+PLATE_FILE = "plate.onnx"    # 팀 드라이브 objects/plate_vNNN/best.onnx 를 models/plate.onnx 로 두면 자동으로 쓴다
+
+
+def plate_model_path() -> Path | None:
+    """PL_PLATE_MODEL(경로, 또는 off) > models/plate.onnx. 없으면 None."""
     raw = os.environ.get("PL_PLATE_MODEL", "").strip()
-    if not raw:
+    if raw.lower() == "off":
         return None
-    path = Path(raw)
+    if raw:
+        return Path(raw)
+    default = MODELS / PLATE_FILE
+    return default if default.exists() else None
+
+
+def get_plate_detector():
+    path = plate_model_path()
+    if path is None:
+        return None
     return _load(f"plate:{path}", lambda: PlateDetector(path))
 
 
@@ -264,8 +278,9 @@ def status() -> list[str]:
         lines.append(f"얼굴 검출 YuNet ({mode})")
     else:
         lines.append("얼굴 모델 없음 — python -m pipeline.objects download")
-    plate = os.environ.get("PL_PLATE_MODEL", "").strip()
-    lines.append(f"번호판 검출 {Path(plate).name}" if plate else "번호판 검출 꺼짐(PL_PLATE_MODEL 없음)")
+    plate = plate_model_path()
+    lines.append(f"번호판 검출 {plate}" if plate else
+                 f"번호판 검출 꺼짐 — 드라이브 objects/plate_vNNN/best.onnx 를 models/{PLATE_FILE} 로 두면 켜짐")
     return lines
 
 

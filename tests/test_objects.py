@@ -71,8 +71,21 @@ def test_plate_region_only_when_ocr_did_not_read_it():
 def test_missing_models_are_quietly_off(monkeypatch, tmp_path):
     monkeypatch.setenv("PL_FACE_MODEL", str(tmp_path / "none.onnx"))
     monkeypatch.delenv("PL_PLATE_MODEL", raising=False)
+    monkeypatch.setattr(objects, "MODELS", tmp_path)
     assert objects.get_face_detector() is None and objects.get_plate_detector() is None
     assert objects.find_objects(IMG, [], [], mode="all") == []
+
+
+def test_plate_model_path_default_env_and_off(monkeypatch, tmp_path):
+    monkeypatch.setattr(objects, "MODELS", tmp_path)
+    monkeypatch.delenv("PL_PLATE_MODEL", raising=False)
+    assert objects.plate_model_path() is None
+    (tmp_path / objects.PLATE_FILE).write_bytes(b"x")
+    assert objects.plate_model_path() == tmp_path / objects.PLATE_FILE
+    monkeypatch.setenv("PL_PLATE_MODEL", "off")
+    assert objects.plate_model_path() is None
+    monkeypatch.setenv("PL_PLATE_MODEL", "/x/other.onnx")
+    assert str(objects.plate_model_path()) == "/x/other.onnx"
 
 
 def test_mode_and_wording():
