@@ -71,8 +71,21 @@ def test_plate_region_only_when_ocr_did_not_read_it():
 def test_missing_models_are_quietly_off(monkeypatch, tmp_path):
     monkeypatch.setenv("PL_FACE_MODEL", str(tmp_path / "none.onnx"))
     monkeypatch.delenv("PL_PLATE_MODEL", raising=False)
+    monkeypatch.setattr(objects, "MODELS", tmp_path)
     assert objects.get_face_detector() is None and objects.get_plate_detector() is None
     assert objects.find_objects(IMG, [], [], mode="all") == []
+
+
+def test_plate_model_path_default_env_and_off(monkeypatch, tmp_path):
+    monkeypatch.setattr(objects, "MODELS", tmp_path)
+    monkeypatch.delenv("PL_PLATE_MODEL", raising=False)
+    assert objects.plate_model_path() is None
+    (tmp_path / objects.PLATE_FILE).write_bytes(b"x")
+    assert objects.plate_model_path() == tmp_path / objects.PLATE_FILE
+    monkeypatch.setenv("PL_PLATE_MODEL", "off")
+    assert objects.plate_model_path() is None
+    monkeypatch.setenv("PL_PLATE_MODEL", "/x/other.onnx")
+    assert str(objects.plate_model_path()) == "/x/other.onnx"
 
 
 def test_mode_and_wording():
@@ -94,3 +107,45 @@ def test_redact_verify_ignores_object_shapes_inside_selection():
              Finding(kind="plate", box=Box(100, 100, 60, 30), **shape)]
     check = redact.verify(sel, buf.getvalue(), lambda im: Report(800, 600, findings=after), had_gps=False)
     assert check["leaked_count"] == 0
+
+
+def test_plate_detector_rotations_map_back_to_original():
+    import threading
+    import numpy as np
+    from PIL import ImageDraw
+
+    im = Image.new("RGB", (300, 200))
+    ImageDraw.Draw(im).rectangle([40, 120, 100, 140], fill=(255, 255, 255))
+
+    class Fake(objects.PlateDetector):
+        def __init__(self, rotations):
+            self.conf, self.rotations, self._lock = 0.4, rotations, threading.Lock()
+
+        def _once(self, img):  # 흰 상자를 그대로 '찾는' 가짜 모델
+            ys, xs = np.where(np.asarray(img)[:, :, 0] > 128)
+            return [(0.9, xs.min(), ys.min(), xs.max() + 1, ys.max() + 1)]
+
+    for rot in ((90,), (270,), (0, 90, 270)):
+        (o,) = Fake(rot).detect(im)
+        assert (o.box.x, o.box.y, o.box.w, o.box.h) == (40, 120, 61, 21)
+
+
+def test_face_detector_rotations_map_back():
+    import threading
+    import numpy as np
+    from PIL import ImageDraw
+
+    im = Image.new("RGB", (300, 200))
+    ImageDraw.Draw(im).rectangle([40, 120, 100, 140], fill=(255, 255, 255))
+
+    class Fake(objects.FaceDetector):
+        def __init__(self, rotations):
+            self.rotations, self._lock = rotations, threading.Lock()
+
+        def _once(self, img):
+            ys, xs = np.where(np.asarray(img)[:, :, 0] > 128)
+            return [(0.9, xs.min(), ys.min(), xs.max() + 1, ys.max() + 1)]
+
+    for rot in ((90,), (180,), (270,), (0, 90, 270)):
+        (o,) = Fake(rot).detect(im)
+        assert (o.box.x, o.box.y, o.box.w, o.box.h) == (40, 120, 61, 21), rot

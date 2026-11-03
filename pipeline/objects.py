@@ -6,7 +6,8 @@ OCR 이 못 하는 일만 맡는다. 직접 학습하지 않고 성능이 공개
           10~300px 얼굴용이라 사진을 두 크기로 줄여 두 번 찾는다.
   증명사진 얼굴이 카드 위에 있으면(문서 검출의 학생증·카드 상자 안, 또는 근처 OCR 글자에
           '학생증·주민등록증·성명' 같은 단서나 이름·주민번호·학번 항목이 있으면) 증명사진으로 본다.
-  번호판  선택. PL_PLATE_MODEL 에 YOLO 번호판 모델(.onnx 권장)을 주면 쓴다.
+  번호판  선택. models/plate.onnx 가 있거나 PL_PLATE_MODEL 에 YOLO 번호판 모델(.onnx 권장)을 주면 쓴다.
+          PL_PLATE_MODEL=off 로 끈다. 우리 모델은 팀 드라이브 objects/plate_vNNN/ 에 있다(vision/README.md).
           글자는 OCR 이 차량번호로 이미 잡으므로, 글자를 못 읽은 번호판만 영역으로 알린다.
 
 어떤 얼굴을 알릴지는 팀 정책(D-18)이라 환경변수로 고른다.
@@ -45,7 +46,7 @@ YUNET_URL = ("https://media.githubusercontent.com/media/opencv/opencv_zoo/main/m
              "face_detection_yunet/face_detection_yunet_2023mar.onnx")
 YUNET_SHA256 = "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
 
-FACE_SCORE = 0.7
+FACE_SCORE = 0.6           # 2026-11-02 Open Images 얼굴 500장: 0.6 정밀도 0.875·재현율 0.808 (0.7 은 0.910·0.780). 놓침이 더 나빠 0.6
 FACE_SCALES = (1600, 640)     # 긴 변을 이만큼으로 줄여 두 번. 작은 얼굴과 큰 얼굴을 다 받으려고
 CARD_CONTEXT_EM = 4.0         # 얼굴 높이의 이 배수 안에 카드 단서가 있으면 증명사진
 CARD_WORDS = (kp.CONTEXT_DOCUMENT["student"] + kp.CONTEXT_DOCUMENT["badge"]
@@ -91,22 +92,44 @@ class ObjectBox:
     score: float
 
 
+def _unrotate(rot: int, W: int, H: int, x0: float, y0: float, x1: float, y1: float):
+    """반시계 rot 도 돌린 사진(원래 W×H)의 상자를 원래 좌표로."""
+    if rot == 90:      # 반시계 90: 원래 (x, y) → (y, W - x)
+        return W - y1, x0, W - y0, x1
+    if rot == 270:     # 시계 90: 원래 (x, y) → (H - y, x)
+        return y0, H - x1, y1, H - x0
+    if rot == 180:
+        return W - x1, H - y1, W - x0, H - y0
+    return x0, y0, x1, y1
+
+
+_TRANSPOSE = {90: Image.ROTATE_90, 180: Image.ROTATE_180, 270: Image.ROTATE_270}
+
+
 class FaceDetector:
+    """rotations: 누운 사진(회전 정보가 지워진 사진, 기울여 찍은 신분증)도 찾게 90·270도로도 찾는다.
+
+    2026-11-03 MIDV-2020 가상 신분증 사진 300장: 그대로 재현율 0.76, 90도 누우면 0.14.
+    PL_FACE_ROTATE=0 으로 끈다(얼굴 검출 시간 약 3배)."""
     name = "yunet"
 
-    def __init__(self, model: Path):
+    def __init__(self, model: Path, score: float | None = None, rotations: tuple[int, ...] | None = None):
         import cv2
         if not hasattr(cv2, "FaceDetectorYN"):
             raise RuntimeError("OpenCV 4.5.4 이상이 필요합니다(FaceDetectorYN)")
         self._cv2 = cv2
-        self._det = cv2.FaceDetectorYN.create(str(model), "", (320, 320), FACE_SCORE, 0.3, 5000)
+        self.score = FACE_SCORE if score is None else score
+        if rotations is None:
+            rotations = (0,) if os.environ.get("PL_FACE_ROTATE", "1") == "0" else (0, 90, 270)
+        self.rotations = rotations
+        self._det = cv2.FaceDetectorYN.create(str(model), "", (320, 320), self.score, 0.3, 5000)
         self._lock = threading.Lock()
 
-    def detect(self, image: Image.Image) -> list[ObjectBox]:
+    def _once(self, rgb: Image.Image) -> list[tuple[float, float, float, float, float]]:
         cv2 = self._cv2
-        bgr = cv2.cvtColor(np.asarray(image.convert("RGB")), cv2.COLOR_RGB2BGR)
+        bgr = cv2.cvtColor(np.asarray(rgb), cv2.COLOR_RGB2BGR)
         H, W = bgr.shape[:2]
-        found: list[ObjectBox] = []
+        out = []
         for side in FACE_SCALES:
             s = min(1.0, side / max(W, H))
             img = bgr if s == 1.0 else cv2.resize(bgr, (max(1, int(W * s)), max(1, int(H * s))),
@@ -116,28 +139,56 @@ class FaceDetector:
                 _, faces = self._det.detect(img)
             for f in (faces if faces is not None else []):
                 x, y, w, h = (float(v) / s for v in f[:4])
-                box = Box(max(0, int(x)), max(0, int(y)), int(min(w, W - x)), int(min(h, H - y)))
-                if box.w > 2 and box.h > 2:
-                    found.append(ObjectBox("face", box, float(f[-1])))
+                out.append((float(f[-1]), x, y, x + w, y + h))
             if s == 1.0:
                 break  # 원본이 이미 작으면 한 번이면 된다
+        return out
+
+    def detect(self, image: Image.Image) -> list[ObjectBox]:
+        rgb = image.convert("RGB")
+        W, H = rgb.size
+        found: list[ObjectBox] = []
+        for rot in self.rotations:
+            img = rgb if rot == 0 else rgb.transpose(_TRANSPOSE[rot])
+            for p, *xy in self._once(img):
+                x0, y0, x1, y1 = _unrotate(rot, W, H, *xy)
+                x0, y0, x1, y1 = max(0, x0), max(0, y0), min(W, x1), min(H, y1)
+                box = Box(int(x0), int(y0), int(x1 - x0), int(y1 - y0))
+                if box.w > 2 and box.h > 2:
+                    found.append(ObjectBox("face", box, p))
         return _nms(found, 0.4)
 
 
 class PlateDetector:
-    def __init__(self, model: Path):
+    """rotations: 0 외에 90·270 도 돌려서도 찾는다(회전 정보가 지워진 누운 사진용). 기본 켬, PL_PLATE_ROTATE=0 으로 끈다.
+
+    2026-11-03 한국 주차장 평가: 누운 사진에서 재현율 0.15~0.2 → 돌려 보면 0.55~0.6."""
+
+    def __init__(self, model: Path, conf: float | None = None, rotations: tuple[int, ...] | None = None):
         from ultralytics import YOLO
         self.model = YOLO(str(model), task="detect")
+        self.conf = PLATE_CONF if conf is None else conf
+        if rotations is None:
+            rotations = (0,) if os.environ.get("PL_PLATE_ROTATE", "1") == "0" else (0, 90, 270)
+        self.rotations = rotations
         self.name = f"plate:{model.name}"
         self._lock = threading.Lock()
 
-    def detect(self, image: Image.Image) -> list[ObjectBox]:
+    def _once(self, image: Image.Image) -> list[tuple[float, float, float, float, float]]:
         with self._lock:
-            r = self.model.predict(image.convert("RGB"), conf=PLATE_CONF, verbose=False)[0]
+            r = self.model.predict(image, conf=self.conf, verbose=False)[0]
+        return [(float(p), *xy) for p, xy in zip(r.boxes.conf.tolist(), r.boxes.xyxy.tolist())]
+
+    def detect(self, image: Image.Image) -> list[ObjectBox]:
+        rgb = image.convert("RGB")
+        W, H = rgb.size
         out = []
-        for p, (x0, y0, x1, y1) in zip(r.boxes.conf.tolist(), r.boxes.xyxy.tolist()):
-            out.append(ObjectBox("plate", Box(int(x0), int(y0), int(x1 - x0), int(y1 - y0)), float(p)))
-        return out
+        for rot in self.rotations:
+            img = rgb if rot == 0 else rgb.transpose(_TRANSPOSE[rot])
+            for p, *xy in self._once(img):
+                x0, y0, x1, y1 = _unrotate(rot, W, H, *xy)
+                out.append(ObjectBox("plate", Box(int(x0), int(y0), int(x1 - x0), int(y1 - y0)), p))
+        return _nms(out, 0.5) if len(self.rotations) > 1 else out
 
 
 def _iou(a: Box, b: Box) -> float:
@@ -181,11 +232,24 @@ def get_face_detector():
     return _load(f"face:{path}", lambda: FaceDetector(path))
 
 
-def get_plate_detector():
+PLATE_FILE = "plate.onnx"    # 팀 드라이브 objects/plate_vNNN/best.onnx 를 models/plate.onnx 로 두면 자동으로 쓴다
+
+
+def plate_model_path() -> Path | None:
+    """PL_PLATE_MODEL(경로, 또는 off) > models/plate.onnx. 없으면 None."""
     raw = os.environ.get("PL_PLATE_MODEL", "").strip()
-    if not raw:
+    if raw.lower() == "off":
         return None
-    path = Path(raw)
+    if raw:
+        return Path(raw)
+    default = MODELS / PLATE_FILE
+    return default if default.exists() else None
+
+
+def get_plate_detector():
+    path = plate_model_path()
+    if path is None:
+        return None
     return _load(f"plate:{path}", lambda: PlateDetector(path))
 
 
@@ -262,8 +326,9 @@ def status() -> list[str]:
         lines.append(f"얼굴 검출 YuNet ({mode})")
     else:
         lines.append("얼굴 모델 없음 — python -m pipeline.objects download")
-    plate = os.environ.get("PL_PLATE_MODEL", "").strip()
-    lines.append(f"번호판 검출 {Path(plate).name}" if plate else "번호판 검출 꺼짐(PL_PLATE_MODEL 없음)")
+    plate = plate_model_path()
+    lines.append(f"번호판 검출 {plate}" if plate else
+                 f"번호판 검출 꺼짐 — 드라이브 objects/plate_vNNN/best.onnx 를 models/{PLATE_FILE} 로 두면 켜짐")
     return lines
 
 
