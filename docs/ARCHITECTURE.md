@@ -13,6 +13,8 @@
        ▼
   server.py (FastAPI, 무상태)
        ├─ jobqueue.py      OCR 대기열 (순서·번호표·취소·한도)
+       ├─ timing.py        단계별 걸린 시간 기록·추정 (~/.privacy-lens/timing.json, 숫자만)
+       ├─ progress.py      번호표별 단계 계획·남은 시간 (메모리) → /progress SSE
        └─ pipeline/
             ocr.py         Tesseract / PaddleOCR (외곽선 poly 포함)
             detect.py      (선택) YOLO 문서 검출 → 확대 재판독 · 못 읽은 문서 영역 경고
@@ -27,6 +29,7 @@
 ```
 
 DB 는 없습니다. 사진은 요청 처리 함수 안에서만 존재하고, 디스크(임시 파일 포함)·로그에 남기지 않습니다.
+디스크에 남는 것은 처리 단계별 걸린 시간 통계 파일 하나뿐입니다(단계 키와 숫자, D-17).
 
 ## 2. 처리 흐름
 
@@ -44,11 +47,12 @@ DB 는 없습니다. 사진은 요청 처리 함수 안에서만 존재하고, �
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | GET | `/` | 화면 (`web/frontend-demo/privacy-lens.html`) |
-| POST | `/analyze` | `image`, `ticket`, `judge`(개발자 모드 LLM 설정, 선택) → `report` + 미리보기 |
+| POST | `/analyze` | `image`, `ticket`, `judge`(판단 모델 창의 LLM 설정, 선택) → `report` + 미리보기 |
 | POST | `/llm/models` | `judge`(provider·api_key·base_url) → 그 공급자에서 쓸 수 있는 모델 이름 목록. 사진 없음, 대기열 없음 |
 | POST | `/redact/preview` | `image`, `boxes`, `style`(blur·solid) → 가린 축소본. 대기열 없음 |
 | POST | `/redact` | `image`, `boxes`, `style`, `ticket`, `judge` → 가린 JPEG + 재검사 결과(분석과 같은 판단 방법) |
-| GET | `/queue` | 대기열 상태. `ticket` 을 주면 내 차례 |
+| GET | `/queue` | 대기열 상태. `ticket` 을 주면 내 차례와 진행 상태(`progress`) |
+| GET | `/progress` | 번호표의 단계별 진행·남은 시간(SSE). 끝나면 `done` 을 보내고 닫음 |
 | POST | `/queue/cancel` | 기다리던 요청 빼기 |
 
 자세한 필드는 [web/frontend-demo/API_CONTRACT.md](../web/frontend-demo/API_CONTRACT.md). 오류는 `{"detail": …}` 로 400·409·413·503.

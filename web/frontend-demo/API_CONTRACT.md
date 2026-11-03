@@ -11,7 +11,7 @@
 
 ## POST /analyze
 
-multipart: `image`(원본 파일), `ticket`(번호표, 선택), `judge`(개발자 모드 판단 설정, 선택).
+multipart: `image`(원본 파일), `ticket`(번호표, 선택), `judge`(판단 모델 창의 설정, 선택).
 
 - 판정은 '문맥·결합' 하나입니다. 예전 `mode`(`baseline` | `naive`)는 화면·서버에서 뺐고, 비교 실험(`eval`)에서만 씁니다.
 - `judge` 가 없거나 `{"provider":"rules"}` 면 규칙 기반 판단입니다. LLM 판단이면 JSON 문자열
@@ -82,7 +82,7 @@ multipart: `image`(원본 파일), `ticket`(번호표, 선택), `judge`(개발�
 
 ## POST /llm/models
 
-multipart: `judge`(JSON 문자열 `{"provider","api_key","base_url"}`, `model` 은 비어도 됨). 개발자 모드의 '목록 불러오기'가 부르고, 받은 이름은 '모델 목록' 선택 칸에 따로 채웁니다(고르면 '직접 입력' 칸에 들어감).
+multipart: `judge`(JSON 문자열 `{"provider","api_key","base_url"}`, `model` 은 비어도 됨). 판단 모델 창의 '목록 불러오기'가 부르고, 받은 이름은 '모델 목록' 선택 칸에 따로 채웁니다(고르면 '직접 입력' 칸에 들어감).
 사진·OCR 원문은 보내지 않고 대기열도 거치지 않습니다.
 
 ```json
@@ -115,7 +115,30 @@ multipart: `image`, `boxes`, `style`, `ticket`(선택), `judge`(선택, 분석 �
 
 - `GET /queue?ticket=…` → `{"running", "waiting", "max_waiting", "avg_s", "engine_ready", "state", "ahead", "eta_s"}`.
   `state` 는 waiting · running · unknown(아직 도착 전).
+  번호표의 진행 상태가 있으면 `progress` 에 아래 SSE 와 같은 객체가 붙습니다(SSE 를 못 쓸 때의 폴링용).
 - `POST /queue/cancel?ticket=…` → `{"cancelled": true|false}`. 화면은 응답을 기다리지 않습니다(keepalive).
+
+## GET /progress (SSE)
+
+`GET /progress?ticket=…` → `text/event-stream`. 분석·저장 요청과 같은 번호표로 엽니다(요청보다 먼저 열어도 됩니다).
+단계·상태가 바뀌면 바로, 아니면 1초마다 보냅니다. 시간은 서버 시계로 잽니다.
+
+```
+event: progress
+data: {"state":"running","current":2,"remaining_s":14.2,"stage_elapsed_s":3.1,"overdue_s":0.0,"elapsed_s":5.4,"total_s":19.6,
+       "stages":[{"key":"decode","label":"사진 열기","state":"done","estimate_s":0.2,"took_s":0.2,"borrowed":false},
+                 {"key":"ocr","label":"글자 읽기","state":"done","estimate_s":2.4,"took_s":2.1,"borrowed":false},
+                 {"key":"judge:llm","label":"LLM 판단","state":"running","estimate_s":15.0,"took_s":null,"borrowed":true}, …]}
+```
+
+- `state`: `uploading`(받는 중) · `waiting`(+ `ahead`, `eta_s`) · `running` · 마지막 이벤트 `done` 의 `done`/`failed`(+ `took_s`).
+- `remaining_s` = 지금 단계 남은 몫 + 뒤 단계 추정의 합. 단계가 시작할 때 실제 크기(메가픽셀·조각 수)로 다시 추정합니다.
+  지금 단계가 추정을 넘기면 그 몫은 0 이고 `overdue_s` 에 넘긴 초가 들어갑니다.
+- 기록이 없는 단계가 있으면 `remaining_s`·`eta_s`·`total_s` 는 `null` 입니다. 화면은 흐른 시간만 보여 줍니다.
+- `borrowed`: 그 모델의 기록이 3건 미만이라 같은 공급자·다른 LLM 기록으로 추정했다는 뜻.
+- `eta_s`(기다리는 중) = 처리 중인 작업의 남은 시간 + 내 앞 작업 각각의 추정 + 내 추정.
+- `event: done` 을 보낸 뒤 서버가 닫습니다. `event: gone` 은 번호표가 30초 안에 나타나지 않았다는 뜻이고, 화면은 `/queue` 폴링으로 돌아갑니다.
+- 단계 이름과 숫자만 보냅니다. 사진·OCR 원문은 없습니다.
 
 ## 오류
 

@@ -27,6 +27,8 @@
 
 ### 이미지 객체 — 학습 전에 공개 모델부터
 
+작업 과정과 결론 요약: [docs/OBJECTS_REPORT.md](../docs/OBJECTS_REPORT.md)
+
 - 얼굴·증명사진: `pipeline/objects.py` 가 OpenCV YuNet 을 그대로 쓴다(학습 없음). `python -m pipeline.objects download`
 - 번호판: `vision/colab_objects.ipynb` 가 공개 YOLO26 번호판 모델(ONNX)과 Open Images 로 직접 학습한 모델을 **같은 검증 사진**으로 비교한다.
   남이 올린 `.pt` 는 pickle 이라 여는 순간 안의 코드가 실행될 수 있으므로 **ONNX 만 받고 커밋·해시를 기록**한다(노트북 2번 칸).

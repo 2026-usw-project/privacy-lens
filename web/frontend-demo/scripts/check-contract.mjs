@@ -179,4 +179,65 @@ await test('judge used by the server is shown',()=>{
   assert.equal(C.fromReport({...report,judge_provider:'??'}).judgeProvider,'rules');
 });
 
+// ---------------------------------------------------------------- 남은 시간(/progress)
+const running={state:'running',current:1,remaining_s:20,stage_elapsed_s:2,overdue_s:0,elapsed_s:3,total_s:25,
+  stages:[{key:'decode',label:'사진 열기',state:'done',estimate_s:.5,took_s:.4,borrowed:false},
+          {key:'judge:llm',label:'LLM 판단',state:'running',estimate_s:18,took_s:null,borrowed:true},
+          {key:'codes',label:'QR·바코드 검사',state:'todo',estimate_s:2,took_s:null,borrowed:false}]};
+await test('progress view counts down from the server value',()=>{
+  const v=C.progressView(running,5);
+  assert.equal(v.remaining,15);assert.equal(v.headline,'약 15초 남음');
+  assert.ok(Math.abs(v.fraction-.4)<1e-9);
+  assert.deepEqual(v.stages.map(s=>s.state),['done','running','todo']);
+  assert.equal(v.stages[0].time,'0.4초');assert.equal(v.stages[1].time,'약 11초 남음');assert.equal(v.stages[2].time,'약 2초');
+  assert.equal(v.detail,'LLM 판단 · 약 11초 남음');assert.equal(v.stages[1].borrowed,true);
+});
+await test('progress view never goes negative and caps the bar',()=>{
+  const v=C.progressView(running,60);
+  assert.equal(v.remaining,0);assert.equal(v.headline,'거의 다 됐어요');assert.equal(v.fraction,.95);
+  assert.equal(v.stages[1].time,'추정보다 44초 늦음');
+});
+await test('no estimate means elapsed time only, no invented number',()=>{
+  const v=C.progressView({...running,remaining_s:null,total_s:null,stages:running.stages.map(s=>({...s,estimate_s:null}))},1);
+  assert.equal(v.remaining,null);assert.equal(v.fraction,null);
+  assert.equal(v.headline,'4초 지남');assert.equal(v.stages[1].time,'3초 지남');assert.equal(v.stages[2].time,'');
+});
+await test('waiting shows place in line and eta',()=>{
+  const v=C.progressView({state:'waiting',ahead:2,eta_s:30,stages:running.stages.map(s=>({...s,state:'todo'}))},10);
+  assert.equal(v.headline,'대기 2건');assert.equal(v.detail,'약 20초 뒤 끝나요');assert.equal(v.fraction,null);
+  assert.equal(C.progressView({state:'waiting',ahead:0,eta_s:null,stages:[]}).detail,'앞 작업을 기다리는 중');
+});
+await test('done, failed and garbage handled',()=>{
+  assert.equal(C.progressView({state:'done',took_s:7.25,stages:[]}).detail,'7.3초 걸림');
+  assert.equal(C.progressView({state:'failed',stages:[]}).headline,'처리하지 못했어요');
+  assert.equal(C.progressView(null),null);
+  assert.equal(C.progressView({state:'running',stages:'x',remaining_s:'9'}).remaining,null);
+  assert.equal(C.hms(125),'2분 05초');
+  const tiny=C.progressView({...running,stages:[...running.stages.slice(0,2),{...running.stages[2],estimate_s:.2}]});
+  assert.equal(tiny.stages[2].time,'1초 미만');
+});
+await test('progress stream: events relayed, closes on done, falls back on failure',()=>{
+  const made=[];
+  class FakeES {
+    constructor(url){this.url=url;this.readyState=0;this.handlers={};this.closed=false;made.push(this);}
+    addEventListener(t,f){this.handlers[t]=f;}
+    close(){this.closed=true;this.readyState=2;}
+    emit(t,data){this.handlers[t]?.({data:data===undefined?undefined:JSON.stringify(data)});}
+  }
+  const got=[];const api=A.client('');
+  const h=api.progress('t 1',(type,data)=>got.push([type,data]),FakeES);
+  const es=made[0];
+  assert.equal(es.url,'/progress?ticket=t%201');
+  es.emit('progress',running);es.emit('done',{state:'done',stages:[]});es.emit('progress',running);
+  assert.deepEqual(got.map(g=>g[0]),['progress','done']);assert.equal(es.closed,true);
+  assert.equal(got[0][1].remaining_s,20);
+  // 열지 못하면 error 로 알리고 닫는다(화면은 폴링으로)
+  got.length=0;api.progress('t2',(type)=>got.push(type),FakeES);
+  made[1].readyState=2;made[1].onerror();assert.deepEqual(got,['error']);
+  got.length=0;api.progress('t3',(type)=>got.push(type),FakeES);made[2].emit('gone');assert.deepEqual(got,['gone']);
+  assert.equal(api.progress('t4',()=>{},undefined),null);
+  assert.equal(api.progress('',()=>{},FakeES),null);
+  h.close();
+});
+
 console.log('\n'+count+' geometry, report and API checks passed.');

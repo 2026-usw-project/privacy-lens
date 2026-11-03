@@ -38,13 +38,15 @@ from pathlib import Path
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
 from starlette.formparsers import MultiPartParser
 
 from jobqueue import Cancelled, QueueFull, WorkQueue
+from progress import ProgressBoard
+from timing import TimingStore, default_path
 
 from pipeline import analyze as pl
 from pipeline import detect, llm_judge, metadata, ocr, redact, wording
@@ -93,6 +95,81 @@ mimetypes.add_type("font/woff2", ".woff2")
 _backend = None
 _backend_lock = threading.Lock()
 
+# 단계별 걸린 시간(남은 시간 추정용). 숫자와 단계 키만 파일에 남긴다(D-17). PL_TIMING=off 면 메모리에만
+TIMING = TimingStore(None if os.environ.get("PL_TIMING", "").lower() == "off" else default_path())
+
+
+# 번호표별 진행 상태(남은 시간). 메모리에만 있다
+BOARD = ProgressBoard(TIMING)
+SSE_POLL_S = 0.5          # 진행 상태를 들여다보는 간격
+SSE_MAX_GAP_S = 1.0       # 바뀐 게 없어도 이만큼마다 보낸다(화면이 시계를 다시 맞추게)
+SSE_UNKNOWN_GIVEUP_S = 30.0  # 번호표가 이만큼 안 나타나면 끝낸다(화면은 /queue 폴링으로 돌아간다)
+
+
+def _peek_megapixels(data: bytes) -> float | None:
+    """헤더만 읽어 크기를 안다. 화소를 풀지 않으므로 '차례가 온 뒤에 디코딩' 원칙은 그대로다."""
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            return img.width * img.height / 1_000_000
+    except Exception:
+        return None
+
+
+def _register(ticket: str, kind: str, data: bytes, cfg) -> str | None:
+    """진행 상태를 만든다. 같은 번호표가 이미 돌고 있으면 그 상태를 덮지 않고 None."""
+    engine = _backend
+    ocr_key = pl.ocr_key(engine) if engine is not None else "ocr:" + os.environ.get("PL_OCR", "paddleocr").lower()
+    ok = BOARD.register(ticket, kind, ocr_key=ocr_key, judge_key=pl.judge_key(cfg),
+                        megapixels=_peek_megapixels(data),
+                        detector=isinstance(detect._loaded, detect.YoloDetector))
+    return ticket if ok else None
+
+
+def _on_stage(engine, ticket: str | None):
+    """analyze 의 on_stage: 시간 기록 + 진행 상태."""
+    record = _recorder(engine)
+
+    def on_stage(event: str, name: str, units: float, seconds: float | None) -> None:
+        record(event, name, units, seconds)
+        BOARD.stage(ticket, event, name, units)
+
+    return on_stage
+
+
+def _recorder(engine):
+    """analyze 의 on_stage 콜백. 끝난 단계의 시간을 기록한다.
+
+    엔진이 아직 준비되지 않았으면 이번 OCR 은 엔진을 만드는 시간까지 먹으므로 OCR 기록에서 뺀다.
+    """
+    warm = getattr(engine, "ready", True)
+
+    def on_stage(event: str, name: str, units: float, seconds: float | None) -> None:
+        if event != "end" or seconds is None:
+            return
+        if name.startswith("ocr") and not warm:
+            return
+        TIMING.record(name, units, seconds)
+
+    return on_stage
+
+
+class _Timed:
+    """서버에서 직접 재는 단계(사진 열기·가리기·파일 만들기). 진행 상태에도 알린다."""
+
+    def __init__(self, name: str, ticket: str | None = None, units: float | None = None):
+        self.name, self.ticket, self.units = name, ticket, units
+
+    def __enter__(self) -> "_Timed":
+        BOARD.stage(self.ticket, "start", self.name, self.units)
+        self.started = time.perf_counter()
+        return self
+
+    def __exit__(self, exc_type, *_):
+        if exc_type is None:
+            TIMING.record(self.name, self.units or 0.0, time.perf_counter() - self.started)
+            BOARD.stage(self.ticket, "end", self.name, self.units)
+        return False
+
 
 def backend():
     # 요청이 스레드풀에서 동시에 들어와도 엔진은 하나만 만든다.
@@ -131,6 +208,7 @@ async def _lifespan(_app: FastAPI):
         # 준비 중에 종료해도 전용 스레드를 남기지 않는다.
         await asyncio.to_thread(warmup.join)
         await asyncio.to_thread(_close_backend)
+        await asyncio.to_thread(TIMING.flush)
 
 
 app = FastAPI(title="Privacy Lens", lifespan=_lifespan)
@@ -322,7 +400,56 @@ async def queue_status(ticket: str | None = None):
     """대기열 상태. 번호표를 주면 내 앞에 몇 건인지도 알려준다."""
     out = QUEUE.status(ticket)
     out["engine_ready"] = _backend is not None
+    if ticket:
+        running, waiting = QUEUE.order()
+        snap = BOARD.snapshot(ticket, running=running, waiting=waiting)
+        if snap is not None:
+            out["progress"] = snap  # SSE 를 못 쓰는 환경의 폴링도 같은 남은 시간을 받는다
     return out
+
+
+@app.get("/progress")
+async def progress_stream(ticket: str, request: Request):
+    """번호표의 진행 상태를 SSE 로 보낸다. 단계가 바뀌면 바로, 아니면 1초마다.
+
+    event: progress  data: {state, stages[], remaining_s, stage_elapsed_s, overdue_s, eta_s, ahead …}
+    event: done      data: 같은 형식(state 가 done 또는 failed). 보낸 뒤 연결을 닫는다
+    event: gone      번호표가 30초 안에 나타나지 않음. 화면은 /queue 폴링으로 돌아간다
+    단계 이름과 숫자만 보낸다. 사진·원문은 없다. 스레드풀을 쓰지 않는다(async).
+    """
+    t = _ticket(ticket)
+
+    def frame(event: str, data: dict) -> str:
+        return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+    async def events():
+        yield "retry: 2000\n\n"
+        first_seen = time.monotonic()
+        last_shape, last_sent = None, 0.0
+        while True:
+            if await request.is_disconnected():
+                return
+            running, waiting = QUEUE.order()
+            snap = BOARD.snapshot(t, running=running, waiting=waiting)
+            now = time.monotonic()
+            if snap is None:
+                if now - first_seen > SSE_UNKNOWN_GIVEUP_S:
+                    yield frame("gone", {})
+                    return
+            elif snap["state"] in ("done", "failed"):
+                yield frame("done", snap)
+                return
+            else:
+                # 시간 값만 바뀐 것은 1초마다, 단계·상태가 바뀐 것은 바로 보낸다
+                shape = json.dumps([snap["state"], snap.get("current"), snap.get("ahead"),
+                                    [s["state"] for s in snap["stages"]], [s["estimate_s"] for s in snap["stages"]]])
+                if shape != last_shape or now - last_sent >= SSE_MAX_GAP_S:
+                    yield frame("progress", snap)
+                    last_shape, last_sent = shape, now
+            await asyncio.sleep(SSE_POLL_S)
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.post("/queue/cancel")
@@ -346,7 +473,7 @@ async def llm_failed(request: Request, exc: llm_judge.LlmJudgeError):
 
 
 def _judge(raw: str | None) -> llm_judge.JudgeConfig | None:
-    """개발자 모드의 판단 설정. 비었으면 규칙 기반. 키는 이 요청에서만 쓰고 저장하지 않는다."""
+    """판단 모델 창의 판단 설정. 비었으면 규칙 기반. 키는 이 요청에서만 쓰고 저장하지 않는다."""
     try:
         return llm_judge.parse_config(raw)
     except ValueError as exc:
@@ -355,7 +482,7 @@ def _judge(raw: str | None) -> llm_judge.JudgeConfig | None:
 
 @app.post("/llm/models")
 def llm_models(judge: str = Form(...)):
-    """개발자 모드: 고른 공급자에서 쓸 수 있는 모델 이름 목록. 키는 본문으로 받아 이 요청에서만 쓴다.
+    """판단 모델 창: 고른 공급자에서 쓸 수 있는 모델 이름 목록. 키는 본문으로 받아 이 요청에서만 쓴다.
 
     OCR 이 없어 대기열을 거치지 않는다. 사진도 원문도 보내지 않는다.
     """
@@ -378,10 +505,22 @@ def analyze_endpoint(
     # 기다리는 동안에는 받은 바이트만 들고 있는다. 디코딩은 차례가 온 뒤에.
     data = _read(image)
     cfg = _judge(judge)
+    t = _ticket(ticket)
+    live = _register(t, "analyze", data, cfg)
 
-    with _Turn(_ticket(ticket)):
-        img = _open(data)
-        report = pl.analyze(img, backend=backend(), judge=cfg, llm_trace=[] if cfg else None)
+    ok = False
+    try:
+        with _Turn(t):
+            BOARD.begin(live)
+            with _Timed("decode", live) as st:
+                img = _open(data)
+                st.units = pl.megapixels(img)
+            engine = backend()
+            report = pl.analyze(img, backend=engine, judge=cfg, llm_trace=[] if cfg else None,
+                                on_stage=_on_stage(engine, live))
+        ok = True
+    finally:
+        BOARD.finish(live, ok)
     preview, scale = _preview(img)
 
     return JSONResponse({
@@ -426,22 +565,18 @@ def redact_endpoint(
     style = _style(style)
     data = _read(image)
     cfg = _judge(judge)  # 가린 결과를 다시 검사할 때도 분석과 같은 판단 방법을 쓴다
+    t = _ticket(ticket)
+    live = _register(t, "redact", data, cfg)
 
-    with _Turn(_ticket(ticket)):
-        img = _open(data)
-        wanted = _parse_boxes(boxes, img.size)
-
-        masked = redact.apply_masks(img, wanted, style)
-        out = redact.export(masked)
-
-        # 원본 전체를 다시 분석하지 않는다. 검증에 필요한 건 '원본에 위치정보가
-        # 있었는가' 뿐이고, 그건 EXIF 만 읽으면 된다. OCR 은 결과 파일에 한 번만.
-        had_gps = bool(metadata.check_exif(img))
-        trace: list = []
-        check = redact.verify(
-            wanted, out, lambda im: pl.analyze(im, backend=backend(), judge=cfg,
-                                               llm_trace=trace if cfg else None), had_gps=had_gps
-        )
+    ok = False
+    try:
+        with _Turn(t):
+            BOARD.begin(live)
+            out, check = _redact_turn(data, boxes, style, cfg, live)
+        ok = True
+    finally:
+        BOARD.finish(live, ok)
+    trace = check.pop("_trace", [])
 
     return JSONResponse({
         "file": base64.b64encode(out).decode(),
@@ -449,6 +584,32 @@ def redact_endpoint(
         "bytes": len(out),
         **({"llm_trace": trace} if trace else {}),
     })
+
+
+def _redact_turn(data: bytes, boxes: str, style: str, cfg, live: str | None) -> tuple[bytes, dict]:
+    """/redact 의 차례가 온 뒤의 일. 가리고, 파일을 만들고, 그 파일을 다시 검사한다."""
+    with _Timed("decode", live) as st:
+        img = _open(data)
+        st.units = pl.megapixels(img)
+    wanted = _parse_boxes(boxes, img.size)
+    mp = pl.megapixels(img)
+
+    with _Timed("mask", live, mp):
+        masked = redact.apply_masks(img, wanted, style)
+    with _Timed("export", live, mp):
+        out = redact.export(masked)
+
+    # 원본 전체를 다시 분석하지 않는다. 검증에 필요한 건 '원본에 위치정보가
+    # 있었는가' 뿐이고, 그건 EXIF 만 읽으면 된다. OCR 은 결과 파일에 한 번만.
+    had_gps = bool(metadata.check_exif(img))
+    trace: list = []
+    engine = backend()
+    check = redact.verify(
+        wanted, out, lambda im: pl.analyze(im, backend=engine, judge=cfg, llm_trace=trace if cfg else None,
+                                           on_stage=_on_stage(engine, live)), had_gps=had_gps
+    )
+    check["_trace"] = trace
+    return out, check
 
 
 if __name__ == "__main__":

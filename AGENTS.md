@@ -30,7 +30,7 @@ Privacy Lens — 사진을 SNS·중고거래에 올리기 전에 배경의 개�
 - **브랜치와 PR**: `main`에 직접 push하지 않습니다. `feat/<모듈>-<내용>` 브랜치에서 작업하고 PR을 올려 리뷰 1인 승인을 받은 뒤 merge합니다.
 - **좌표**: EXIF 방향 보정 후 원본 픽셀 기준의 `{x, y, w, h}`, 기울어진 글자는 `poly` 를 덧붙입니다.
 - **출력 문구**: 사용자에게 나가는 문장은 `pipeline/wording.py` 에서만 만듭니다. 단정 표현은 `assert_safe()` 가 막습니다.
-- **개인정보**: 실사 이미지, OCR 원문, 실제 개인정보를 커밋·로그·외부 API로 내보내지 않습니다. 샘플과 정답에는 가상 정보만 씁니다. 서버는 업로드를 디스크에 쓰지 않습니다. 예외는 개발자 모드의 클라우드 LLM 판단 하나뿐이며(D-15), 가상 사진에만 씁니다. API 키는 브라우저에만 두고 서버·로그·저장소에 남기지 않습니다.
+- **개인정보**: 실사 이미지, OCR 원문, 실제 개인정보를 커밋·로그·외부 API로 내보내지 않습니다. 샘플과 정답에는 가상 정보만 씁니다. 서버는 업로드를 디스크에 쓰지 않습니다. 예외는 '판단 모델' 창에서 고른 클라우드 LLM 판단 하나뿐이며(D-15), 가상 사진에만 씁니다. API 키는 브라우저에만 두고 서버·로그·저장소에 남기지 않습니다.
 - **측정**: 성능 수치는 측정한 것만 씁니다. 합성 샘플 숫자는 실사로 다시 재야 한다고 함께 적습니다.
 - **판단 규칙을 고치면** `python -m eval.judgment --check` 를 통과해야 합니다. 좋아졌으면 `--update` 로 `eval/baselines/judgment.json` 을 갱신해 같이 커밋합니다. 놓친 사례를 고칠 때는 먼저 `eval/judgment.py` 에 같은 유형의 가상 장면을 넣고 고칩니다.
 - **실사 평가 사진·정답·`평가기록.csv`** 는 팀 드라이브 `PrivacyLens-Eval/` 에만 둡니다. `eval.failures --show-text` 출력은 공유하지 않습니다.
@@ -46,6 +46,7 @@ python -m pytest tests                     # 백엔드 테스트 (OCR 불필요)
 python -m eval.judgment --check            # 판단 회귀 검사(OCR 불필요, CI 와 같음)
 python -m eval.failures run <폴더>          # 실사 실패 원인 분류(사진은 드라이브)
 python -m eval.stability [--quick]         # 이상한 입력·연속 30장·동시 요청 점검
+python -m eval.workers                     # OCR 작업자(엔진) 수에 따른 처리량·지연·메모리
 python -m eval.names_check                 # 라벨 없는 이름 후보 판정(따로 모은 목록)
 python -m eval.ner_compare --engine rules kiwi hf   # 이름 찾기 규칙 vs NER(hf 는 Colab)
 python -m samples.props <폴더>              # 촬영용 가상 소품 + 정답
