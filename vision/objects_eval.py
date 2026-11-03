@@ -176,3 +176,41 @@ def size_report(samples, *, thr: float = 0.4) -> str:
     rows = sweep(samples, [0.3, 0.4, 0.5])
     return table(rows) + "\n크기별 재현율: " + ", ".join(
         f"{r['size']} {r['recall']}({r['total']})" for r in recall_by_size(samples, thr=thr))
+
+
+def split_orientation(pairs: list[tuple[Path, Path]]) -> tuple[list, list]:
+    """사진을 (바로 선 것, 옆으로 누운 것)으로 나눈다. 번호판 상자가 세로로 길면 사진이 90도 누운 것으로 본다.
+
+    hyunjin 평가 사진 207장 중 일부는 휴대폰 회전 정보(EXIF)가 빠진 채 누워 있다(2026-11-03 확인:
+    EXIF 회전 정보 0장, 번호판 259개 중 75개가 세로로 김). 서비스는 EXIF 를 적용하므로 이런 사진은 바로 서서 들어온다."""
+    from PIL import Image
+    up, side = [], []
+    for img, lab in pairs:
+        W, H = Image.open(img).size
+        gts = yolo_labels(lab, W, H)
+        (side if any(g.box.h > g.box.w for g in gts) else up).append((img, lab))
+    return up, side
+
+
+def rotate_pairs(pairs: list[tuple[Path, Path]], out: Path, *, clockwise: bool = True) -> list[tuple[Path, Path]]:
+    """사진과 YOLO 라벨을 함께 90도 돌려 out/images, out/labels 에 쓴다."""
+    from PIL import Image
+    (out / "images").mkdir(parents=True, exist_ok=True)
+    (out / "labels").mkdir(parents=True, exist_ok=True)
+    res = []
+    for img, lab in pairs:
+        im = Image.open(img)
+        im = im.transpose(Image.ROTATE_270 if clockwise else Image.ROTATE_90)
+        lines = []
+        for line in (lab.read_text().splitlines() if lab.exists() else []):
+            p = line.split()
+            if len(p) < 5:
+                continue
+            cx, cy, w, h = map(float, p[1:5])
+            ncx, ncy = (1 - cy, cx) if clockwise else (cy, 1 - cx)
+            lines.append(f"{p[0]} {ncx:.6f} {ncy:.6f} {h:.6f} {w:.6f}")
+        ni, nl = out / "images" / img.name, out / "labels" / (img.stem + ".txt")
+        im.save(ni)
+        nl.write_text("\n".join(lines) + ("\n" if lines else ""))
+        res.append((ni, nl))
+    return res

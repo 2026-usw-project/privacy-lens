@@ -48,3 +48,20 @@ def test_recall_by_size():
     preds = [Pred(Box(100, 0, 40, 40), 0.9)]
     r = recall_by_size([(gts, preds)], thr=0.5, bins=(0, 16, 1000))
     assert [(x["total"], x["recall"]) for x in r] == [(1, 0.0), (1, 1.0)]
+
+
+def test_split_and_rotate(tmp_path: Path):
+    from PIL import Image
+    from vision.objects_eval import rotate_pairs, split_orientation
+    img = tmp_path / "images" / "a.jpg"; img.parent.mkdir()
+    lab = tmp_path / "labels" / "a.txt"; lab.parent.mkdir()
+    Image.new("RGB", (200, 100)).save(img)
+    lab.write_text("0 0.25 0.5 0.05 0.4\n")          # 세로로 긴 번호판(10x40px) → 누운 사진
+    up, side = split_orientation([(img, lab)])
+    assert up == [] and len(side) == 1
+    (ni, nl), = rotate_pairs(side, tmp_path / "rot", clockwise=True)
+    assert Image.open(ni).size == (100, 200)
+    g, = yolo_labels(nl, 100, 200)
+    assert g.box.w > g.box.h                          # 돌리면 가로로 긴 번호판
+    # 시계 방향: (x, y) → (H - y, x). 중심 (50, 50) → (50, 50)
+    assert abs((g.box.x + g.box.w / 2) - 50) <= 1 and abs((g.box.y + g.box.h / 2) - 50) <= 1
