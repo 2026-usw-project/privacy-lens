@@ -40,3 +40,11 @@ def test_roboflow_originals_keeps_one_per_source():
     p = [(Path(f"train/images/IMG_1_jpg.rf.{h}.jpg"), Path("x")) for h in ("aa", "bb", "cc")]
     p.append((Path("valid/images/IMG_2_jpg.rf.dd.jpg"), Path("y")))
     assert [i.name for i, _ in roboflow_originals(p)] == ["IMG_1_jpg.rf.aa.jpg", "IMG_2_jpg.rf.dd.jpg"]
+
+
+def test_recall_by_size():
+    from vision.objects_eval import recall_by_size
+    gts = [GT(Box(0, 0, 10, 10)), GT(Box(100, 0, 40, 40))]
+    preds = [Pred(Box(100, 0, 40, 40), 0.9)]
+    r = recall_by_size([(gts, preds)], thr=0.5, bins=(0, 16, 1000))
+    assert [(x["total"], x["recall"]) for x in r] == [(1, 0.0), (1, 1.0)]

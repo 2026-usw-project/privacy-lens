@@ -135,3 +135,21 @@ def roboflow_originals(pairs: list[tuple[Path, Path]]) -> list[tuple[Path, Path]
             seen.add(key)
             out.append((img, lab))
     return out
+
+
+def recall_by_size(samples: list[tuple[list[GT], list[Pred]]], *, thr: float,
+                   bins=(0, 16, 32, 64, 10**9)) -> list[dict]:
+    """정답 상자의 짧은 변 크기 구간별 재현율. 작은 것을 놓치는지 본다."""
+    rows = []
+    for lo, hi in zip(bins, bins[1:]):
+        hit = tot = 0
+        for gts, preds in samples:
+            ps = [p for p in preds if p.score >= thr]
+            for g in gts:
+                if g.ignore or not (lo <= min(g.box.w, g.box.h) < hi):
+                    continue
+                tot += 1
+                hit += any(_iou(p.box, g.box) >= IOU for p in ps)
+        rows.append({"size": f"{lo}~{hi if hi < 10**9 else ''}px", "total": tot,
+                     "recall": round(hit / tot, 4) if tot else None})
+    return rows
