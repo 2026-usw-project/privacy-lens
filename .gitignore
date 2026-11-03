@@ -12,9 +12,10 @@ dist/
 # 화면 소스는 dist 에 있다(빌드 결과가 아니라 편집 원본)
 !web/frontend-demo/dist/
 
-# 모델 가중치
+# 모델 가중치. models/ 는 드라이브에서 받아 두는 곳(metrics.json 포함, 저장소에 올리지 않음)
 *.pt
 *.onnx
+/models/
 runs/
 weights/
 
