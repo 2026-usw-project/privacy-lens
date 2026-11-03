@@ -28,7 +28,7 @@ from pipeline import analyze, ocr  # noqa: E402
 from pipeline.types import Severity  # noqa: E402
 from samples.make_sample import make_waybill, place_on_desk  # noqa: E402
 
-ANGLES = (0, 15, 30, 45, 60, 90, 180, 270)
+ANGLES = (0, 15, 30, 45, 60, 90, 135, 180, 270)
 
 
 def _digits(s: str) -> str:
