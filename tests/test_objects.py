@@ -128,3 +128,24 @@ def test_plate_detector_rotations_map_back_to_original():
     for rot in ((90,), (270,), (0, 90, 270)):
         (o,) = Fake(rot).detect(im)
         assert (o.box.x, o.box.y, o.box.w, o.box.h) == (40, 120, 61, 21)
+
+
+def test_face_detector_rotations_map_back():
+    import threading
+    import numpy as np
+    from PIL import ImageDraw
+
+    im = Image.new("RGB", (300, 200))
+    ImageDraw.Draw(im).rectangle([40, 120, 100, 140], fill=(255, 255, 255))
+
+    class Fake(objects.FaceDetector):
+        def __init__(self, rotations):
+            self.rotations, self._lock = rotations, threading.Lock()
+
+        def _once(self, img):
+            ys, xs = np.where(np.asarray(img)[:, :, 0] > 128)
+            return [(0.9, xs.min(), ys.min(), xs.max() + 1, ys.max() + 1)]
+
+    for rot in ((90,), (180,), (270,), (0, 90, 270)):
+        (o,) = Fake(rot).detect(im)
+        assert (o.box.x, o.box.y, o.box.w, o.box.h) == (40, 120, 61, 21), rot

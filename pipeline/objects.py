@@ -92,23 +92,44 @@ class ObjectBox:
     score: float
 
 
+def _unrotate(rot: int, W: int, H: int, x0: float, y0: float, x1: float, y1: float):
+    """반시계 rot 도 돌린 사진(원래 W×H)의 상자를 원래 좌표로."""
+    if rot == 90:      # 반시계 90: 원래 (x, y) → (y, W - x)
+        return W - y1, x0, W - y0, x1
+    if rot == 270:     # 시계 90: 원래 (x, y) → (H - y, x)
+        return y0, H - x1, y1, H - x0
+    if rot == 180:
+        return W - x1, H - y1, W - x0, H - y0
+    return x0, y0, x1, y1
+
+
+_TRANSPOSE = {90: Image.ROTATE_90, 180: Image.ROTATE_180, 270: Image.ROTATE_270}
+
+
 class FaceDetector:
+    """rotations: 누운 사진(회전 정보가 지워진 사진, 기울여 찍은 신분증)도 찾게 90·270도로도 찾는다.
+
+    2026-11-03 MIDV-2020 가상 신분증 사진 300장: 그대로 재현율 0.76, 90도 누우면 0.14.
+    PL_FACE_ROTATE=0 으로 끈다(얼굴 검출 시간 약 3배)."""
     name = "yunet"
 
-    def __init__(self, model: Path, score: float | None = None):
+    def __init__(self, model: Path, score: float | None = None, rotations: tuple[int, ...] | None = None):
         import cv2
         if not hasattr(cv2, "FaceDetectorYN"):
             raise RuntimeError("OpenCV 4.5.4 이상이 필요합니다(FaceDetectorYN)")
         self._cv2 = cv2
         self.score = FACE_SCORE if score is None else score
+        if rotations is None:
+            rotations = (0,) if os.environ.get("PL_FACE_ROTATE", "1") == "0" else (0, 90, 270)
+        self.rotations = rotations
         self._det = cv2.FaceDetectorYN.create(str(model), "", (320, 320), self.score, 0.3, 5000)
         self._lock = threading.Lock()
 
-    def detect(self, image: Image.Image) -> list[ObjectBox]:
+    def _once(self, rgb: Image.Image) -> list[tuple[float, float, float, float, float]]:
         cv2 = self._cv2
-        bgr = cv2.cvtColor(np.asarray(image.convert("RGB")), cv2.COLOR_RGB2BGR)
+        bgr = cv2.cvtColor(np.asarray(rgb), cv2.COLOR_RGB2BGR)
         H, W = bgr.shape[:2]
-        found: list[ObjectBox] = []
+        out = []
         for side in FACE_SCALES:
             s = min(1.0, side / max(W, H))
             img = bgr if s == 1.0 else cv2.resize(bgr, (max(1, int(W * s)), max(1, int(H * s))),
@@ -118,11 +139,23 @@ class FaceDetector:
                 _, faces = self._det.detect(img)
             for f in (faces if faces is not None else []):
                 x, y, w, h = (float(v) / s for v in f[:4])
-                box = Box(max(0, int(x)), max(0, int(y)), int(min(w, W - x)), int(min(h, H - y)))
-                if box.w > 2 and box.h > 2:
-                    found.append(ObjectBox("face", box, float(f[-1])))
+                out.append((float(f[-1]), x, y, x + w, y + h))
             if s == 1.0:
                 break  # 원본이 이미 작으면 한 번이면 된다
+        return out
+
+    def detect(self, image: Image.Image) -> list[ObjectBox]:
+        rgb = image.convert("RGB")
+        W, H = rgb.size
+        found: list[ObjectBox] = []
+        for rot in self.rotations:
+            img = rgb if rot == 0 else rgb.transpose(_TRANSPOSE[rot])
+            for p, *xy in self._once(img):
+                x0, y0, x1, y1 = _unrotate(rot, W, H, *xy)
+                x0, y0, x1, y1 = max(0, x0), max(0, y0), min(W, x1), min(H, y1)
+                box = Box(int(x0), int(y0), int(x1 - x0), int(y1 - y0))
+                if box.w > 2 and box.h > 2:
+                    found.append(ObjectBox("face", box, p))
         return _nms(found, 0.4)
 
 
@@ -151,15 +184,9 @@ class PlateDetector:
         W, H = rgb.size
         out = []
         for rot in self.rotations:
-            if rot == 0:
-                img = rgb
-            else:  # PIL rotate 는 반시계. 돌린 사진의 좌표를 원래 사진 좌표로 되돌린다
-                img = rgb.transpose(Image.ROTATE_90 if rot == 90 else Image.ROTATE_270)
-            for p, x0, y0, x1, y1 in self._once(img):
-                if rot == 90:      # 반시계 90: 원래 (x, y) → (y, W - x)
-                    x0, y0, x1, y1 = W - y1, x0, W - y0, x1
-                elif rot == 270:   # 시계 90: 원래 (x, y) → (H - y, x)
-                    x0, y0, x1, y1 = y0, H - x1, y1, H - x0
+            img = rgb if rot == 0 else rgb.transpose(_TRANSPOSE[rot])
+            for p, *xy in self._once(img):
+                x0, y0, x1, y1 = _unrotate(rot, W, H, *xy)
                 out.append(ObjectBox("plate", Box(int(x0), int(y0), int(x1 - x0), int(y1 - y0)), p))
         return _nms(out, 0.5) if len(self.rotations) > 1 else out
 

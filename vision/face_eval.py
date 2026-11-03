@@ -105,15 +105,17 @@ def main(argv=None) -> None:
     limit = int(args[1]) if len(args) > 1 else None   # 문서 종류당 사진 수(빨리 볼 때)
     items = midv_faces(root, limit_per_type=limit)
     print("사진", len(items), flush=True)
-    det = FaceDetector(MODELS / YUNET_FILE, score=0.3)
-    for rot in (False, True):
-        r = evaluate(items, det, rotate=rot)
-        for k, v in r.items():
-            print(f"\n[{'90도 돌림' if rot else '그대로'} {k}] 얼굴 짧은 변 중간값 {v['median_face_px']}px", flush=True)
-            for row in v["rows"]:
-                print(f"  기준 {row['thr']}: 정밀도 {row['precision']} 재현율 {row['recall']} (놓침 {row['fn']}, 오탐 {row['fp']})",
+    scales = tuple(float(x) for x in args[2].split(",")) if len(args) > 2 else (1.0, 0.5, 0.25, 0.125)
+    for rots in ((0,), (0, 90, 270)):
+        det = FaceDetector(MODELS / YUNET_FILE, score=0.3, rotations=rots)
+        for rot in (False, True):
+            r = evaluate(items, det, rotate=rot, scales=scales)
+            for k, v in r.items():
+                print(f"\n[검출 회전 {rots} · 사진 {'90도 누움' if rot else '그대로'} {k}] 얼굴 짧은 변 중간값 {v['median_face_px']}px",
                       flush=True)
-
+                for row in v["rows"]:
+                    print(f"  기준 {row['thr']}: 정밀도 {row['precision']} 재현율 {row['recall']} (놓침 {row['fn']}, 오탐 {row['fp']})",
+                          flush=True)
 
 if __name__ == "__main__":
     main()
