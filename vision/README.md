@@ -65,7 +65,29 @@
 
 - 얼굴 기준을 0.7 → **0.6** 으로 내렸다. F1 은 같고 놓침이 줄어든다(원칙: 놓침이 오탐보다 나쁘다). 기본 모드(card)는 카드 단서가 있어야 알리므로 오탐이 그대로 화면에 나가지 않는다.
 - 번호판은 0.4 가 두 모델 모두 F1 최대라 그대로 둔다. 같은 정밀도(0.94)에서 비교해도 v001 재현율이 높다(0.83 대 0.74).
-- 모두 해외 사진 숫자다. **한국 번호판·실사는 따로 재야 한다.** 결과 파일: 드라이브 `PrivacyLens-YOLO/objects/objects_eval.json`.
+- 모두 해외 사진 숫자다. 한국 번호판은 아래. 결과 파일: 드라이브 `PrivacyLens-YOLO/objects/objects_eval.json`.
+
+#### 한국 번호판 (2026-11-03, 노트북 9번 칸)
+
+데이터(모두 Roboflow Universe, CC BY 4.0, 드라이브 `objects/kr/` 에만 둔다):
+- 평가: [hyunjin/korea-car-license-plate](https://universe.roboflow.com/hyunjin/korea-car-license-plate) — 주차장 실사. 증강 사본을 빼고 원본 **207장, 번호판 259개**. 학습에 쓰지 않는다
+- 학습: [bowontron/license-plate-label](https://universe.roboflow.com/bowontron/license-plate-label) 3,035장 + [korean-car-plat/korea-car-plat](https://universe.roboflow.com/korean-car-plat/korea-car-plat) 1,000장(가까이 찍은 번호판)
+
+v002 = v001 에서 이어 학습(Open Images 2,000 + 한국 3,935장, 9 epoch, 마지막 가중치).
+
+| 확신도 0.4 | 한국 주차장 정밀도·재현율 | Open Images 정밀도·재현율 |
+|---|---|---|
+| 공개 모델 | 0.927 · 0.537 | 0.940 · 0.744 |
+| v001 (해외만 학습) | 0.841 · 0.490 | 0.907 · 0.866 |
+| **v002** | **0.862 · 0.626** | 0.915 · 0.824 |
+
+- **한국 사진에서는 세 모델 모두 재현율이 낮다.** 해외 사진만으로 학습한 v001 은 절반도 못 찾았다. v002 가 가장 낫지만 여전히 37% 를 놓친다.
+- 놓친 이유는 크기가 아니다: 64px 이상 큰 번호판도 v001 은 30% 만 찾았다(v002 69%). 한국 번호판 모양을 모르는 탓으로 보인다.
+  사진을 크게(1280) 넣어도 재현율은 그대로이고 오탐만 늘었다.
+- 학습 검증을 Open Images 로만 해서 best.pt 가 epoch 1(한국 재현율 0.51)로 골라졌다. 마지막 가중치를 쓴다(노트북 고침).
+- v002 는 해외 재현율이 v001 보다 4%p 낮다. 사용자가 한국 사진을 올리므로 **v002 를 기본 후보로 둔다**(D-14·D-16 에서 확정).
+- 다음: 주차장처럼 멀리서 찍은 한국 사진을 학습에 더해야 한다(지금 학습 사진은 가까이 찍은 번호판뿐). 평가 207장은 학습에 섞지 않는다.
+  결과 파일: `objects/objects_eval_kr.json`(v002 는 epoch 1 숫자), `objects/objects_eval_kr_size.json`(크기별·1280·마지막 가중치).
 
 ## 클래스
 
