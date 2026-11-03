@@ -127,20 +127,41 @@ class FaceDetector:
 
 
 class PlateDetector:
-    def __init__(self, model: Path, conf: float | None = None):
+    """rotations: 0 외에 90·270 도 돌려서도 찾는다(회전 정보가 지워진 누운 사진용, PL_PLATE_ROTATE=1).
+
+    2026-11-03 한국 주차장 평가: 누운 사진에서 재현율 0.15~0.2 → 돌려 보면 0.55~0.6."""
+
+    def __init__(self, model: Path, conf: float | None = None, rotations: tuple[int, ...] | None = None):
         from ultralytics import YOLO
         self.model = YOLO(str(model), task="detect")
         self.conf = PLATE_CONF if conf is None else conf
+        if rotations is None:
+            rotations = (0, 90, 270) if os.environ.get("PL_PLATE_ROTATE", "0") == "1" else (0,)
+        self.rotations = rotations
         self.name = f"plate:{model.name}"
         self._lock = threading.Lock()
 
-    def detect(self, image: Image.Image) -> list[ObjectBox]:
+    def _once(self, image: Image.Image) -> list[tuple[float, float, float, float, float]]:
         with self._lock:
-            r = self.model.predict(image.convert("RGB"), conf=self.conf, verbose=False)[0]
+            r = self.model.predict(image, conf=self.conf, verbose=False)[0]
+        return [(float(p), *xy) for p, xy in zip(r.boxes.conf.tolist(), r.boxes.xyxy.tolist())]
+
+    def detect(self, image: Image.Image) -> list[ObjectBox]:
+        rgb = image.convert("RGB")
+        W, H = rgb.size
         out = []
-        for p, (x0, y0, x1, y1) in zip(r.boxes.conf.tolist(), r.boxes.xyxy.tolist()):
-            out.append(ObjectBox("plate", Box(int(x0), int(y0), int(x1 - x0), int(y1 - y0)), float(p)))
-        return out
+        for rot in self.rotations:
+            if rot == 0:
+                img = rgb
+            else:  # PIL rotate 는 반시계. 돌린 사진의 좌표를 원래 사진 좌표로 되돌린다
+                img = rgb.transpose(Image.ROTATE_90 if rot == 90 else Image.ROTATE_270)
+            for p, x0, y0, x1, y1 in self._once(img):
+                if rot == 90:      # 반시계 90: 원래 (x, y) → (y, W - x)
+                    x0, y0, x1, y1 = W - y1, x0, W - y0, x1
+                elif rot == 270:   # 시계 90: 원래 (x, y) → (H - y, x)
+                    x0, y0, x1, y1 = y0, H - x1, y1, H - x0
+                out.append(ObjectBox("plate", Box(int(x0), int(y0), int(x1 - x0), int(y1 - y0)), p))
+        return _nms(out, 0.5) if len(self.rotations) > 1 else out
 
 
 def _iou(a: Box, b: Box) -> float:

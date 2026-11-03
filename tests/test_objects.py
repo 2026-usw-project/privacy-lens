@@ -107,3 +107,24 @@ def test_redact_verify_ignores_object_shapes_inside_selection():
              Finding(kind="plate", box=Box(100, 100, 60, 30), **shape)]
     check = redact.verify(sel, buf.getvalue(), lambda im: Report(800, 600, findings=after), had_gps=False)
     assert check["leaked_count"] == 0
+
+
+def test_plate_detector_rotations_map_back_to_original():
+    import threading
+    import numpy as np
+    from PIL import ImageDraw
+
+    im = Image.new("RGB", (300, 200))
+    ImageDraw.Draw(im).rectangle([40, 120, 100, 140], fill=(255, 255, 255))
+
+    class Fake(objects.PlateDetector):
+        def __init__(self, rotations):
+            self.conf, self.rotations, self._lock = 0.4, rotations, threading.Lock()
+
+        def _once(self, img):  # 흰 상자를 그대로 '찾는' 가짜 모델
+            ys, xs = np.where(np.asarray(img)[:, :, 0] > 128)
+            return [(0.9, xs.min(), ys.min(), xs.max() + 1, ys.max() + 1)]
+
+    for rot in ((90,), (270,), (0, 90, 270)):
+        (o,) = Fake(rot).detect(im)
+        assert (o.box.x, o.box.y, o.box.w, o.box.h) == (40, 120, 61, 21)

@@ -156,9 +156,19 @@ def recall_by_size(samples: list[tuple[list[GT], list[Pred]]], *, thr: float,
 
 
 def predict_plates(model_path, pairs: list[tuple[Path, Path]], *, conf: float = 0.05,
-                   imgsz: int = 640) -> list[tuple[list[GT], list[Pred]]]:
-    """YOLO 번호판 모델로 (정답, 예측) 목록을 만든다. 우리 모델(.pt/.onnx)만 넣는다(남의 .pt 금지)."""
+                   imgsz: int = 640, rotations: tuple[int, ...] | None = None) -> list[tuple[list[GT], list[Pred]]]:
+    """YOLO 번호판 모델로 (정답, 예측) 목록을 만든다. 우리 모델(.pt/.onnx)만 넣는다(남의 .pt 금지).
+
+    rotations 를 주면 서비스와 같은 PlateDetector(돌려 찾기 포함)로 잰다."""
     from PIL import Image
+    if rotations is not None:
+        from pipeline.objects import PlateDetector
+        det = PlateDetector(Path(model_path), conf=conf, rotations=rotations)
+        out = []
+        for img, lab in pairs:
+            im = Image.open(img).convert("RGB")
+            out.append((yolo_labels(lab, *im.size), [Pred(o.box, o.score) for o in det.detect(im)]))
+        return out
     from ultralytics import YOLO
     m = YOLO(str(model_path), task="detect")
     out = []
