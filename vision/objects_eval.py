@@ -214,3 +214,32 @@ def rotate_pairs(pairs: list[tuple[Path, Path]], out: Path, *, clockwise: bool =
         nl.write_text("\n".join(lines) + ("\n" if lines else ""))
         res.append((ni, nl))
     return res
+
+
+def orientation_report(models: dict[str, str], pairs, tmp: Path, *, thr: float = 0.4) -> dict:
+    """바로 선 사진 / 누운 사진(그대로) / 누운 사진을 바로 세운 것(두 방향 중 정답 상자가 가로로 길어지는 쪽).
+
+    서비스는 EXIF 회전을 적용하므로 '바로 선 사진 + 바로 세운 사진'이 실제 사용에 가깝다.
+    '누운 사진 그대로'는 회전 정보가 지워진 사진(메신저 등)에 대한 견딜성이다."""
+    up, side = split_orientation(pairs)
+    fixed = rotate_pairs(side, Path(tmp) / "cw", clockwise=True)
+    # 돌린 뒤에도 세로로 긴 번호판이 많으면 반대 방향이 맞다(정답 상자 모양으로만 정한다. 정답 위치는 그대로)
+    from PIL import Image
+    def tall(ps):
+        n = 0
+        for i, l in ps:
+            W, H = Image.open(i).size
+            n += sum(g.box.h > g.box.w for g in yolo_labels(l, W, H))
+        return n
+    if tall(fixed) > 0:
+        fixed = rotate_pairs(side, Path(tmp) / "ccw", clockwise=False) if tall(
+            rotate_pairs(side, Path(tmp) / "ccw", clockwise=False)) < tall(fixed) else fixed
+    out = {"counts": {"upright": len(up), "sideways": len(side)}}
+    for name, path in models.items():
+        row = {}
+        for key, ps in (("upright", up), ("sideways_raw", side), ("sideways_fixed", fixed),
+                        ("all_fixed", up + fixed)):
+            r = sweep(predict_plates(path, ps), [thr])[0] if ps else None
+            row[key] = r and {"precision": r["precision"], "recall": r["recall"], "tp": r["tp"], "fn": r["fn"], "fp": r["fp"]}
+        out[name] = row
+    return out
