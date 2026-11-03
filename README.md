@@ -309,6 +309,7 @@ python -m eval.rotation
 | `PL_FACES` | `card` | 얼굴 검출(YuNet). `card`(증명사진만) · `all`(모든 얼굴 검토 권장) · `off`. 모델은 `python -m pipeline.objects download` 로 받습니다. [D-17](docs/DECISIONS.md) |
 | `PL_PLATE_MODEL` | `models/plate.onnx` 가 있으면 그것 | 번호판 검출 모델 경로(.onnx 권장), `off` 면 끔. 모델이 없으면 번호판 영역 검출을 하지 않습니다(글자는 OCR 이 읽음). 받는 법은 `vision/README.md` |
 | `PL_PLATE_ROTATE` | `1` | 번호판을 90·270도 돌린 사진에서도 찾습니다(회전 정보가 지워진 누운 사진용, 번호판 검출 시간 약 3배). `0` 이면 끔 |
+| `PL_FACE_ROTATE` | `1` | 얼굴(증명사진)을 90·270도 돌린 사진에서도 찾습니다(얼굴 검출 시간 약 3배). `0` 이면 끔 |
 | `PL_QUEUE_MAX` | `12` | 최대 대기 요청 수. 초과 시 HTTP 503을 반환합니다. |
 | `PORT` | `8000` | 서버 포트 |
 
