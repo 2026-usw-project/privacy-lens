@@ -137,8 +137,30 @@ def miss_grid(samples, pairs, *, thr: float = 0.4, limit: int = 48, cell: int = 
     return grid
 
 
+def rotated_copies(roots: list[Path], out: Path, *, frac: float = 0.3, seed: int = 0) -> int:
+    """학습 사진의 일부(frac)를 시계·반시계 90도로 돌린 사본을 out/images/train 에 만든다.
+
+    돌려 찾기(PL_PLATE_ROTATE)를 하지 않아도 누운 사진에서 찾게 하려는 학습용 증강."""
+    from vision.objects_eval import rotate_pairs
+    rng = random.Random(seed)
+    pairs = [p for r in roots for p in yolo_pairs(Path(r))]
+    pick = [p for p in pairs if rng.random() < frac]
+    cw = [p for p in pick if rng.random() < 0.5]
+    ccw = [p for p in pick if p not in cw]
+    tmp = Path(out)
+    n = len(rotate_pairs(cw, tmp / "cw_tmp", clockwise=True)) + len(rotate_pairs(ccw, tmp / "ccw_tmp", clockwise=False))
+    (tmp / "images" / "train").mkdir(parents=True, exist_ok=True)
+    (tmp / "labels" / "train").mkdir(parents=True, exist_ok=True)
+    for d in ("cw_tmp", "ccw_tmp"):
+        for f in (tmp / d / "images").glob("*"):
+            f.rename(tmp / "images" / "train" / f"{d[:2]}_{f.name}")
+        for f in (tmp / d / "labels").glob("*"):
+            f.rename(tmp / "labels" / "train" / f"{d[:2]}_{f.name}")
+    return n
+
+
 def train_next(*, base: str, oi_root: str, synth_root: str, kr_dirs: list[str], out_dir: str,
-               epochs: int = 20, name: str = "plate_v003") -> str:
+               epochs: int = 20, name: str = "plate_v003", extra_train: list[str] = ()) -> str:
     """이어 학습. 검증은 Open Images 검증 + 한국 데이터의 test 분할(학습에 안 씀).
 
     조기 종료를 끄고 마지막 가중치를 쓴다(v002 에서 해외 검증만으로 고른 best 가 한국에서 나빴다)."""
@@ -147,7 +169,7 @@ def train_next(*, base: str, oi_root: str, synth_root: str, kr_dirs: list[str], 
 
     import yaml
     from ultralytics import YOLO
-    trains = [f"{oi_root}/images/train", f"{synth_root}/images/train"]
+    trains = [f"{oi_root}/images/train", f"{synth_root}/images/train", *extra_train]
     vals = [f"{oi_root}/images/val"]
     for d in kr_dirs:
         for p in glob.glob(f"{d}/*/images"):

@@ -39,3 +39,19 @@ def test_miss_grid(tmp_path: Path):
     samples = [([GT(Box(10, 10, 40, 10)), GT(Box(100, 100, 40, 10))], [Pred(Box(10, 10, 40, 10), 0.9)])]
     g = ps.miss_grid(samples, [(p, p)], cell=50)
     assert g.size == (400, 50)
+
+
+def test_rotated_copies(tmp_path: Path):
+    src = tmp_path / "src"
+    _yolo(src, "a", (300, 200), [(40, 120, 61, 21)], (0, 0, 0))
+    _yolo(src, "b", (300, 200), [(40, 120, 61, 21)], (0, 0, 0))
+    out = tmp_path / "rot"
+    assert ps.rotated_copies([src], out, frac=1.0) == 2
+    from vision.objects_eval import yolo_labels
+    imgs = sorted((out / "images" / "train").glob("*"))
+    assert len(imgs) == 2
+    for i in imgs:
+        im = Image.open(i)
+        assert im.size == (200, 300)
+        (g,) = yolo_labels(out / "labels" / "train" / (i.stem + ".txt"), *im.size)
+        assert g.box.h > g.box.w
