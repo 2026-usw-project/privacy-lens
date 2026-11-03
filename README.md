@@ -137,6 +137,61 @@ PL_OCR=tesseract python run.py
 
 </details>
 
+### 모델 받기·적용 (선택)
+
+모델이 없어도 OCR·판단·가림은 그대로 동작합니다. 아래 모델을 두면 글자가 아닌 것(문서·카드 영역, 증명사진, 번호판)도 찾습니다.
+가중치는 저장소에 올리지 않고 팀 구글 드라이브 `PrivacyLens-YOLO` 에만 둡니다(`models/` 폴더는 git 이 무시합니다).
+
+| 모델 | 받을 곳 | 저장소에 둘 곳 | 서버가 쓰는 방법 |
+|---|---|---|---|
+| 얼굴·증명사진(YuNet) | OpenCV 공식 저장소 | `models/face_detection_yunet_2023mar.onnx` | 아래 `download` 명령이 받고 SHA-256 을 확인합니다 |
+| 번호판 | 드라이브 `objects/plate_vNNN/best.onnx` (2026-11-03 추천: **v003**) | `models/plate.onnx` | 있으면 자동 사용(`PL_PLATE_MODEL` 로 경로 지정, `off` 로 끔) |
+| 문서·카드 검출(YOLO) | 드라이브 `models/vNNN/` 의 `best.pt` 와 `metrics.json` | `models/vNNN/best.pt`, `models/vNNN/metrics.json` | 가장 큰 번호 폴더를 자동 사용(`PL_YOLO_WEIGHTS` 로 고정, `PL_YOLO=off` 로 끔) |
+
+1. 검출 패키지를 설치합니다. 번호판 ONNX 모델에는 `onnxruntime` 이 필요합니다(GPU 로 돌리려면 대신 `onnxruntime-gpu`, 둘 중 하나만).
+
+   ```bash
+   python -m pip install -r vision/requirements.txt onnxruntime
+   ```
+
+2. 얼굴 모델을 받습니다.
+
+   ```bash
+   python -m pipeline.objects download
+   ```
+
+3. 드라이브에서 번호판 모델 `objects/plate_v003/best.onnx` 를 받아 이름을 바꿔 둡니다.
+
+   ```
+   models/plate.onnx
+   ```
+
+4. 드라이브에서 문서 검출 모델 폴더(예: `models/v005/`)의 `best.pt` 와 `metrics.json` 을 같은 이름의 폴더에 둡니다.
+   `metrics.json` 에는 학습 입력 크기(`imgsz`)가 들어 있어 서버가 그대로 씁니다.
+
+   ```
+   models/v005/best.pt
+   models/v005/metrics.json
+   ```
+
+5. 확인합니다. `얼굴 검출 YuNet (card)`, `번호판 검출 …plate.onnx` 가 `[OK]` 로 나오면 됩니다.
+   문서 검출 모델은 분석 화면 하단에 `YOLO v005·yolo11 (CPU)` 처럼 보입니다.
+
+   ```bash
+   python run.py --check
+   ```
+
+알아 둘 것
+
+- **시연 서버는 문서 검출 버전을 고정하세요.** 서버는 `models/` 에서 가장 큰 번호 폴더를 그냥 씁니다. v004·v005 는 실사 검증 사진이 0장이라(학습 사진 점수만 있음)
+  새 폴더를 복사하는 순간 검증 안 된 모델로 바뀝니다. `PL_YOLO_WEIGHTS=models/v005/best.pt` 처럼 지정하면 고정됩니다(D-14).
+- **돌려 찾기는 기본으로 켜져 있습니다.** 회전 정보가 지워진 누운 사진에서 놓침이 크게 줄지만 얼굴·번호판 검출 시간이 약 3배입니다.
+  `PL_PLATE_ROTATE=0`, `PL_FACE_ROTATE=0` 으로 끕니다(D-18).
+- **Ultralytics 자동 설치를 끄세요.** 번호판 ONNX 모델을 처음 불러올 때 Ultralytics 가 GPU 가 있으면 `onnxruntime-gpu`(약 160MB)를 스스로 설치합니다.
+  이미 깔린 `onnxruntime` 과 같은 폴더를 나눠 써서 꼬일 수 있습니다. 서버를 띄우기 전에 `YOLO_AUTOINSTALL=false` 를 지정하면 막힙니다.
+- **CPU 로도 충분합니다.** 작은 YOLO(n) 는 Ryzen 9 5900HS CPU 에서 사진 한 장 0.13~0.17초로 OCR(약 7초)보다 훨씬 짧습니다. GPU 가 있으면 문서 검출은 자동으로 GPU 를 씁니다.
+- 각 모델의 측정 결과와 다음 학습 계획은 [이미지 객체 작업 기록](docs/OBJECTS_REPORT.md)과 [vision/README.md](vision/README.md)에 있습니다.
+
 ## 분석 방식
 
 OCR로 읽은 글자와 위치에서 개인정보 후보를 찾고, 주변 라벨과 문맥을 함께 확인합니다. 기울어진 문서는 글줄 방향을 기준으로 위치 관계를 판단합니다.
