@@ -100,16 +100,19 @@ def evaluate(items, detector, *, scales=(1.0, 0.5, 0.25, 0.125), rotate: bool = 
 
 def main(argv=None) -> None:
     from pipeline.objects import MODELS, YUNET_FILE, FaceDetector
-    root = Path((argv or sys.argv[1:])[0])
-    items = midv_faces(root)
-    print("사진", len(items))
+    args = argv or sys.argv[1:]
+    root = Path(args[0])
+    limit = int(args[1]) if len(args) > 1 else None   # 문서 종류당 사진 수(빨리 볼 때)
+    items = midv_faces(root, limit_per_type=limit)
+    print("사진", len(items), flush=True)
     det = FaceDetector(MODELS / YUNET_FILE, score=0.3)
     for rot in (False, True):
         r = evaluate(items, det, rotate=rot)
         for k, v in r.items():
-            print(f"\n[{'90도 돌림' if rot else '그대로'} {k}] 얼굴 짧은 변 중간값 {v['median_face_px']}px")
+            print(f"\n[{'90도 돌림' if rot else '그대로'} {k}] 얼굴 짧은 변 중간값 {v['median_face_px']}px", flush=True)
             for row in v["rows"]:
-                print(f"  기준 {row['thr']}: 정밀도 {row['precision']} 재현율 {row['recall']} (놓침 {row['fn']}, 오탐 {row['fp']})")
+                print(f"  기준 {row['thr']}: 정밀도 {row['precision']} 재현율 {row['recall']} (놓침 {row['fn']}, 오탐 {row['fp']})",
+                      flush=True)
 
 
 if __name__ == "__main__":
