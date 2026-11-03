@@ -190,9 +190,14 @@
     if(view.state==='running') {
       const rem=num(snap.remaining_s),total=num(snap.total_s);
       const cur=view.stages[current];
-      view.remaining=rem===null?null:Math.max(0,rem-since);
-      view.headline=view.remaining===null?hms((num(snap.elapsed_s)??0)+since)+' 지남':view.remaining>0?'약 '+hms(view.remaining)+' 남음':'거의 다 됐어요';
-      view.detail=cur?cur.label+(cur.time?' · '+cur.time:''):'';
+      // 화면은 '지금 단계에 남은 몫'까지만 줄인다. 단계가 추정을 넘기면 서버는 뒤 단계 합을 계속 보내므로,
+      // 그보다 더 줄이면 0('거의 다 됐어요')과 서버 값('1초 미만 남음')이 번갈아 보인다.
+      const curEst=current>=0?num(stages[current]?.estimate_s):null;
+      const curLeft=curEst===null?0:Math.max(0,curEst-(num(snap.stage_elapsed_s)??0));
+      view.remaining=rem===null?null:Math.max(0,rem-Math.min(since,curLeft));
+      const nearDone=view.remaining!==null&&view.remaining<1;
+      view.headline=view.remaining===null?hms((num(snap.elapsed_s)??0)+since)+' 지남':nearDone?'거의 다 됐어요':'약 '+hms(view.remaining)+' 남음';
+      view.detail=cur?cur.label+(cur.time&&!nearDone?' · '+cur.time:''):'';
       if(view.remaining!==null&&total)view.fraction=Math.min(PROGRESS_CAP,Math.max(0,(total-view.remaining)/total));
       return view;
     }

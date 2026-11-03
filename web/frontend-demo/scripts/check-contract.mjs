@@ -192,10 +192,20 @@ await test('progress view counts down from the server value',()=>{
   assert.equal(v.stages[0].time,'0.4초');assert.equal(v.stages[1].time,'약 11초 남음');assert.equal(v.stages[2].time,'약 2초');
   assert.equal(v.detail,'LLM 판단 · 약 11초 남음');assert.equal(v.stages[1].borrowed,true);
 });
-await test('progress view never goes negative and caps the bar',()=>{
+await test('overdue stage stops the countdown at its own share',()=>{
+  // LLM 판단(남은 몫 16초)이 추정을 넘겨도, 뒤 단계(QR 2초 등) 몫은 줄이지 않는다
   const v=C.progressView(running,60);
-  assert.equal(v.remaining,0);assert.equal(v.headline,'거의 다 됐어요');assert.equal(v.fraction,.95);
+  assert.equal(v.remaining,4);assert.equal(v.headline,'약 4초 남음');assert.ok(Math.abs(v.fraction-.84)<1e-9);
   assert.equal(v.stages[1].time,'추정보다 44초 늦음');
+});
+await test('near the end shows one steady message, not a flicker',()=>{
+  // 실제로 번갈아 보이던 상황: 지금 단계가 추정을 넘겼고 남은 것은 뒤 단계 0.6초뿐. 서버가 1초마다 같은 값을 보낸다
+  const late={...running,remaining_s:.6,stage_elapsed_s:25,overdue_s:7,total_s:25};
+  const seen=new Set([0,.3,.6,.9,1.2].map(since=>C.progressView(late,since).headline));
+  assert.deepEqual([...seen],['거의 다 됐어요']);
+  assert.equal(C.progressView(late,.5).detail,'LLM 판단');
+  assert.equal(C.progressView({...running,remaining_s:2.8,stage_elapsed_s:16},2.5).headline,'거의 다 됐어요');   // 2.8 − 지금 단계 몫 2 = 0.8초
+  assert.equal(C.progressView({...running,remaining_s:3,stage_elapsed_s:16},2.5).headline,'약 1초 남음');
 });
 await test('no estimate means elapsed time only, no invented number',()=>{
   const v=C.progressView({...running,remaining_s:null,total_s:null,stages:running.stages.map(s=>({...s,estimate_s:null}))},1);

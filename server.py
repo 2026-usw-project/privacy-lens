@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import io
 import json
 import logging
@@ -496,6 +497,66 @@ def llm_models(judge: str = Form(...)):
     return {"models": llm_judge.list_models(cfg, trace=trace), "llm_trace": trace}
 
 
+class _SameRequest:
+    """같은 번호표로 같은 요청이 다시 오면 처음 요청의 결과를 기다려 그대로 돌려준다.
+
+    화면은 번호표마다 요청을 한 번만 보내지만, 브라우저·프록시·터널이 오래 걸리는 POST 를 다시 보내는 일이 있다
+    (서버를 켠 직후 엔진 준비로 첫 요청이 1분 넘게 걸렸을 때 실제로 '이미 대기열에 있는 번호표' 400 이 났다).
+    그러면 화면은 실패를 보고, 처음 요청은 아무도 받지 않을 결과를 만든다.
+
+    - 같은 요청인지는 사진 바이트와 설정의 해시(fingerprint)로 본다. 번호표만 아는 다른 사람은 결과를 받을 수 없다
+      (같은 사진을 가진 사람만 같은 결과를 받는다). 다르면 지금처럼 400.
+    - 처음 요청이 끝난 뒤 KEEP_S 초 동안은 늦게 온 재시도에도 같은 결과를 준다. 결과는 메모리에만, 그 뒤 지운다.
+    - 처음 요청이 실패했으면 같은 오류를 돌려준다.
+    """
+
+    KEEP_S = 30.0
+    WAIT_S = 15 * 60.0
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._jobs: dict[str, dict] = {}
+
+    def run(self, key: str, fingerprint: str, work):
+        with self._lock:
+            now = time.monotonic()
+            for k in [k for k, j in self._jobs.items() if j["at"] is not None and now - j["at"] > self.KEEP_S]:
+                del self._jobs[k]
+            job = self._jobs.get(key)
+            owner = job is None
+            if owner:
+                job = self._jobs[key] = {"fp": fingerprint, "done": threading.Event(), "result": None,
+                                         "error": None, "at": None}
+        if not owner:
+            if job["fp"] != fingerprint:
+                raise HTTPException(400, "이미 대기열에 있는 번호표입니다.")
+            if not job["done"].wait(self.WAIT_S):
+                raise HTTPException(503, "처음 보낸 요청이 아직 끝나지 않았습니다. 잠시 후 다시 시도해 주세요.",
+                                    headers={"Retry-After": "10"})
+            if job["error"] is not None:
+                raise job["error"]
+            return job["result"]
+        try:
+            job["result"] = work()
+            return job["result"]
+        except Exception as exc:
+            job["error"] = exc
+            raise
+        finally:
+            job["at"] = time.monotonic()
+            job["done"].set()
+
+
+SAME = _SameRequest()
+
+
+def _fingerprint(data: bytes, *parts: str | None) -> str:
+    h = hashlib.sha256(data)
+    for part in parts:
+        h.update(b"\0" + (part or "").encode("utf-8"))
+    return h.hexdigest()
+
+
 @app.post("/analyze")
 def analyze_endpoint(
     image: UploadFile = File(...),
@@ -506,8 +567,12 @@ def analyze_endpoint(
     data = _read(image)
     cfg = _judge(judge)
     t = _ticket(ticket)
-    live = _register(t, "analyze", data, cfg)
+    body = SAME.run("analyze:" + t, _fingerprint(data, judge), lambda: _analyze_turn(data, cfg, t))
+    return JSONResponse(body)
 
+
+def _analyze_turn(data: bytes, cfg, t: str) -> dict:
+    live = _register(t, "analyze", data, cfg)
     ok = False
     try:
         with _Turn(t):
@@ -523,11 +588,11 @@ def analyze_endpoint(
         BOARD.finish(live, ok)
     preview, scale = _preview(img)
 
-    return JSONResponse({
+    return {
         "report": report.as_dict(),
         "preview": preview,
         "preview_scale": scale,
-    })
+    }
 
 
 def _style(raw: str) -> str:
@@ -566,8 +631,13 @@ def redact_endpoint(
     data = _read(image)
     cfg = _judge(judge)  # 가린 결과를 다시 검사할 때도 분석과 같은 판단 방법을 쓴다
     t = _ticket(ticket)
-    live = _register(t, "redact", data, cfg)
+    body = SAME.run("redact:" + t, _fingerprint(data, judge, boxes, style),
+                    lambda: _redact_request(data, boxes, style, cfg, t))
+    return JSONResponse(body)
 
+
+def _redact_request(data: bytes, boxes: str, style: str, cfg, t: str) -> dict:
+    live = _register(t, "redact", data, cfg)
     ok = False
     try:
         with _Turn(t):
@@ -578,12 +648,12 @@ def redact_endpoint(
         BOARD.finish(live, ok)
     trace = check.pop("_trace", [])
 
-    return JSONResponse({
+    return {
         "file": base64.b64encode(out).decode(),
         "verification": check,
         "bytes": len(out),
         **({"llm_trace": trace} if trace else {}),
-    })
+    }
 
 
 def _redact_turn(data: bytes, boxes: str, style: str, cfg, live: str | None) -> tuple[bytes, dict]:

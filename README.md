@@ -148,10 +148,10 @@ PL_OCR=tesseract python run.py
 | 번호판 | 드라이브 `objects/plate_vNNN/best.onnx` (2026-11-03 추천: **v003**) | `models/plate.onnx` | 있으면 자동 사용(`PL_PLATE_MODEL` 로 경로 지정, `off` 로 끔) |
 | 문서·카드 검출(YOLO) | 드라이브 `models/vNNN/` 의 `best.pt` 와 `metrics.json` | `models/vNNN/best.pt`, `models/vNNN/metrics.json` | 가장 큰 번호 폴더를 자동 사용(`PL_YOLO_WEIGHTS` 로 고정, `PL_YOLO=off` 로 끔) |
 
-1. 검출 패키지를 설치합니다. 번호판 ONNX 모델에는 `onnxruntime` 이 필요합니다(GPU 로 돌리려면 대신 `onnxruntime-gpu`, 둘 중 하나만).
+1. 검출 패키지(ultralytics·onnx·onnxruntime)를 설치합니다. GPU 로 돌리려면 `onnxruntime` 대신 `onnxruntime-gpu` 를 설치합니다(둘 중 하나만).
 
    ```bash
-   python -m pip install -r vision/requirements.txt onnxruntime
+   python -m pip install -r vision/requirements.txt
    ```
 
 2. 얼굴 모델을 받습니다.
@@ -187,8 +187,8 @@ PL_OCR=tesseract python run.py
   새 폴더를 복사하는 순간 검증 안 된 모델로 바뀝니다. `PL_YOLO_WEIGHTS=models/v005/best.pt` 처럼 지정하면 고정됩니다(D-14).
 - **돌려 찾기는 기본으로 켜져 있습니다.** 회전 정보가 지워진 누운 사진에서 놓침이 크게 줄지만 얼굴·번호판 검출 시간이 약 3배입니다.
   `PL_PLATE_ROTATE=0`, `PL_FACE_ROTATE=0` 으로 끕니다(D-18).
-- **Ultralytics 자동 설치를 끄세요.** 번호판 ONNX 모델을 처음 불러올 때 Ultralytics 가 GPU 가 있으면 `onnxruntime-gpu`(약 160MB)를 스스로 설치합니다.
-  이미 깔린 `onnxruntime` 과 같은 폴더를 나눠 써서 꼬일 수 있습니다. 서버를 띄우기 전에 `YOLO_AUTOINSTALL=false` 를 지정하면 막힙니다.
+- **서버는 Ultralytics 자동 설치를 끕니다.** 켜 두면 첫 분석 중에 Ultralytics 가 `onnx`·`onnxruntime`(GPU 가 있으면 약 160MB 의 `onnxruntime-gpu`)을
+  스스로 내려받아 설치합니다. 서버는 `YOLO_AUTOINSTALL=false` 를 기본으로 두므로 1번 설치를 먼저 해야 하고, 빠졌으면 `run.py --check` 가 알려 줍니다.
 - **CPU 로도 충분합니다.** 작은 YOLO(n) 는 Ryzen 9 5900HS CPU 에서 사진 한 장 0.13~0.17초로 OCR(약 7초)보다 훨씬 짧습니다. GPU 가 있으면 문서 검출은 자동으로 GPU 를 씁니다.
 - 각 모델의 측정 결과와 다음 학습 계획은 [이미지 객체 작업 기록](docs/OBJECTS_REPORT.md)과 [vision/README.md](vision/README.md)에 있습니다.
 

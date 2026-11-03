@@ -13,6 +13,8 @@
 
 multipart: `image`(원본 파일), `ticket`(번호표, 선택), `judge`(판단 모델 창의 설정, 선택).
 
+- **같은 번호표로 다시 보낸 요청**(브라우저·프록시·터널의 재시도): 사진과 설정이 같으면 처음 요청의 결과를 기다려 그대로 돌려줍니다.
+  처음 요청이 끝난 뒤 30초 안에 온 재시도도 같습니다. 사진이나 설정이 다르면 400 `이미 대기열에 있는 번호표입니다.` 입니다. `/redact` 도 같습니다(가릴 영역·방식까지 같아야 함).
 - 판정은 '문맥·결합' 하나입니다. 예전 `mode`(`baseline` | `naive`)는 화면·서버에서 뺐고, 비교 실험(`eval`)에서만 씁니다.
 - `judge` 가 없거나 `{"provider":"rules"}` 면 규칙 기반 판단입니다. LLM 판단이면 JSON 문자열
   `{"provider","model","api_key","base_url"}` 을 보냅니다. provider: `openai`(ChatGPT) · `gemini` · `anthropic`(Claude) ·

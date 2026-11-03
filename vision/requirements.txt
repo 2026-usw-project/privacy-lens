@@ -1,5 +1,10 @@
-# YOLO 학습 도구(vision/) 전용. 서비스 실행에는 필요 없음
+# YOLO 학습 도구(vision/)와 서버의 이미지 객체 검출(문서·번호판 모델을 둘 때)에 쓴다.
+# 모델 없이 OCR 만 돌릴 때는 필요 없다.
 #   pip install -r vision/requirements.txt
+# onnx·onnxruntime: 번호판 ONNX 모델(models/plate.onnx). 없으면 Ultralytics 가 첫 분석 때 설치하려 든다.
+#   GPU 로 돌리려면 onnxruntime 대신 onnxruntime-gpu 를 설치한다(둘 중 하나만)
 # YOLO26 가중치(yolo26n.pt)는 8.4.0 부터 들어 있다
 ultralytics>=8.4
 pillow-heif>=0.16
+onnx>=1.16
+onnxruntime>=1.18
