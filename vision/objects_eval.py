@@ -122,3 +122,16 @@ def yolo_pairs(root: Path) -> list[tuple[Path, Path]]:
             parts[i] = "labels"
             pairs.append((img, Path(*parts).with_suffix(".txt")))
     return pairs
+
+
+def roboflow_originals(pairs: list[tuple[Path, Path]]) -> list[tuple[Path, Path]]:
+    """Roboflow 내보내기에서 같은 원본을 늘린 사진(이름_jpg.rf.<해시>)은 하나만 남긴다.
+
+    학습 분할만 늘려 두므로 평가에 그대로 쓰면 같은 장면을 여러 번 센다."""
+    seen, out = set(), []
+    for img, lab in pairs:
+        key = img.name.split(".rf.")[0]
+        if key not in seen:
+            seen.add(key)
+            out.append((img, lab))
+    return out

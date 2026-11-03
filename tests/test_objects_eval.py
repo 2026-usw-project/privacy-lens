@@ -33,3 +33,10 @@ def test_yolo_labels_and_pairs(tmp_path: Path):
     a, b = yolo_labels(lab, 100, 100)
     assert (a.box.x, a.box.y, a.box.w, a.box.h) == (40, 45, 20, 10)
     assert (b.box.x, b.box.y, b.box.w, b.box.h) == (10, 10, 20, 10)
+
+
+def test_roboflow_originals_keeps_one_per_source():
+    from vision.objects_eval import roboflow_originals
+    p = [(Path(f"train/images/IMG_1_jpg.rf.{h}.jpg"), Path("x")) for h in ("aa", "bb", "cc")]
+    p.append((Path("valid/images/IMG_2_jpg.rf.dd.jpg"), Path("y")))
+    assert [i.name for i, _ in roboflow_originals(p)] == ["IMG_1_jpg.rf.aa.jpg", "IMG_2_jpg.rf.dd.jpg"]
