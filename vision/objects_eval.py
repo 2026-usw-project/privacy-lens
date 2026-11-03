@@ -153,3 +153,26 @@ def recall_by_size(samples: list[tuple[list[GT], list[Pred]]], *, thr: float,
         rows.append({"size": f"{lo}~{hi if hi < 10**9 else ''}px", "total": tot,
                      "recall": round(hit / tot, 4) if tot else None})
     return rows
+
+
+def predict_plates(model_path, pairs: list[tuple[Path, Path]], *, conf: float = 0.05,
+                   imgsz: int = 640) -> list[tuple[list[GT], list[Pred]]]:
+    """YOLO 번호판 모델로 (정답, 예측) 목록을 만든다. 우리 모델(.pt/.onnx)만 넣는다(남의 .pt 금지)."""
+    from PIL import Image
+    from ultralytics import YOLO
+    m = YOLO(str(model_path), task="detect")
+    out = []
+    for img, lab in pairs:
+        im = Image.open(img).convert("RGB")
+        W, H = im.size
+        r = m.predict(im, conf=conf, imgsz=imgsz, verbose=False)[0]
+        preds = [Pred(Box(int(a), int(b), int(c - a), int(d - b)), float(p))
+                 for p, (a, b, c, d) in zip(r.boxes.conf.tolist(), r.boxes.xyxy.tolist())]
+        out.append((yolo_labels(lab, W, H), preds))
+    return out
+
+
+def size_report(samples, *, thr: float = 0.4) -> str:
+    rows = sweep(samples, [0.3, 0.4, 0.5])
+    return table(rows) + "\n크기별 재현율: " + ", ".join(
+        f"{r['size']} {r['recall']}({r['total']})" for r in recall_by_size(samples, thr=thr))
