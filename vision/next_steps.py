@@ -290,19 +290,21 @@ def export_oi_multi(classes: list[str], split: str, n: int, name: str) -> int:
     return m
 
 
-def build_daily(*, oi_train: int = 2000, oi_val: int = 300, hit_step: int = 2) -> dict:
+def build_daily(*, oi_train: int = 2000, oi_val: int = 300, hit_step: int = 2, rebuild: bool = False) -> dict:
     """공개 데이터 5개를 한 YOLO 데이터로(CPU). 결과는 드라이브 objects/daily_ds.zip 과 objects/daily_ds_counts.json."""
     dd, rd = _fresh("vision.daily_data"), _fresh("vision.redactions")
-    if DAILY_ZIP.exists():
-        print("이미 있음:", DAILY_ZIP)
+    if DAILY_ZIP.exists() and not rebuild:
+        print("이미 있음(다시 만들려면 rebuild=True):", DAILY_ZIP)
         return json.loads((OUT / "daily_ds_counts.json").read_text())
     raw = Path("/content/daily_raw")
-    got = dd.download_all(raw)
+    got = dd.download_all(raw, manual=OUT / "manual")
     rd.download(VR, ("train2017", "val2017"))
     if not (OI / "screen" / "images" / "val").exists():
         print("Open Images 화면 검증", export_oi_multi(OI_SCREENS, "validation", oi_val, "screen"), flush=True)
     if not (OI / "screen" / "images" / "train").exists():
         print("Open Images 화면 학습", export_oi_multi(OI_SCREENS, "test", oi_train, "screen"), flush=True)
+    if rebuild and DAILY_DS.exists():
+        shutil.rmtree(DAILY_DS)
     w = dd.Writer(DAILY_DS)
     print("VISPR-redactions…", flush=True)
     dd.add_redactions(w, VR)

@@ -134,14 +134,21 @@ def unzip(z: Path, dst: Path) -> Path:
     return dst
 
 
-def download_all(root: Path, which=("hit", "seg", "vwp")) -> dict[str, Path]:
+def download_all(root: Path, which=("hit", "seg", "vwp"), manual: Path | None = None) -> dict[str, Path]:
+    """manual: 브라우저로 직접 받아 둔 zip 폴더(예: 드라이브 objects/manual/hit/). 파일 이름이 같으면 그걸 쓴다.
+    (bivpriv.colorado.edu 는 서버 인증서 체인 문제로 curl 이 못 받지만 브라우저는 받는다.)"""
     root = Path(root)
     got = {}
     for key in which:
         try:
             for part, url in URLS[key].items():
                 name = url.rsplit("/", 1)[-1]
-                f = fetch(url, root / "zips" / key / f"{part}_{name}")
+                dst = root / "zips" / key / f"{part}_{name}"
+                hand = Path(manual) / key / f"{part}_{name}" if manual else None
+                if hand and hand.exists() and not dst.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy(hand, dst)
+                f = fetch(url, dst)
                 got[f"{key}_{part}"] = unzip(f, root / key / part) if f.suffix == ".zip" else f
         except Exception as e:   # 한 데이터가 실패해도 나머지로 계속
             print(f"건너뜀 {key}: {e}", flush=True)
