@@ -153,6 +153,23 @@ GPU 한도가 풀리면 노트북을 위에서부터 돌린다. 칸마다 혼자
 2. 증명사진 YOLO26n 학습 → `objects/face_photo_v001/`, 3. YuNet 과 비교 평가
 4. 번호판 v004(v003 + 회전 사본) 학습, 5. 한국 방향별·해외 평가 → 돌려 찾기 없이도 되는지
 
+#### 일상 사진 개인정보 (2026-11-04, D-19, `vision/colab_daily.ipynb`)
+
+교수님 피드백: 목표는 일부러 넣은 개인정보가 아니라 **일상 사진에 자연스럽게 찍힌 개인정보**.
+[VISPR-redactions](https://resources.mpi-inf.mpg.de/d2/orekondy/redactions)(CVPR 2018) — Flickr 일상 사진 8,473장, 개인정보 24종 위치 라벨(다각형).
+라벨 CC BY-NC 4.0, 사진은 원 라이선스 → 드라이브·런타임에만 둔다. 사진 train 7.3GB·val 2.9GB·test 5.2GB, 등록 없이 받는다.
+
+- `python -m vision.redactions eval <폴더> 300` — 지금 서비스(`pipeline.analyze`)가 종류별로 몇 % 찾는지(재현율만. 정답 밖의 것도 개인정보일 수 있어 정밀도는 재지 않음)
+- `python -m vision.redactions yolo <폴더> <출력>` — 물체형 5묶음 YOLO 데이터: `id_card`(여권·운전면허증·학생증·신분증) · `card` · `waybill`(우편물) · `receipt` · `ticket`
+- 해외 사진이라 글자는 영어다. 한국 사진은 팀 실사로 따로 잰다.
+
+| 다른 후보 | 규모 | 왜 우선순위가 낮은지 |
+|---|---|---|
+| VISPR | 22,167장, 68종 | 사진 단위 라벨(위치 없음) |
+| DIPA / DIPA2 | 1,495 / 1,304장 | 작고 받는 곳이 안 보임 |
+| BIV-Priv-Seg / VizWiz-Priv | 1,028 / 약 5천 장 | 시각장애인이 가까이 찍은 사진, 평가 서버로만 |
+| Open Images V7 | - | 모니터·휴대폰·노트북·TV·봉투 클래스(CC BY 4.0) — **화면 클래스 후보** |
+
 새 클래스 후보 — 서명(OCR 이 못 읽는 개인 식별 정보):
 
 | 데이터 | 장수 | 라이선스 | 비고 |
