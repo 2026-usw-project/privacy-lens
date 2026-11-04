@@ -22,13 +22,18 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(os.environ.get("PL_DRIVE", "/content/drive/MyDrive/PrivacyLens-YOLO"))
+# 작업 폴더: Colab 은 /content, 집 PC 는 PL_WORK 로 바꾼다(예: D:/pl_work). 드라이브는 PL_DRIVE(구글 드라이브 데스크톱 경로)
+WORK = Path(os.environ.get("PL_WORK", "/content"))
+# 학습 부하: PC 그래픽카드를 아끼려면 PL_BATCH 를 낮춘다(기본 16)
+BATCH = int(os.environ.get("PL_BATCH", "16"))
+WORKERS = int(os.environ.get("PL_WORKERS", "2"))
 OUT = ROOT / "objects"
-MIDV = Path("/content/midv")
-FP_DS = Path("/content/fp_ds")
-OI = Path("/content/oi")
-KR = Path("/content/kr")
-SYNTH = Path("/content/plate_synth")
-ROT = Path("/content/plate_rot")
+MIDV = WORK / "midv"
+FP_DS = WORK / "fp_ds"
+OI = WORK / "oi"
+KR = WORK / "kr"
+SYNTH = WORK / "plate_synth"
+ROT = WORK / "plate_rot"
 KR_ZIPS = {"kr_eval": "Korea Car License Plate*.zip", "kr_train1": "license-plate-label*.zip",
            "kr_train2": "korea car plat*.zip"}
 
@@ -77,6 +82,10 @@ def midv_dataset(*, backgrounds: str | None = None) -> dict:
     return c
 
 
+# (이벤트, 함수) — 학습 모델에 붙일 콜백. 집 PC 는 vision.pc_train 이 그래픽카드 온도 보호를 붙인다.
+TRAIN_CALLBACKS: list = []
+
+
 def resumable_train(base: str, *, data: str, name: str, epochs: int, **kw) -> Path:
     """학습 기록을 드라이브(objects/runs/<name>)에 두고, 끊겼으면 last.pt 부터 이어서 학습한다.
 
@@ -88,11 +97,14 @@ def resumable_train(base: str, *, data: str, name: str, epochs: int, **kw) -> Pa
     if (run / "DONE").exists():
         print("이미 끝난 학습:", run)
         return last
+    model = YOLO(str(last) if last.exists() else base)
+    for event, fn in TRAIN_CALLBACKS:
+        model.add_callback(event, fn)
     if last.exists():
         print("이어서 학습:", last, flush=True)
-        YOLO(str(last)).train(resume=True)
+        model.train(resume=True)
     else:
-        YOLO(base).train(data=data, epochs=epochs, imgsz=640, batch=16, workers=2, project=str(OUT / "runs"),
+        model.train(data=data, epochs=epochs, imgsz=640, batch=BATCH, workers=WORKERS, project=str(OUT / "runs"),
                          name=name, exist_ok=True, patience=0, verbose=False, plots=False, **kw)
     (run / "DONE").write_text("ok")
     return last
@@ -231,7 +243,7 @@ def eval_plate(models: dict[str, str] | None = None) -> dict:
 
 # ------------------------------------------------------------------ 일상 사진(VISPR-redactions)
 
-VR = Path("/content/vr")
+VR = WORK / "vr"
 
 
 def service_models() -> dict:
@@ -279,7 +291,7 @@ def eval_daily(*, limit: int = 300) -> dict:
 
 
 OI_SCREENS = ["Computer monitor", "Mobile phone", "Laptop", "Television", "Tablet computer"]
-DAILY_DS = Path("/content/daily_ds")
+DAILY_DS = WORK / "daily_ds"
 DAILY_ZIP = OUT / "daily_ds.zip"
 
 
@@ -302,7 +314,7 @@ def build_daily(*, oi_train: int = 2000, oi_val: int = 300, hit_step: int = 2, r
     if DAILY_ZIP.exists() and not rebuild:
         print("이미 있음(다시 만들려면 rebuild=True):", DAILY_ZIP)
         return json.loads((OUT / "daily_ds_counts.json").read_text())
-    raw = Path("/content/daily_raw")
+    raw = WORK / "daily_raw"
     got = dd.download_all(raw, manual=OUT / "manual", keep=OUT / "raw")
     rd.download(VR, ("train2017", "val2017"), keep=OUT / "raw" / "vr")
     if not (OI / "screen" / "images" / "val").exists():

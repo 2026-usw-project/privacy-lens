@@ -112,13 +112,14 @@ def _bundle_with_intermediate(host: str) -> Path | None:
         m = re.search(r"CA Issuers - URI:(\S+)", txt)
         if not m:
             return None
-        der = Path(f"/tmp/{host}_inter.der")
+        import tempfile
+        der = Path(tempfile.gettempdir()) / f"{host}_inter.der"
         subprocess.run(["curl", "-sSfL", "-o", str(der), m.group(1)], check=True)
         pem = subprocess.run(["openssl", "x509", "-inform", "DER", "-in", str(der)], capture_output=True, text=True)
         if pem.returncode:   # 이미 PEM 일 수도 있음
             pem = subprocess.run(["openssl", "x509", "-in", str(der)], capture_output=True, text=True)
         sys_ca = Path(ssl.get_default_verify_paths().cafile or "/etc/ssl/certs/ca-certificates.crt")
-        out = Path(f"/tmp/{host}_bundle.pem")
+        out = Path(tempfile.gettempdir()) / f"{host}_bundle.pem"
         out.write_text(sys_ca.read_text() + "\n" + pem.stdout)
         print("  중간 인증서 보충:", m.group(1), flush=True)
         return out
@@ -330,7 +331,8 @@ def add_yolo_dir(w: Writer, root: Path, source: str, class_names: dict[int, str]
 
 def zip_dir(src: Path, dst: Path) -> Path:
     dst.parent.mkdir(parents=True, exist_ok=True)
-    tmp = Path("/tmp") / dst.name
+    import tempfile
+    tmp = Path(tempfile.gettempdir()) / dst.name
     shutil.make_archive(str(tmp.with_suffix("")), "zip", root_dir=src)
     shutil.copy(tmp, dst)
     return dst

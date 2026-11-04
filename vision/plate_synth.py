@@ -176,16 +176,18 @@ def train_next(*, base: str, oi_root: str, synth_root: str, kr_dirs: list[str], 
         for p in glob.glob(f"{d}/*/images"):
             (vals if "/test/" in p + "/" else trains).append(p)
     cfg = {"path": "/", "train": trains, "val": vals, "names": {0: "plate"}}
-    yp = f"/content/{name}.yaml"
+    import os
+    work = os.environ.get("PL_WORK", "/content")
+    yp = f"{work}/{name}.yaml"
     yaml.safe_dump(cfg, open(yp, "w"), allow_unicode=True)
     print("학습:", trains, "\n검증:", vals)
     if runs_root:  # 드라이브에 두고 끊기면 이어서(vision.next_steps.resumable_train)
         from vision.next_steps import resumable_train
         last = str(resumable_train(base, data=yp, name=name, epochs=epochs))
     else:
-        YOLO(base).train(data=yp, epochs=epochs, imgsz=640, batch=16, workers=2, project="/content/runs", name=name,
+        YOLO(base).train(data=yp, epochs=epochs, imgsz=640, batch=16, workers=2, project=f"{work}/runs", name=name,
                          exist_ok=True, patience=0, verbose=False, plots=False)
-        last = f"/content/runs/{name}/weights/last.pt"
+        last = f"{work}/runs/{name}/weights/last.pt"
     YOLO(last).export(format="onnx", imgsz=640)
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     shutil.copy(last, f"{out_dir}/best.pt")
