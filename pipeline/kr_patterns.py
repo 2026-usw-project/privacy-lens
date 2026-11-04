@@ -194,6 +194,15 @@ def label_key(text: str) -> str:
     return re.sub(r"[\s\-_·•‧'\"`~|]", "", text)
 
 
+# OCR 이 한자를 못 읽고 빈 괄호만 남기기도 한다('한서린()')
+RE_HANJA_NOTE = re.compile(r"\s*[(（][\u3400-\u4dbf\u4e00-\u9fff\s]*[)）]")
+
+
+def strip_hanja(text: str) -> str:
+    """신분증·명함에서 이름 옆에 괄호로 붙는 한자(또는 OCR 이 한자를 못 읽고 남긴 빈 괄호)를 뗀다. '한서린 (韓瑞潾)' → '한서린'."""
+    return RE_HANJA_NOTE.sub("", text)
+
+
 def compact(text: str) -> str:
     """문맥 어휘 비교용. 낱글자로 흩어진 한글('연 락 처')도 잡히게 공백을 전부 뺀다."""
     return re.sub(r"\s+", "", text)
