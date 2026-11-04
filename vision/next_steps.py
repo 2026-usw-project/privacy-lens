@@ -215,3 +215,74 @@ def eval_plate(models: dict[str, str] | None = None) -> dict:
                       f"재현율 {r['recall']}  정밀도 {r['precision']}", flush=True)
     _save_json("eval_plate_v004.json", res)
     return res
+
+
+# ------------------------------------------------------------------ 일상 사진(VISPR-redactions)
+
+VR = Path("/content/vr")
+
+
+def service_models() -> dict:
+    """서비스가 쓰는 모델을 드라이브에서 저장소 models/ 로 가져온다: 문서 YOLO(models/v*/best.pt), 번호판 v003, YuNet."""
+    from pipeline.objects import MODELS, YUNET_FILE, download_yunet
+    MODELS.mkdir(exist_ok=True)
+    got = {}
+    docs = sorted((ROOT / "models").glob("v[0-9]*/best.pt"), key=lambda p: int(p.parent.name[1:]))
+    if docs and not (MODELS / docs[-1].parent.name / "best.pt").exists():
+        shutil.copytree(docs[-1].parent, MODELS / docs[-1].parent.name, dirs_exist_ok=True)
+    got["문서"] = docs[-1].parent.name if docs else "없음"
+    plate = OUT / "plate_v003" / "best.onnx"
+    if plate.exists() and not (MODELS / "plate.onnx").exists():
+        shutil.copy(plate, MODELS / "plate.onnx")
+    got["번호판"] = "plate_v003" if plate.exists() else "없음"
+    if not (MODELS / YUNET_FILE).exists():
+        download_yunet()
+    got["얼굴"] = "YuNet"
+    print("서비스 모델:", got)
+    return got
+
+
+def vr_data(splits=("test2017",)) -> Path:
+    """VISPR-redactions 라벨·사진 받기(라벨은 드라이브 objects/vr/ 에도 복사)."""
+    from vision import redactions as rd
+    rd.download(VR, splits)
+    keep = OUT / "vr"
+    keep.mkdir(parents=True, exist_ok=True)
+    for sp in splits:
+        src = VR / "annotations" / f"{sp}.json"
+        if src.exists() and not (keep / src.name).exists():
+            shutil.copy(src, keep / src.name)
+    return VR
+
+
+def eval_daily(*, limit: int = 300) -> dict:
+    """지금 서비스(규칙 기반 + 문서 YOLO + 얼굴 + 번호판)가 일상 사진의 개인정보를 종류별로 몇 % 찾나. CPU 로 됨."""
+    from vision import redactions as rd
+    vr_data(("test2017",))
+    service_models()
+    res = rd.evaluate_service(VR, split="test2017", limit=limit)
+    print(rd.table(res))
+    _save_json(f"eval_daily_service_{limit}.json", res)
+    return res
+
+
+def train_daily(*, epochs: int = 40, base: str = "yolo26n.pt") -> Path:
+    """물체형 개인정보(신분증·카드·우편물·영수증·티켓) YOLO26n. 끊기면 이어서."""
+    from ultralytics import YOLO
+    from vision import redactions as rd
+    vr_data(("train2017", "val2017"))
+    ds = Path("/content/vr_yolo")
+    if not (ds / "data.yaml").exists():
+        print("YOLO 데이터", rd.to_yolo(VR, ds), flush=True)
+    last = resumable_train(base, data=str(ds / "data.yaml"), name="daily_objects", epochs=epochs)
+    m = YOLO(str(last))
+    metrics = m.val(data=str(ds / "data.yaml"), imgsz=640, verbose=False, plots=False)
+    per = {m.names[i]: round(float(v), 3) for i, v in enumerate(metrics.box.maps)}
+    print("클래스별 mAP50-95:", per, " 전체 mAP50:", round(float(metrics.box.map50), 3))
+    m.export(format="onnx", imgsz=640)
+    dst = _next_version("daily")
+    dst.mkdir(parents=True)
+    shutil.copy(last, dst / "best.pt")
+    shutil.copy(last.with_suffix(".onnx"), dst / "best.onnx")
+    _save_json(f"{dst.name}_val.json", {"map50": round(float(metrics.box.map50), 3), "map50_95_per_class": per})
+    return dst / "best.onnx"
