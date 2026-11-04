@@ -266,23 +266,88 @@ def eval_daily(*, limit: int = 300) -> dict:
     return res
 
 
-def train_daily(*, epochs: int = 40, base: str = "yolo26n.pt") -> Path:
-    """물체형 개인정보(신분증·카드·우편물·영수증·티켓) YOLO26n. 끊기면 이어서."""
-    from ultralytics import YOLO
+OI_SCREENS = ["Computer monitor", "Mobile phone", "Laptop", "Television", "Tablet computer"]
+DAILY_DS = Path("/content/daily_ds")
+DAILY_ZIP = OUT / "daily_ds.zip"
+
+
+def export_oi_multi(classes: list[str], split: str, n: int, name: str) -> int:
+    import fiftyone as fo
+    import fiftyone.zoo as foz
+    ds = foz.load_zoo_dataset("open-images-v7", split=split, label_types=["detections"], classes=classes,
+                              max_samples=n, only_matching=True, seed=0, shuffle=True,
+                              dataset_name=f"{name}-{split}-{n}")
+    ds.export(export_dir=str(OI / name), dataset_type=fo.types.YOLOv5Dataset, label_field="ground_truth",
+              split="val" if split == "validation" else "train", classes=classes)
+    m = len(ds)
+    ds.delete()
+    return m
+
+
+def build_daily(*, oi_train: int = 2000, oi_val: int = 300, hit_step: int = 2) -> dict:
+    """공개 데이터 5개를 한 YOLO 데이터로(CPU). 결과는 드라이브 objects/daily_ds.zip 과 objects/daily_ds_counts.json."""
+    from vision import daily_data as dd
     from vision import redactions as rd
-    vr_data(("train2017", "val2017"))
-    ds = Path("/content/vr_yolo")
-    if not (ds / "data.yaml").exists():
-        print("YOLO 데이터", rd.to_yolo(VR, ds), flush=True)
-    last = resumable_train(base, data=str(ds / "data.yaml"), name="daily_objects", epochs=epochs)
+    if DAILY_ZIP.exists():
+        print("이미 있음:", DAILY_ZIP)
+        return json.loads((OUT / "daily_ds_counts.json").read_text())
+    raw = Path("/content/daily_raw")
+    got = dd.download_all(raw)
+    rd.download(VR, ("train2017", "val2017"))
+    if not (OI / "screen" / "images" / "val").exists():
+        print("Open Images 화면 검증", export_oi_multi(OI_SCREENS, "validation", oi_val, "screen"), flush=True)
+    if not (OI / "screen" / "images" / "train").exists():
+        print("Open Images 화면 학습", export_oi_multi(OI_SCREENS, "test", oi_train, "screen"), flush=True)
+    w = dd.Writer(DAILY_DS)
+    print("VISPR-redactions…", flush=True)
+    dd.add_redactions(w, VR)
+    for part, sp in (("ann_train", "train"), ("ann_val", "val")):
+        for js in glob.glob(f"{got['hit_' + part]}/**/*.json", recursive=True):
+            print("BIV-Priv-HIT", sp, Path(js).name, flush=True)
+            dd.add_coco(w, Path(js), got["hit_img_" + sp], "hit", split=sp, frame_step=hit_step,
+                        only_names=dd.BIV_OBJECTS)
+    print("BIV-Priv-Seg…", flush=True)
+    dd.add_coco(w, got["seg_ann"], got["seg_img"], "seg", val_frac=0.2)
+    print("VizWiz-Priv…", flush=True)
+    dd.add_vizwiz_priv(w, got["vwp_ann"], got["vwp_img"])
+    print("Open Images 화면…", flush=True)
+    dd.add_yolo_dir(w, OI / "screen", "oi", dict(enumerate(OI_SCREENS)))
+    res = w.finish()
+    print(json.dumps(res, ensure_ascii=False, indent=1))
+    _save_json("daily_ds_counts.json", res)
+    print("드라이브로 압축 복사 중…", flush=True)
+    dd.zip_dir(DAILY_DS, DAILY_ZIP)
+    print("저장:", DAILY_ZIP)
+    return res
+
+
+def train_daily(*, epochs: int = 30, base: str = "yolo26n.pt") -> Path:
+    """일상 사진 개인정보 물체 9종 YOLO26n(GPU). 데이터는 build_daily 가 만든 드라이브 zip. 끊기면 이어서."""
+    from ultralytics import YOLO
+    from vision import daily_data as dd
+    done = sorted(OUT.glob("daily_v[0-9][0-9][0-9]/best.onnx"))
+    if done and (OUT / "runs" / "daily_objects" / "DONE").exists():
+        print("이미 있음:", done[-1])
+        return done[-1]
+    if not (DAILY_DS / "data.yaml").exists():
+        print("데이터 풀기…", flush=True)
+        zipfile.ZipFile(DAILY_ZIP).extractall(DAILY_DS)
+        (DAILY_DS / "data.yaml").write_text(
+            f"path: {DAILY_DS}\ntrain: images/train\nval: images/val\nnames:\n" +
+            "".join(f"  {i}: {n}\n" for i, n in enumerate(dd.CLASSES)))
+    last = resumable_train(base, data=str(DAILY_DS / "data.yaml"), name="daily_objects", epochs=epochs)
     m = YOLO(str(last))
-    metrics = m.val(data=str(ds / "data.yaml"), imgsz=640, verbose=False, plots=False)
-    per = {m.names[i]: round(float(v), 3) for i, v in enumerate(metrics.box.maps)}
-    print("클래스별 mAP50-95:", per, " 전체 mAP50:", round(float(metrics.box.map50), 3))
+    metrics = m.val(data=str(DAILY_DS / "data.yaml"), imgsz=640, verbose=False, plots=False)
+    per = {}
+    for i, c in enumerate(metrics.box.ap_class_index):
+        name = m.names[int(c)]
+        per[name] = {"정밀도": round(float(metrics.box.p[i]), 3), "재현율": round(float(metrics.box.r[i]), 3),
+                     "mAP50": round(float(metrics.box.ap50[i]), 3)}
+    print("클래스별:", json.dumps(per, ensure_ascii=False, indent=1), " 전체 mAP50:", round(float(metrics.box.map50), 3))
     m.export(format="onnx", imgsz=640)
     dst = _next_version("daily")
     dst.mkdir(parents=True)
     shutil.copy(last, dst / "best.pt")
     shutil.copy(last.with_suffix(".onnx"), dst / "best.onnx")
-    _save_json(f"{dst.name}_val.json", {"map50": round(float(metrics.box.map50), 3), "map50_95_per_class": per})
+    _save_json(f"{dst.name}_val.json", {"map50": round(float(metrics.box.map50), 3), "per_class": per})
     return dst / "best.onnx"
