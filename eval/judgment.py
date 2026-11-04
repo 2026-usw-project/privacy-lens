@@ -193,6 +193,46 @@ def settings_screen(f: Fake, split: bool):
     return lines, gold
 
 
+def card_split(f: Fake, split: bool):
+    """카드 번호가 4자리씩 따로 읽힌 사진(실물 학생증 겸 체크카드에서 실제로 나온 모양)."""
+    c = f.card()
+    groups = c.split("-")
+    lines = [["NURI CARD", "Check&Debit"], groups, ["VALID", "THRU", f"0{f.r.randint(1, 9)}/2{f.r.randint(6, 9)}"]]
+    return lines, [Gold(" ".join(groups), COVER, "카드번호")]
+
+
+def digit_groups(f: Fake, split: bool):
+    """4자리 숫자가 한 줄에 여럿 있지만 카드가 아닌 것(시간표·주문표). Luhn 이 안 맞는 16자리."""
+    while True:
+        d = "".join(str(f.r.randint(0, 9)) for _ in range(16))
+        if not kp.valid_luhn(d):
+            break
+    groups = [d[i:i + 4] for i in range(0, 16, 4)]
+    lines = [["주문 내역"], groups, ["합계 12,500원"]]
+    return lines, [Gold(" ".join(groups), NONE, "숫자 묶음")]
+
+
+def student_id_other(f: Fake, split: bool):
+    """학교마다 학번 모양이 다르다. 연도로 시작하지 않는 8자리(실물 학생증에서 나온 모양)."""
+    n, s = f.name(), f.pick(SCHOOLS)
+    sid = f"{f.r.randint(1, 9)}{f.r.choice(['1', '2'])}{f.r.randint(0, 2)}{f.r.randint(10000, 99999)}"
+    if sid.startswith(("19", "20")):
+        sid = "3" + sid[1:]
+    lines = [[s], ["학생증"], [f.pick(["ICT융합대학", "경영대학", "공과대학"])], [n], [sid]]
+    return lines, [Gold(n, COVER, "이름"), Gold(sid, REVIEW, "학번")]
+
+
+HANJA = ["韓瑞潾", "金民秀", "李道敏", "朴志訓", "崔智度", "鄭恩敏", ""]   # "" = OCR 이 한자를 못 읽고 남긴 빈 괄호
+
+
+def id_card_hanja(f: Fake, split: bool):
+    """신분증의 이름 옆에 한자가 괄호로 붙은 모양."""
+    n, r, a = f.name(), f.rrn(), f.road()
+    h = f.pick(HANJA)
+    lines = [["주민등록증"], [f"{n} ({h})" if h else f"{n}()"], [r], [a]]
+    return lines, [Gold(n, COVER, "이름"), Gold(r, COVER, "주민번호"), Gold(a, COVER, "도로명주소")]
+
+
 TEMPLATES = {
     "송장(라벨 있음)": waybill_labeled,
     "송장(라벨 없음)": waybill_unlabeled,
@@ -207,6 +247,10 @@ TEMPLATES = {
     "카드": card_photo,
     "OCR 잡음": ocr_noise,
     "설정 화면": settings_screen,
+    "카드(번호 나뉨)": card_split,
+    "숫자 묶음": digit_groups,
+    "학생증(학번 모양 다름)": student_id_other,
+    "신분증(한자 이름)": id_card_hanja,
 }
 
 
@@ -233,7 +277,10 @@ def predict(scene: Scene, spans: list[TextSpan], findings) -> list[tuple[Gold, s
         gk = _key(g.text)
         hits = []
         for fd in findings:
-            if fd.span_index is None or gk not in _key(spans[fd.span_index].text):
+            if fd.span_index is None:
+                continue
+            parts = fd.detail.get("span_indices") or [fd.span_index]
+            if gk not in _key("".join(spans[k].text for k in parts)):
                 continue
             ek = _key(fd.evidence_text)
             if not ek or ek in gk or gk in ek:

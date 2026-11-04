@@ -17,7 +17,7 @@ import re
 from . import kr_patterns as kp
 from . import wording
 from .layout import layout
-from .types import Certainty, Finding, Severity, TextSpan
+from .types import Box, Certainty, Finding, Severity, TextSpan
 
 # 주변 문구를 찾을 반경. 글자 높이의 배수로 잡아야 해상도에 안 휘둘린다.
 CONTEXT_RADIUS_EM = 6.0
@@ -480,6 +480,54 @@ def _id_context(index: int, spans: list[TextSpan]) -> str | None:
     return None
 
 
+def _digit_group(text: str) -> str | None:
+    """'6060', '4581 2484' 처럼 4자리 묶음만 있는 조각이면 숫자만, 아니면 None."""
+    flat = re.sub(r"[\s\-]", "", kp.normalize(text))
+    return flat if flat.isdigit() and len(flat) % 4 == 0 and len(flat) < 16 else None
+
+
+def find_split_cards(spans: list[TextSpan], findings: list[Finding]) -> list[Finding]:
+    """같은 줄에 4자리씩 따로 읽힌 숫자를 이어 16자리가 되고 Luhn 이 맞으면 카드번호.
+
+    카드 번호는 엠보싱·간격 때문에 OCR 이 묶음마다 따로 읽는 일이 잦다(실물 학생증 겸 체크카드).
+    한 조각에 다 들어온 번호는 정규식(RE_CARD)이 이미 잡는다.
+    """
+    groups = {i: d for i, s in enumerate(spans) if (d := _digit_group(s.text))}
+    if len(groups) < 2:
+        return []
+    lay = layout(spans)
+    prev = {}
+    for i in groups:
+        left = next((j for j in lay.left_neighbors(i)[:1] if j in groups), None)
+        if left is not None:
+            prev[i] = left
+    nxt = {j: i for i, j in prev.items()}
+    carded = {f.span_index for f in findings if f.kind == "card"}
+    out = []
+    for head in (i for i in groups if i not in prev):
+        chain = [head]
+        while chain[-1] in nxt and len(chain) < 4:
+            chain.append(nxt[chain[-1]])
+        digits = "".join(groups[k] for k in chain)
+        if len(chain) < 2 or len(digits) != 16 or not kp.valid_luhn(digits) or carded & set(chain):
+            continue
+        parts = [spans[k] for k in chain]
+        certainty = min((_certainty_from_ocr(s.ocr_confidence) for s in parts),
+                        key=lambda c: [Certainty.REGION_ONLY, Certainty.PARTIAL, Certainty.READ].index(c))
+        x0, y0 = min(s.box.x for s in parts), min(s.box.y for s in parts)
+        x1, y1 = max(s.box.x + s.box.w for s in parts), max(s.box.y + s.box.h for s in parts)
+        box = Box(x0, y0, x1 - x0, y1 - y0)
+        if certainty is Certainty.REGION_ONLY:
+            f = _region_only("card", parts[0], chain[0])
+            f.box = box
+            out.append(f)
+            continue
+        out.append(Finding(kind="card", box=box, certainty=certainty, severity=Severity.COVER,
+                           message=wording.found("card"), evidence_text=" ".join(groups[k] for k in chain),
+                           span_index=chain[0], detail={"span_indices": chain, "parts": len(chain)}))
+    return out
+
+
 def find_id_numbers(spans: list[TextSpan]) -> list[Finding]:
     """학번·사번 라벨 바로 뒤 6~10자리 숫자.
 
@@ -488,7 +536,7 @@ def find_id_numbers(spans: list[TextSpan]) -> list[Finding]:
     """
     out: list[Finding] = []
     for i, span in enumerate(spans):
-        text = kp.normalize(span.text)
+        text = kp.strip_hanja(kp.normalize(span.text))
         flat = kp.compact(text)
         value = label = None
         for w in kp.ID_LABELS:
@@ -505,8 +553,10 @@ def find_id_numbers(spans: list[TextSpan]) -> list[Finding]:
                     value = flat
                     break
         labeled = bool(value)
-        if not value and re.fullmatch(r"(?:19|20)\d{6,8}", flat) and _id_context(i, spans):
-            value = flat  # 학생증 위의 라벨 없는 '2023xxxx'. 연도로 시작하는 8~10자리
+        if not value and re.fullmatch(r"[1-9]\d{7,9}", flat) and _id_context(i, spans):
+            # 학생증 위의 라벨 없는 8~10자리. 학교마다 모양이 달라 연도로 시작하지 않기도 한다('22018093').
+            # 0 으로 시작하는 것(전화번호)은 빼고, 라벨이 없으니 확인 필요까지만
+            value = flat
         if not value:
             continue
         certainty = _certainty_from_ocr(span.ocr_confidence)
@@ -570,7 +620,7 @@ def find_unlabeled_names(spans: list[TextSpan], findings: list[Finding],
     for i, span in enumerate(spans):
         if i in named:
             continue
-        text = kp.normalize(span.text)
+        text = kp.strip_hanja(kp.normalize(span.text))
         flat = kp.compact(text)
         token, severity, clue = None, None, None
         if kp.name_candidate(flat) and not _is_vocabulary(flat):
@@ -690,6 +740,7 @@ def evaluate(
         findings.extend(find_names(spans))
         findings.extend(find_secrets(spans))
         findings.extend(find_id_numbers(spans))
+        findings.extend(find_split_cards(spans, findings))
         findings.extend(find_unlabeled_names(spans, findings, unlabeled_names))
         _promote_phones_next_to_names(spans, findings)
 
