@@ -302,17 +302,23 @@ def build_daily(*, oi_train: int = 2000, oi_val: int = 300, hit_step: int = 2) -
     print("VISPR-redactions…", flush=True)
     dd.add_redactions(w, VR)
     for part, sp in (("ann_train", "train"), ("ann_val", "val")):
+        if f"hit_{part}" not in got:
+            continue
         for js in glob.glob(f"{got['hit_' + part]}/**/*.json", recursive=True):
             print("BIV-Priv-HIT", sp, Path(js).name, flush=True)
             dd.add_coco(w, Path(js), got["hit_img_" + sp], "hit", split=sp, frame_step=hit_step,
                         only_names=dd.BIV_OBJECTS)
-    print("BIV-Priv-Seg…", flush=True)
-    dd.add_coco(w, got["seg_ann"], got["seg_img"], "seg", val_frac=0.2)
-    print("VizWiz-Priv…", flush=True)
-    dd.add_vizwiz_priv(w, got["vwp_ann"], got["vwp_img"])
+    if "seg_ann" in got:
+        print("BIV-Priv-Seg…", flush=True)
+        dd.add_coco(w, got["seg_ann"], got["seg_img"], "seg", val_frac=0.2)
+    if "vwp_ann" in got:
+        print("VizWiz-Priv…", flush=True)
+        dd.add_vizwiz_priv(w, got["vwp_ann"], got["vwp_img"])
+    sources = sorted({k.split("_")[0] for k in got}) + ["redactions", "oi"]
     print("Open Images 화면…", flush=True)
     dd.add_yolo_dir(w, OI / "screen", "oi", dict(enumerate(OI_SCREENS)))
     res = w.finish()
+    res["받은 데이터"] = sources
     print(json.dumps(res, ensure_ascii=False, indent=1))
     _save_json("daily_ds_counts.json", res)
     print("드라이브로 압축 복사 중…", flush=True)

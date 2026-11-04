@@ -91,9 +91,40 @@ def fetch(url: str, dst: Path) -> Path:
     dst.parent.mkdir(parents=True, exist_ok=True)
     if not dst.exists():
         print("받는 중:", url.rsplit("/", 1)[-1], flush=True)
-        subprocess.run(["curl", "-sSfL", "--retry", "3", "-o", str(dst) + ".part", url], check=True)
+        cmd = ["curl", "-sSfL", "--retry", "3", "-o", str(dst) + ".part", url]
+        r = subprocess.run(cmd)
+        if r.returncode == 60:   # 서버가 중간 인증서를 안 보냄 → 공식 발급 주소(AIA)에서 받아 보충하고 다시 검증
+            bundle = _bundle_with_intermediate(url.split("/")[2])
+            if bundle:
+                r = subprocess.run(cmd[:1] + ["--cacert", str(bundle)] + cmd[1:])
+        if r.returncode:
+            raise RuntimeError(f"받기 실패(curl {r.returncode}): {url}")
         Path(str(dst) + ".part").rename(dst)
     return dst
+
+
+def _bundle_with_intermediate(host: str) -> Path | None:
+    """서버 인증서의 'CA Issuers' 주소에서 중간 인증서를 받아 시스템 CA 묶음에 더한 파일. 검증은 그대로 한다."""
+    import ssl
+    try:
+        leaf = ssl.get_server_certificate((host, 443))
+        txt = subprocess.run(["openssl", "x509", "-noout", "-text"], input=leaf, capture_output=True, text=True).stdout
+        m = re.search(r"CA Issuers - URI:(\S+)", txt)
+        if not m:
+            return None
+        der = Path(f"/tmp/{host}_inter.der")
+        subprocess.run(["curl", "-sSfL", "-o", str(der), m.group(1)], check=True)
+        pem = subprocess.run(["openssl", "x509", "-inform", "DER", "-in", str(der)], capture_output=True, text=True)
+        if pem.returncode:   # 이미 PEM 일 수도 있음
+            pem = subprocess.run(["openssl", "x509", "-in", str(der)], capture_output=True, text=True)
+        sys_ca = Path(ssl.get_default_verify_paths().cafile or "/etc/ssl/certs/ca-certificates.crt")
+        out = Path(f"/tmp/{host}_bundle.pem")
+        out.write_text(sys_ca.read_text() + "\n" + pem.stdout)
+        print("  중간 인증서 보충:", m.group(1), flush=True)
+        return out
+    except Exception as e:
+        print("  중간 인증서 보충 실패:", type(e).__name__, flush=True)
+        return None
 
 
 def unzip(z: Path, dst: Path) -> Path:
@@ -107,10 +138,15 @@ def download_all(root: Path, which=("hit", "seg", "vwp")) -> dict[str, Path]:
     root = Path(root)
     got = {}
     for key in which:
-        for part, url in URLS[key].items():
-            name = url.rsplit("/", 1)[-1]
-            f = fetch(url, root / "zips" / key / f"{part}_{name}")
-            got[f"{key}_{part}"] = unzip(f, root / key / part) if f.suffix == ".zip" else f
+        try:
+            for part, url in URLS[key].items():
+                name = url.rsplit("/", 1)[-1]
+                f = fetch(url, root / "zips" / key / f"{part}_{name}")
+                got[f"{key}_{part}"] = unzip(f, root / key / part) if f.suffix == ".zip" else f
+        except Exception as e:   # 한 데이터가 실패해도 나머지로 계속
+            print(f"건너뜀 {key}: {e}", flush=True)
+            for part in URLS[key]:
+                got.pop(f"{key}_{part}", None)
     return got
 
 
