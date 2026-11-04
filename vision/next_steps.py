@@ -33,6 +33,12 @@ KR_ZIPS = {"kr_eval": "Korea Car License Plate*.zip", "kr_train1": "license-plat
            "kr_train2": "korea car plat*.zip"}
 
 
+def _fresh(name: str):
+    """노트북에서 git pull 한 뒤에도 예전 모듈이 남지 않게 다시 불러온다."""
+    import importlib
+    return importlib.reload(importlib.import_module(name))
+
+
 def _next_version(prefix: str) -> Path:
     """가장 큰 번호 + 1 (plate_v003 이 있으면 plate_v004)."""
     nums = [int(p.name.rsplit("_v", 1)[1]) for p in OUT.glob(f"{prefix}_v[0-9][0-9][0-9]")]
@@ -257,7 +263,7 @@ def vr_data(splits=("test2017",)) -> Path:
 
 def eval_daily(*, limit: int = 300) -> dict:
     """지금 서비스(규칙 기반 + 문서 YOLO + 얼굴 + 번호판)가 일상 사진의 개인정보를 종류별로 몇 % 찾나. CPU 로 됨."""
-    from vision import redactions as rd
+    rd = _fresh("vision.redactions")
     vr_data(("test2017",))
     service_models()
     res = rd.evaluate_service(VR, split="test2017", limit=limit)
@@ -286,8 +292,7 @@ def export_oi_multi(classes: list[str], split: str, n: int, name: str) -> int:
 
 def build_daily(*, oi_train: int = 2000, oi_val: int = 300, hit_step: int = 2) -> dict:
     """공개 데이터 5개를 한 YOLO 데이터로(CPU). 결과는 드라이브 objects/daily_ds.zip 과 objects/daily_ds_counts.json."""
-    from vision import daily_data as dd
-    from vision import redactions as rd
+    dd, rd = _fresh("vision.daily_data"), _fresh("vision.redactions")
     if DAILY_ZIP.exists():
         print("이미 있음:", DAILY_ZIP)
         return json.loads((OUT / "daily_ds_counts.json").read_text())
@@ -330,7 +335,7 @@ def build_daily(*, oi_train: int = 2000, oi_val: int = 300, hit_step: int = 2) -
 def train_daily(*, epochs: int = 30, base: str = "yolo26n.pt") -> Path:
     """일상 사진 개인정보 물체 9종 YOLO26n(GPU). 데이터는 build_daily 가 만든 드라이브 zip. 끊기면 이어서."""
     from ultralytics import YOLO
-    from vision import daily_data as dd
+    dd = _fresh("vision.daily_data")
     done = sorted(OUT.glob("daily_v[0-9][0-9][0-9]/best.onnx"))
     if done and (OUT / "runs" / "daily_objects" / "DONE").exists():
         print("이미 있음:", done[-1])
