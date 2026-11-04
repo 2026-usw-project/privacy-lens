@@ -65,13 +65,35 @@ def midv_dataset(*, backgrounds: str | None = None) -> dict:
     return c
 
 
+def resumable_train(base: str, *, data: str, name: str, epochs: int, **kw) -> Path:
+    """학습 기록을 드라이브(objects/runs/<name>)에 두고, 끊겼으면 last.pt 부터 이어서 학습한다.
+
+    무료 Colab 은 런타임이 끊기면 /content 가 지워진다(2026-11-04 증명사진 35/40 epoch 에서 잃음).
+    다 끝난 학습은 DONE 표시가 있어 다시 돌리지 않는다. 반환: 마지막 가중치(last.pt)."""
+    from ultralytics import YOLO
+    run = OUT / "runs" / name
+    last = run / "weights" / "last.pt"
+    if (run / "DONE").exists():
+        print("이미 끝난 학습:", run)
+        return last
+    if last.exists():
+        print("이어서 학습:", last, flush=True)
+        YOLO(str(last)).train(resume=True)
+    else:
+        YOLO(base).train(data=data, epochs=epochs, imgsz=640, batch=16, workers=2, project=str(OUT / "runs"),
+                         name=name, exist_ok=True, patience=0, verbose=False, plots=False, **kw)
+    (run / "DONE").write_text("ok")
+    return last
+
+
 def train_face_photo(*, epochs: int = 40, base: str = "yolo26n.pt") -> Path:
     from ultralytics import YOLO
+    done = sorted(OUT.glob("face_photo_v[0-9][0-9][0-9]/best.onnx"))
+    if done and (OUT / "runs" / "face_photo" / "DONE").exists():
+        print("이미 있음:", done[-1])
+        return done[-1]
     midv_dataset()
-    YOLO(base).train(data=str(FP_DS / "data.yaml"), epochs=epochs, imgsz=640, batch=16, workers=2,
-                     project="/content/runs", name="face_photo", exist_ok=True, patience=0,
-                     verbose=False, plots=False)
-    last = Path("/content/runs/face_photo/weights/last.pt")
+    last = resumable_train(base, data=str(FP_DS / "data.yaml"), name="face_photo", epochs=epochs)
     YOLO(str(last)).export(format="onnx", imgsz=640)
     dst = _next_version("face_photo")
     dst.mkdir(parents=True)
@@ -159,11 +181,15 @@ def train_plate_rot(*, epochs: int = 20, base: str | None = None) -> Path:
     from vision import plate_synth as ps
     info = plate_data()
     base = base or str(OUT / "plate_v003" / "best.pt")
+    done = sorted(p.parent for p in OUT.glob("plate_v00[4-9]/best.onnx"))
+    if done and (OUT / "runs" / "plate_rot" / "DONE").exists():
+        print("이미 있음:", done[-1])
+        return done[-1] / "best.onnx"
     dst = _next_version("plate")
     onnx = ps.train_next(base=base, oi_root=str(OI / "plate"), synth_root=str(SYNTH),
                          kr_dirs=[str(info["kr"]["kr_train1"]), str(info["kr"]["kr_train2"])],
-                         out_dir=str(dst), epochs=epochs, name=dst.name,
-                         extra_train=[str(ROT / "images" / "train")])
+                         out_dir=str(dst), epochs=epochs, name="plate_rot",
+                         extra_train=[str(ROT / "images" / "train")], runs_root=True)
     print("저장:", onnx)
     return Path(onnx)
 
