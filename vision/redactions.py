@@ -50,8 +50,9 @@ GROUPS = {
 }
 
 
-def download(root: Path, splits=SPLITS, *, images: bool = True) -> None:
-    """Colab 용. 라벨 json 과 사진 tar 를 받아 root/annotations, root/images/<split> 에 둔다."""
+def download(root: Path, splits=SPLITS, *, images: bool = True, keep: Path | None = None) -> None:
+    """Colab 용. 라벨 json 과 사진 tar 를 받아 root/annotations, root/images/<split> 에 둔다.
+    keep(드라이브 폴더)을 주면 tar 를 거기에 먼저 받아 두어, 런타임이 끊겨도 다시 받지 않는다."""
     root = Path(root)
     (root / "annotations").mkdir(parents=True, exist_ok=True)
     for sp in splits:
@@ -60,9 +61,19 @@ def download(root: Path, splits=SPLITS, *, images: bool = True) -> None:
             subprocess.run(["curl", "-sSfL", "-o", str(js), f"{BASE}/annotations/{sp}.json"], check=True)
         if images and not (root / "images" / sp).exists():
             (root / "images").mkdir(exist_ok=True)
-            print(f"{sp} 사진 받는 중…", flush=True)
-            subprocess.run(f"curl -sSfL {BASE}/images/{sp}.tar.gz | tar xz -C {root / 'images'}", shell=True,
-                           check=True)
+            if keep:
+                tar = Path(keep) / f"{sp}.tar.gz"
+                if not tar.exists():
+                    print(f"{sp} 사진 받는 중(드라이브에 보관)…", flush=True)
+                    tar.parent.mkdir(parents=True, exist_ok=True)
+                    subprocess.run(["curl", "-sSfL", "-o", str(tar) + ".part", f"{BASE}/images/{sp}.tar.gz"], check=True)
+                    Path(str(tar) + ".part").rename(tar)
+                print(f"{sp} 사진 푸는 중…", flush=True)
+                subprocess.run(["tar", "xzf", str(tar), "-C", str(root / "images")], check=True)
+            else:
+                print(f"{sp} 사진 받는 중…", flush=True)
+                subprocess.run(f"curl -sSfL {BASE}/images/{sp}.tar.gz | tar xz -C {root / 'images'}", shell=True,
+                               check=True)
 
 
 # ------------------------------------------------------------------ 읽기

@@ -59,9 +59,15 @@ def midv_dataset(*, backgrounds: str | None = None) -> dict:
     from vision import face_photo_data as fpd
     if not (MIDV / "annotations").exists():
         MIDV.mkdir(parents=True, exist_ok=True)
-        print("MIDV-2020 photo.tar 받는 중(4GB, 3~5분)…", flush=True)
-        subprocess.run(f"curl -s ftp://smartengines.com/midv-2020/dataset/photo.tar | tar x -C {MIDV}",
-                       shell=True, check=True)
+        tar = OUT / "raw" / "midv_photo.tar"   # 드라이브에 보관 → 런타임이 끊겨도 다시 안 받음
+        if not tar.exists():
+            print("MIDV-2020 photo.tar 받는 중(4GB, 드라이브에 보관)…", flush=True)
+            tar.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["curl", "-s", "-o", str(tar) + ".part", "ftp://smartengines.com/midv-2020/dataset/photo.tar"],
+                           check=True)
+            Path(str(tar) + ".part").rename(tar)
+        print("MIDV-2020 푸는 중…", flush=True)
+        subprocess.run(["tar", "xf", str(tar), "-C", str(MIDV)], check=True)
     if (FP_DS / "data.yaml").exists():
         print("이미 있음:", FP_DS)
         return {}
@@ -250,8 +256,8 @@ def service_models() -> dict:
 
 def vr_data(splits=("test2017",)) -> Path:
     """VISPR-redactions 라벨·사진 받기(라벨은 드라이브 objects/vr/ 에도 복사)."""
-    from vision import redactions as rd
-    rd.download(VR, splits)
+    rd = _fresh("vision.redactions")
+    rd.download(VR, splits, keep=OUT / "raw" / "vr")
     keep = OUT / "vr"
     keep.mkdir(parents=True, exist_ok=True)
     for sp in splits:
@@ -297,8 +303,8 @@ def build_daily(*, oi_train: int = 2000, oi_val: int = 300, hit_step: int = 2, r
         print("이미 있음(다시 만들려면 rebuild=True):", DAILY_ZIP)
         return json.loads((OUT / "daily_ds_counts.json").read_text())
     raw = Path("/content/daily_raw")
-    got = dd.download_all(raw, manual=OUT / "manual")
-    rd.download(VR, ("train2017", "val2017"))
+    got = dd.download_all(raw, manual=OUT / "manual", keep=OUT / "raw")
+    rd.download(VR, ("train2017", "val2017"), keep=OUT / "raw" / "vr")
     if not (OI / "screen" / "images" / "val").exists():
         print("Open Images 화면 검증", export_oi_multi(OI_SCREENS, "validation", oi_val, "screen"), flush=True)
     if not (OI / "screen" / "images" / "train").exists():
