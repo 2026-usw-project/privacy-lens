@@ -160,7 +160,8 @@ def rotated_copies(roots: list[Path], out: Path, *, frac: float = 0.3, seed: int
 
 
 def train_next(*, base: str, oi_root: str, synth_root: str, kr_dirs: list[str], out_dir: str,
-               epochs: int = 20, name: str = "plate_v003", extra_train: list[str] = ()) -> str:
+               epochs: int = 20, name: str = "plate_v003", extra_train: list[str] = (),
+               runs_root: bool = False) -> str:
     """이어 학습. 검증은 Open Images 검증 + 한국 데이터의 test 분할(학습에 안 씀).
 
     조기 종료를 끄고 마지막 가중치를 쓴다(v002 에서 해외 검증만으로 고른 best 가 한국에서 나빴다)."""
@@ -175,12 +176,18 @@ def train_next(*, base: str, oi_root: str, synth_root: str, kr_dirs: list[str], 
         for p in glob.glob(f"{d}/*/images"):
             (vals if "/test/" in p + "/" else trains).append(p)
     cfg = {"path": "/", "train": trains, "val": vals, "names": {0: "plate"}}
-    yp = f"/content/{name}.yaml"
+    import os
+    work = os.environ.get("PL_WORK", "/content")
+    yp = f"{work}/{name}.yaml"
     yaml.safe_dump(cfg, open(yp, "w"), allow_unicode=True)
     print("학습:", trains, "\n검증:", vals)
-    YOLO(base).train(data=yp, epochs=epochs, imgsz=640, batch=16, workers=2, project="/content/runs", name=name,
-                     exist_ok=True, patience=0, verbose=False, plots=False)
-    last = f"/content/runs/{name}/weights/last.pt"
+    if runs_root:  # 드라이브에 두고 끊기면 이어서(vision.next_steps.resumable_train)
+        from vision.next_steps import resumable_train
+        last = str(resumable_train(base, data=yp, name=name, epochs=epochs))
+    else:
+        YOLO(base).train(data=yp, epochs=epochs, imgsz=640, batch=16, workers=2, project=f"{work}/runs", name=name,
+                         exist_ok=True, patience=0, verbose=False, plots=False)
+        last = f"{work}/runs/{name}/weights/last.pt"
     YOLO(last).export(format="onnx", imgsz=640)
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     shutil.copy(last, f"{out_dir}/best.pt")

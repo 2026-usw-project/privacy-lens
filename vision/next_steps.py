@@ -22,15 +22,26 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(os.environ.get("PL_DRIVE", "/content/drive/MyDrive/PrivacyLens-YOLO"))
+# 작업 폴더: Colab 은 /content, 집 PC 는 PL_WORK 로 바꾼다(예: D:/pl_work). 드라이브는 PL_DRIVE(구글 드라이브 데스크톱 경로)
+WORK = Path(os.environ.get("PL_WORK", "/content"))
+# 학습 부하: PC 그래픽카드를 아끼려면 PL_BATCH 를 낮춘다(기본 16)
+BATCH = int(os.environ.get("PL_BATCH", "16"))
+WORKERS = int(os.environ.get("PL_WORKERS", "2"))
 OUT = ROOT / "objects"
-MIDV = Path("/content/midv")
-FP_DS = Path("/content/fp_ds")
-OI = Path("/content/oi")
-KR = Path("/content/kr")
-SYNTH = Path("/content/plate_synth")
-ROT = Path("/content/plate_rot")
+MIDV = WORK / "midv"
+FP_DS = WORK / "fp_ds"
+OI = WORK / "oi"
+KR = WORK / "kr"
+SYNTH = WORK / "plate_synth"
+ROT = WORK / "plate_rot"
 KR_ZIPS = {"kr_eval": "Korea Car License Plate*.zip", "kr_train1": "license-plate-label*.zip",
            "kr_train2": "korea car plat*.zip"}
+
+
+def _fresh(name: str):
+    """노트북에서 git pull 한 뒤에도 예전 모듈이 남지 않게 다시 불러온다."""
+    import importlib
+    return importlib.reload(importlib.import_module(name))
 
 
 def _next_version(prefix: str) -> Path:
@@ -53,9 +64,15 @@ def midv_dataset(*, backgrounds: str | None = None) -> dict:
     from vision import face_photo_data as fpd
     if not (MIDV / "annotations").exists():
         MIDV.mkdir(parents=True, exist_ok=True)
-        print("MIDV-2020 photo.tar 받는 중(4GB, 3~5분)…", flush=True)
-        subprocess.run(f"curl -s ftp://smartengines.com/midv-2020/dataset/photo.tar | tar x -C {MIDV}",
-                       shell=True, check=True)
+        tar = OUT / "raw" / "midv_photo.tar"   # 드라이브에 보관 → 런타임이 끊겨도 다시 안 받음
+        if not tar.exists():
+            print("MIDV-2020 photo.tar 받는 중(4GB, 드라이브에 보관)…", flush=True)
+            tar.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(["curl", "-s", "-o", str(tar) + ".part", "ftp://smartengines.com/midv-2020/dataset/photo.tar"],
+                           check=True)
+            Path(str(tar) + ".part").rename(tar)
+        print("MIDV-2020 푸는 중…", flush=True)
+        subprocess.run(["tar", "xf", str(tar), "-C", str(MIDV)], check=True)
     if (FP_DS / "data.yaml").exists():
         print("이미 있음:", FP_DS)
         return {}
@@ -65,13 +82,42 @@ def midv_dataset(*, backgrounds: str | None = None) -> dict:
     return c
 
 
+# (이벤트, 함수) — 학습 모델에 붙일 콜백. 집 PC 는 vision.pc_train 이 그래픽카드 온도 보호를 붙인다.
+TRAIN_CALLBACKS: list = []
+
+
+def resumable_train(base: str, *, data: str, name: str, epochs: int, **kw) -> Path:
+    """학습 기록을 드라이브(objects/runs/<name>)에 두고, 끊겼으면 last.pt 부터 이어서 학습한다.
+
+    무료 Colab 은 런타임이 끊기면 /content 가 지워진다(2026-11-04 증명사진 35/40 epoch 에서 잃음).
+    다 끝난 학습은 DONE 표시가 있어 다시 돌리지 않는다. 반환: 마지막 가중치(last.pt)."""
+    from ultralytics import YOLO
+    run = OUT / "runs" / name
+    last = run / "weights" / "last.pt"
+    if (run / "DONE").exists():
+        print("이미 끝난 학습:", run)
+        return last
+    model = YOLO(str(last) if last.exists() else base)
+    for event, fn in TRAIN_CALLBACKS:
+        model.add_callback(event, fn)
+    if last.exists():
+        print("이어서 학습:", last, flush=True)
+        model.train(resume=True)
+    else:
+        model.train(data=data, epochs=epochs, imgsz=640, batch=BATCH, workers=WORKERS, project=str(OUT / "runs"),
+                         name=name, exist_ok=True, patience=0, verbose=False, plots=False, **kw)
+    (run / "DONE").write_text("ok")
+    return last
+
+
 def train_face_photo(*, epochs: int = 40, base: str = "yolo26n.pt") -> Path:
     from ultralytics import YOLO
+    done = sorted(OUT.glob("face_photo_v[0-9][0-9][0-9]/best.onnx"))
+    if done and (OUT / "runs" / "face_photo" / "DONE").exists():
+        print("이미 있음:", done[-1])
+        return done[-1]
     midv_dataset()
-    YOLO(base).train(data=str(FP_DS / "data.yaml"), epochs=epochs, imgsz=640, batch=16, workers=2,
-                     project="/content/runs", name="face_photo", exist_ok=True, patience=0,
-                     verbose=False, plots=False)
-    last = Path("/content/runs/face_photo/weights/last.pt")
+    last = resumable_train(base, data=str(FP_DS / "data.yaml"), name="face_photo", epochs=epochs)
     YOLO(str(last)).export(format="onnx", imgsz=640)
     dst = _next_version("face_photo")
     dst.mkdir(parents=True)
@@ -159,11 +205,15 @@ def train_plate_rot(*, epochs: int = 20, base: str | None = None) -> Path:
     from vision import plate_synth as ps
     info = plate_data()
     base = base or str(OUT / "plate_v003" / "best.pt")
+    done = sorted(p.parent for p in OUT.glob("plate_v00[4-9]/best.onnx"))
+    if done and (OUT / "runs" / "plate_rot" / "DONE").exists():
+        print("이미 있음:", done[-1])
+        return done[-1] / "best.onnx"
     dst = _next_version("plate")
     onnx = ps.train_next(base=base, oi_root=str(OI / "plate"), synth_root=str(SYNTH),
                          kr_dirs=[str(info["kr"]["kr_train1"]), str(info["kr"]["kr_train2"])],
-                         out_dir=str(dst), epochs=epochs, name=dst.name,
-                         extra_train=[str(ROT / "images" / "train")])
+                         out_dir=str(dst), epochs=epochs, name="plate_rot",
+                         extra_train=[str(ROT / "images" / "train")], runs_root=True)
     print("저장:", onnx)
     return Path(onnx)
 
@@ -189,3 +239,146 @@ def eval_plate(models: dict[str, str] | None = None) -> dict:
                       f"재현율 {r['recall']}  정밀도 {r['precision']}", flush=True)
     _save_json("eval_plate_v004.json", res)
     return res
+
+
+# ------------------------------------------------------------------ 일상 사진(VISPR-redactions)
+
+VR = WORK / "vr"
+
+
+def service_models() -> dict:
+    """서비스가 쓰는 모델을 드라이브에서 저장소 models/ 로 가져온다: 문서 YOLO(models/v*/best.pt), 번호판 v003, YuNet."""
+    from pipeline.objects import MODELS, YUNET_FILE, download_yunet
+    MODELS.mkdir(exist_ok=True)
+    got = {}
+    docs = sorted((ROOT / "models").glob("v[0-9]*/best.pt"), key=lambda p: int(p.parent.name[1:]))
+    if docs and not (MODELS / docs[-1].parent.name / "best.pt").exists():
+        shutil.copytree(docs[-1].parent, MODELS / docs[-1].parent.name, dirs_exist_ok=True)
+    got["문서"] = docs[-1].parent.name if docs else "없음"
+    plate = OUT / "plate_v003" / "best.onnx"
+    if plate.exists() and not (MODELS / "plate.onnx").exists():
+        shutil.copy(plate, MODELS / "plate.onnx")
+    got["번호판"] = "plate_v003" if plate.exists() else "없음"
+    if not (MODELS / YUNET_FILE).exists():
+        download_yunet()
+    got["얼굴"] = "YuNet"
+    print("서비스 모델:", got)
+    return got
+
+
+def vr_data(splits=("test2017",)) -> Path:
+    """VISPR-redactions 라벨·사진 받기(라벨은 드라이브 objects/vr/ 에도 복사)."""
+    rd = _fresh("vision.redactions")
+    rd.download(VR, splits, keep=OUT / "raw" / "vr")
+    keep = OUT / "vr"
+    keep.mkdir(parents=True, exist_ok=True)
+    for sp in splits:
+        src = VR / "annotations" / f"{sp}.json"
+        if src.exists() and not (keep / src.name).exists():
+            shutil.copy(src, keep / src.name)
+    return VR
+
+
+def eval_daily(*, limit: int = 300) -> dict:
+    """지금 서비스(규칙 기반 + 문서 YOLO + 얼굴 + 번호판)가 일상 사진의 개인정보를 종류별로 몇 % 찾나. CPU 로 됨."""
+    rd = _fresh("vision.redactions")
+    vr_data(("test2017",))
+    service_models()
+    res = rd.evaluate_service(VR, split="test2017", limit=limit)
+    print(rd.table(res))
+    _save_json(f"eval_daily_service_{limit}.json", res)
+    return res
+
+
+OI_SCREENS = ["Computer monitor", "Mobile phone", "Laptop", "Television", "Tablet computer"]
+DAILY_DS = WORK / "daily_ds"
+DAILY_ZIP = OUT / "daily_ds.zip"
+
+
+def export_oi_multi(classes: list[str], split: str, n: int, name: str) -> int:
+    import fiftyone as fo
+    import fiftyone.zoo as foz
+    ds = foz.load_zoo_dataset("open-images-v7", split=split, label_types=["detections"], classes=classes,
+                              max_samples=n, only_matching=True, seed=0, shuffle=True,
+                              dataset_name=f"{name}-{split}-{n}")
+    ds.export(export_dir=str(OI / name), dataset_type=fo.types.YOLOv5Dataset, label_field="ground_truth",
+              split="val" if split == "validation" else "train", classes=classes)
+    m = len(ds)
+    ds.delete()
+    return m
+
+
+def build_daily(*, oi_train: int = 2000, oi_val: int = 300, hit_step: int = 2, rebuild: bool = False) -> dict:
+    """공개 데이터 5개를 한 YOLO 데이터로(CPU). 결과는 드라이브 objects/daily_ds.zip 과 objects/daily_ds_counts.json."""
+    dd, rd = _fresh("vision.daily_data"), _fresh("vision.redactions")
+    if DAILY_ZIP.exists() and not rebuild:
+        print("이미 있음(다시 만들려면 rebuild=True):", DAILY_ZIP)
+        return json.loads((OUT / "daily_ds_counts.json").read_text())
+    raw = WORK / "daily_raw"
+    got = dd.download_all(raw, manual=OUT / "manual", keep=OUT / "raw")
+    rd.download(VR, ("train2017", "val2017"), keep=OUT / "raw" / "vr")
+    if not (OI / "screen" / "images" / "val").exists():
+        print("Open Images 화면 검증", export_oi_multi(OI_SCREENS, "validation", oi_val, "screen"), flush=True)
+    if not (OI / "screen" / "images" / "train").exists():
+        print("Open Images 화면 학습", export_oi_multi(OI_SCREENS, "test", oi_train, "screen"), flush=True)
+    if rebuild and DAILY_DS.exists():
+        shutil.rmtree(DAILY_DS)
+    w = dd.Writer(DAILY_DS)
+    print("VISPR-redactions…", flush=True)
+    dd.add_redactions(w, VR)
+    for part, sp in (("ann_train", "train"), ("ann_val", "val")):
+        if f"hit_{part}" not in got:
+            continue
+        for js in glob.glob(f"{got['hit_' + part]}/**/*.json", recursive=True):
+            print("BIV-Priv-HIT", sp, Path(js).name, flush=True)
+            dd.add_coco(w, Path(js), got["hit_img_" + sp], "hit", split=sp, frame_step=hit_step,
+                        only_names=dd.BIV_OBJECTS)
+    if "seg_ann" in got:
+        print("BIV-Priv-Seg…", flush=True)
+        dd.add_coco(w, got["seg_ann"], got["seg_img"], "seg", val_frac=0.2)
+    if "vwp_ann" in got:
+        print("VizWiz-Priv…", flush=True)
+        dd.add_vizwiz_priv(w, got["vwp_ann"], got["vwp_img"])
+    sources = sorted({k.split("_")[0] for k in got}) + ["redactions", "oi"]
+    print("Open Images 화면…", flush=True)
+    dd.add_yolo_dir(w, OI / "screen", "oi", dict(enumerate(OI_SCREENS)))
+    res = w.finish()
+    res["받은 데이터"] = sources
+    print(json.dumps(res, ensure_ascii=False, indent=1))
+    _save_json("daily_ds_counts.json", res)
+    print("드라이브로 압축 복사 중…", flush=True)
+    dd.zip_dir(DAILY_DS, DAILY_ZIP)
+    print("저장:", DAILY_ZIP)
+    return res
+
+
+def train_daily(*, epochs: int = 30, base: str = "yolo26n.pt") -> Path:
+    """일상 사진 개인정보 물체 9종 YOLO26n(GPU). 데이터는 build_daily 가 만든 드라이브 zip. 끊기면 이어서."""
+    from ultralytics import YOLO
+    dd = _fresh("vision.daily_data")
+    done = sorted(OUT.glob("daily_v[0-9][0-9][0-9]/best.onnx"))
+    if done and (OUT / "runs" / "daily_objects" / "DONE").exists():
+        print("이미 있음:", done[-1])
+        return done[-1]
+    if not (DAILY_DS / "data.yaml").exists():
+        print("데이터 풀기…", flush=True)
+        zipfile.ZipFile(DAILY_ZIP).extractall(DAILY_DS)
+        (DAILY_DS / "data.yaml").write_text(
+            f"path: {DAILY_DS}\ntrain: images/train\nval: images/val\nnames:\n" +
+            "".join(f"  {i}: {n}\n" for i, n in enumerate(dd.CLASSES)))
+    last = resumable_train(base, data=str(DAILY_DS / "data.yaml"), name="daily_objects", epochs=epochs)
+    m = YOLO(str(last))
+    metrics = m.val(data=str(DAILY_DS / "data.yaml"), imgsz=640, verbose=False, plots=False)
+    per = {}
+    for i, c in enumerate(metrics.box.ap_class_index):
+        name = m.names[int(c)]
+        per[name] = {"정밀도": round(float(metrics.box.p[i]), 3), "재현율": round(float(metrics.box.r[i]), 3),
+                     "mAP50": round(float(metrics.box.ap50[i]), 3)}
+    print("클래스별:", json.dumps(per, ensure_ascii=False, indent=1), " 전체 mAP50:", round(float(metrics.box.map50), 3))
+    m.export(format="onnx", imgsz=640)
+    dst = _next_version("daily")
+    dst.mkdir(parents=True)
+    shutil.copy(last, dst / "best.pt")
+    shutil.copy(last.with_suffix(".onnx"), dst / "best.onnx")
+    _save_json(f"{dst.name}_val.json", {"map50": round(float(metrics.box.map50), 3), "per_class": per})
+    return dst / "best.onnx"
