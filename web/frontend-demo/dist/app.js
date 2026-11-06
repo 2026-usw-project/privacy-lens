@@ -237,6 +237,16 @@
     }
     return null;
   }
+  // iOS Safari 는 캔버스 하나가 약 16.7 MP 를 넘으면 그리지 못한다. 화면용 캔버스만 줄이고
+  // 좌표(state.width/height)·업로드 원본은 실제 크기 그대로 둔다. 영역은 비율로 저장하므로 영향이 없다.
+  const MAX_CANVAS_PX=16e6;
+  function displayScale(w,h){return Math.min(1,Math.sqrt(MAX_CANVAS_PX/(w*h)));}
+  function scaledCanvas(image,w,h){
+    const k=displayScale(w,h),c=document.createElement('canvas');
+    c.width=Math.max(1,Math.round(w*k));c.height=Math.max(1,Math.round(h*k));
+    c.getContext('2d').drawImage(image,0,0,c.width,c.height);
+    return c;
+  }
   function placeholder() {
     const c=document.createElement('canvas');c.width=1200;c.height=900;
     const g=c.getContext('2d');g.fillStyle='#f0efeb';g.fillRect(0,0,1200,900);
@@ -259,11 +269,11 @@
         objectUrl = URL.createObjectURL(new Blob([buffer],{type}));
         const image = await loadImage(objectUrl);
         if(token !== state.loadToken) return;
-        if(image.naturalWidth*image.naturalHeight > 24e6 || image.naturalWidth > 16384 || image.naturalHeight > 16384) throw new Error('사진 크기가 너무 커요. 24 MP 이하, 한 변 16,384 px 이하로 줄여 주세요.');
+        // 서버 한도(60 MP)와 같게 둔다. 24 MP 로 막으면 최신 휴대폰 기본 사진(약 24.5 MP)이 걸린다.
+        if(image.naturalWidth*image.naturalHeight > 60e6 || image.naturalWidth > 16384 || image.naturalHeight > 16384) throw new Error('사진 크기가 너무 커요. 60 MP 이하, 한 변 16,384 px 이하로 줄여 주세요.');
         // 브라우저는 EXIF 방향을 반영해 그린다. 서버도 같은 방향으로 보정하므로 좌표가 맞는다.
-        frozen = document.createElement('canvas');
-        frozen.width=image.naturalWidth;frozen.height=image.naturalHeight;
-        frozen.getContext('2d').drawImage(image,0,0);
+        frozen = scaledCanvas(image,image.naturalWidth,image.naturalHeight);
+        frozen.logicalWidth=image.naturalWidth;frozen.logicalHeight=image.naturalHeight;
       } catch(error) {
         if(type!=='image/heic') throw error;
         frozen=null;
@@ -271,15 +281,16 @@
       cancelRequests();
       const serverImage=!frozen;
       if(serverImage) frozen=placeholder();
-      Object.assign(state,{source:frozen,file,width:frozen.width,height:frozen.height,name:file.name,bytes:file.size,sample:false,sampleKey:null,serverImage,
+      Object.assign(state,{source:frozen,file,width:frozen.logicalWidth||frozen.width,height:frozen.logicalHeight||frozen.height,name:file.name,bytes:file.size,sample:false,sampleKey:null,serverImage,
         rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,nextId:1,mode:'original',phase:'ready',drawing:false,zoom:1,analysisStatus:'idle',issues:[],groups:[],gps:[],backend:'',previewState:'none'});
-      releaseExport();showImage();render();
-      // 사진 선택·드롭 후 다음 동작인 분석 시작 영역을 보여 준다.
-      $('#readyPanel').scrollIntoView({
+      releaseExport();showImage();render();layoutCanvas(false);
+      // 고르거나 찍으면 바로 검사한다(버튼을 한 번 더 누르지 않게). 결과 쪽을 보여 준다.
+      notify(serverImage?'HEIC 사진이에요. 검사하면서 서버가 만든 미리보기로 바꿔요.':'사진을 받았어요. 바로 검사할게요.');
+      beginAnalysis();
+      $('#scanningPanel')?.scrollIntoView({
         behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',
         block:'start',inline:'nearest'
       });
-      notify(serverImage?'HEIC 사진이에요. 분석하면 서버가 만든 미리보기를 보여 드려요.':'사진이 준비됐어요. 분석하거나 직접 가릴 영역을 지정하세요.');
     } catch(error) {
       if(token === state.loadToken) notify(error.message && !/decode/i.test(error.message) ? error.message : '손상되었거나 지원되지 않는 사진이에요. 다른 파일을 선택해 주세요.',true);
     } finally {
@@ -308,14 +319,16 @@
   // 서버 미리보기를 화면 사진으로 쓴다. 그래야 서버 좌표와 정확히 겹친다.
   async function adoptServerImage(b64,width,height) {
     const image=await loadImage('data:image/jpeg;base64,'+b64);
-    const c=document.createElement('canvas');c.width=width;c.height=height;
-    c.getContext('2d').drawImage(image,0,0,width,height);
+    const c=scaledCanvas(image,width,height);
     Object.assign(state,{source:c,width,height,serverImage:true});
     showImage();
   }
 
   function showImage() {
-    canvas.width=protectedCanvas.width=state.width;canvas.height=protectedCanvas.height=state.height;
+    const k=displayScale(state.width,state.height);
+    canvas.width=protectedCanvas.width=Math.max(1,Math.round(state.width*k));canvas.height=protectedCanvas.height=Math.max(1,Math.round(state.height*k));
+    // 크기를 바꾸면 변환이 초기화된다. 그리기는 계속 원본 좌표로 한다.
+    ctx.setTransform(k,0,0,k,0,0);protectedContext.setTransform(k,0,0,k,0,0);
     $('#emptyState').classList.add('hidden');$('#imageState').classList.remove('hidden');
     $('#changePhoto').classList.remove('hidden');$('#fileInfo').classList.add('hidden');
     $('#editorTitle').textContent=state.name;$('#editorTitle').title=state.name;
@@ -448,7 +461,7 @@
     // 결과는 문장 하나로 먼저 알린다. 숫자는 문장 안에 넣고, 목록은 그 아래에 둔다.
     $('#resultTitle').textContent=state.analysisStatus==='empty'?'탐지된 곳이 없어요':state.analysisStatus==='manual'?'가릴 곳을 직접 골라요':state.analysisStatus==='partial'?'일부만 확인했어요':'확인할 곳을 '+count+'곳 찾았어요';
     $('#reviewKicker').textContent=state.analysisStatus==='manual'?'직접 지정':state.judgeShown||'';
-    $('#reviewSubtitle').textContent=state.analysisStatus==='manual'?'직접 추가한 곳만 가려져요. 사진 전체를 한 번 더 확인해 주세요.':'가림 권장·검토 권장이 '+serious+'건 있어요. 기본으로 아무것도 고르지 않았으니 가릴 곳을 골라 주세요.';
+    $('#reviewSubtitle').textContent=state.analysisStatus==='manual'?'직접 추가한 곳만 가려져요. 사진 전체를 한 번 더 확인해 주세요.':(serious?'가림 권장·검토 권장이 '+serious+'건 있어요. 가림 권장은 미리 골라 뒀어요. 검토 권장도 확인해 주세요.':'가릴 만한 항목은 못 찾았어요. 참고 항목과 사진 전체를 한 번 더 확인해 주세요.');
     $('#riskSummary').classList.toggle('safe',count>0&&selected===count);
     $('#riskSummaryText').textContent=count===0?'탐지 결과가 없어도 개인정보가 없다는 뜻은 아니에요.':selected===count?selected+'개 영역을 가리도록 선택했어요.':selected?(count-selected)+'개 영역은 가리지 않아요.':'아직 가릴 영역을 고르지 않았어요.';
     $('#selectAll').textContent=count>0&&selected===count?'모두 해제':'모두 선택';$('#selectAll').disabled=count===0||state.saving;
@@ -634,6 +647,7 @@
       if(state.exportUrl)URL.revokeObjectURL(state.exportUrl);
       downloadBlob=blob;state.exportUrl=candidateUrl;candidateUrl=null;$('#exportPreview').src=state.exportUrl;
       showVerdict(data.verification,boxes.length);
+      $('#shareButton').classList.toggle('hidden',!canShareFile());
       showDialog('exportDialog');
     } catch(error) {
       if(serial===state.requestSerial && error.name!=='AbortError' && error.status!==409) {state.saveError=error.message||'저장하지 못했어요. 다시 시도해 주세요.';notify(state.saveError,true);}
@@ -666,6 +680,25 @@
     setTimeout(()=>URL.revokeObjectURL(url),30000);
     closeDialog($('#exportDialog'));setStep(3);state.mode='protected';renderImage();if(state.previewState!=='ready')schedulePreview();
     notify('다운로드를 요청했어요. 브라우저의 다운로드 목록을 확인하세요.');
+  }
+
+  function exportFile() {
+    const base=state.name.replace(/\.[^/.]+$/,'').replace(/[<>:"/\\|?*\x00-\x1F]/g,'_').slice(0,90) || 'photo';
+    return new File([downloadBlob],base+'-privacy-lens.jpg',{type:'image/jpeg'});
+  }
+  function canShareFile() {
+    try { return !!(downloadBlob && navigator.canShare && navigator.canShare({files:[exportFile()]})); } catch { return false; }
+  }
+  // 휴대폰 공유 시트로 가린 사진을 바로 보낸다(SNS·메신저). 지원하지 않으면 버튼이 안 보인다.
+  async function share() {
+    if(!canShareFile())return;
+    try {
+      await navigator.share({files:[exportFile()],title:'Privacy Lens'});
+      closeDialog($('#exportDialog'));setStep(3);state.mode='protected';renderImage();if(state.previewState!=='ready')schedulePreview();
+      notify('가린 사진을 공유했어요.');
+    } catch(error) {
+      if(error.name!=='AbortError')notify('공유하지 못했어요. 다운로드로 저장해 주세요.',true);
+    }
   }
 
   function cancelRequests() {
@@ -727,7 +760,7 @@
         issues:result.partial?['일부 영역은 글자가 흐려 내용을 확인하지 못했어요. 점선 영역을 확대해서 직접 확인해 주세요.']:[],
         analysisStatus:result.regions.length?(result.partial?'partial':'completed'):'empty',phase:'review',focused:result.regions[0]?.id||null});
       invalidate();render();setStep(2);
-      notify(result.regions.length?result.regions.length+'개 항목을 찾았어요. 가릴 항목을 고르세요.':'탐지된 항목이 없어요. 사진을 직접 확인해 주세요.');
+      notify(result.regions.length?result.regions.length+'개 항목을 찾았어요. '+(state.regions.filter(r=>r.enabled).length?'가림 권장 '+state.regions.filter(r=>r.enabled).length+'개는 미리 골라 뒀어요.':'가릴 항목을 골라 주세요.'):'탐지된 항목이 없어요. 사진을 직접 확인해 주세요.');
     } catch(error) {if(serial===state.requestSerial && error.name!=='AbortError' && error.status!==409)analysisFailure(error.message);}
     finally {if(serial===state.requestSerial){stopLive();state.requestController=null;state.ticket=null;pollSoon();}}
   }
@@ -805,6 +838,9 @@
   $('#workspaceNav').addEventListener('click',()=>{$('#workspace').scrollIntoView({behavior:'smooth',block:'start'});});
   $('#changePhoto').addEventListener('click',()=>{reset();notify('새 사진이나 샘플을 선택해 주세요.');});
   $('#fileInput').addEventListener('change',event=>loadFile(event.target.files[0]));
+  // 휴대폰: 카메라를 바로 연다(capture). 찍은 사진은 고른 사진과 똑같이 바로 검사한다.
+  $('#cameraInput').addEventListener('change',event=>{loadFile(event.target.files[0]);event.target.value='';});
+  $('#cameraButton').addEventListener('click',event=>{event.stopPropagation();$('#cameraInput').click();});
   $('#themeToggle').addEventListener('click',()=>{
     applyTheme(theme==='dark'?'light':'dark');
     try{localStorage.setItem('pl.theme',theme);}catch(_){}
@@ -883,6 +919,7 @@
   document.addEventListener('keydown',event=>{if(event.key==='Escape' && state.drawing){state.drawing=false;gesture=null;syncDrawing();}});
   $('#saveButton').addEventListener('click',prepareExport);
   $('#downloadButton').addEventListener('click',download);
+  $('#shareButton').addEventListener('click',share);
   // 서버가 실제로 찾는 항목(pipeline/kr_patterns.py, metadata.py)
   const targets=[['id','이름','받는분·성명 같은 라벨 바로 뒤'],['box','연락처','휴대전화 · 유선 · 이메일. 대표번호는 참고로'],['pin','주소','도로명주소 · 동·호수'],['lock','주민등록번호','체크섬 · 2020년 이후 형식'],['file','카드번호','Luhn 검증'],['box','운송장번호','운송장 라벨 옆 긴 숫자'],['file','차량번호','실제 번호판 글자만'],['grid','QR · 바코드','안의 내용까지 검사, 링크는 열지 않음'],['pin','위치정보','사진 파일의 GPS 좌표']];
   $('#targetsGrid').innerHTML=targets.map(([symbol,label,detail])=>'<div class="target-tile">'+icon(symbol)+'<h3>'+label+'</h3><p>'+detail+'</p></div>').join('');

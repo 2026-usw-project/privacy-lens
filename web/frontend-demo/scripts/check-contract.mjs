@@ -45,7 +45,7 @@ await test('YOLO version and actual device shown with OCR',()=>{
 const byKind=k=>result.regions.find(r=>r.finding===k);
 await test('report dimensions and backend kept',()=>{assert.equal(result.width,400);assert.equal(result.height,320);assert.match(result.backend,/PP-OCRv6/);assert.equal(result.elapsedMs,132);});
 await test('every boxed finding becomes a region, gps does not',()=>{assert.equal(result.regions.length,5);assert.ok(!result.regions.some(r=>r.finding==='gps'));});
-await test('nothing is selected by default',()=>assert.ok(result.regions.every(r=>r.enabled===false)));
+await test('only cover is selected by default',()=>assert.ok(result.regions.every(r=>r.enabled===(r.severity==='cover'))));
 await test('severity and certainty carried',()=>{const p=byKind('service_line');assert.equal(p.severity,'info');assert.equal(p.certainty,'partial');assert.equal(p.certaintyLabel,'일부만 인식됨');});
 await test('kind maps to type and label',()=>{assert.equal(byKind('mobile').type,'PHONE');assert.equal(byKind('mobile').label,'휴대전화번호');assert.equal(byKind('name').type,'NAME');assert.equal(byKind('qr').type,'BARCODE');});
 await test('server message becomes the reason, recognized text the preview',()=>{assert.equal(byKind('name').reason,"'받는분' 주변에서 이름으로 보이는 문자열이 인식됨");assert.equal(byKind('name').text,'박민준');});
@@ -59,7 +59,7 @@ await test('partial flag when any reading is uncertain',()=>assert.equal(result.
 await test('malformed report rejected',()=>{assert.throws(()=>C.fromReport({width:10,height:10}));assert.throws(()=>C.fromReport({...report,width:0}));});
 
 // ---------------------------------------------------------------- 화면 → 서버
-const state={width:400,height:320,style:'blur',regions:result.regions.map(r=>({...r}))};
+const state={width:400,height:320,style:'blur',regions:result.regions.map(r=>({...r,enabled:false}))};
 await test('only selected regions are sent',()=>{assert.deepEqual(C.boxes(state),[]);state.regions[0].enabled=true;assert.equal(C.boxes(state).length,1);});
 await test('box in original pixels as x,y,w,h',()=>{const b=C.boxes({...state,regions:[{...byKind('name'),enabled:true}]})[0];assert.deepEqual({x:b.x,y:b.y,w:b.w,h:b.h},{x:105,y:77,w:79,h:35});assert.equal(b.poly,undefined);});
 await test('tilted outline sent back in pixels',()=>{const b=C.boxes({...state,regions:[{...byKind('mobile'),enabled:true}]})[0];assert.deepEqual(b.poly,[[20,126],[280,130],[279,154],[19,150]]);});
@@ -124,7 +124,7 @@ await test('raw OCR keeps all text and never becomes a redaction selection',()=>
   assert.equal(parsed.rawOcr[0].text,text);
   assert.equal(parsed.rawOcr[0].confidence,0);
   assert.equal(parsed.rawOcrNote,'가상 안내');
-  assert.deepEqual(C.boxes(parsed),[]);
+  assert.deepEqual(C.boxes(parsed),C.boxes(result));   // 원문은 가릴 영역을 늘리지 않는다
   assert.deepEqual(parsed.regions,result.regions);
   assert.equal(C.fromReport(report).rawOcr,null);
   assert.deepEqual(C.fromReport({...report,raw_ocr:[]}).rawOcr,[]);

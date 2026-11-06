@@ -121,7 +121,7 @@
       const text=f.evidence_text?String(f.evidence_text).slice(0,120):host?'링크 주소 '+host:certainty==='region'?'내용을 확인하지 못했어요':'';
       regions.push({...box,id:'f'+i,kind:'detected',finding:String(f.kind),type,label,severity,certainty,
         certaintyLabel:String(f.certainty_label||''),reason:String(f.message||'').slice(0,600),text,
-        poly:polyToRatio(f.box.poly,width,height),enabled:false});
+        poly:polyToRatio(f.box.poly,width,height),enabled:severity==='cover'});  // D-13 제안: '가림 권장'만 미리 선택
     });
     return {width,height,regions,gps,
       // 원문은 판정 항목의 120자/300개 제한을 적용하지 않는다.
