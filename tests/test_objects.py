@@ -1,5 +1,7 @@
 """이미지 객체(얼굴·증명사진·번호판) 판단. 실제 모델 대신 상자를 돌려주는 가짜 검출기를 쓴다."""
 
+from pathlib import Path
+
 from PIL import Image
 
 from pipeline import objects, wording
@@ -85,7 +87,7 @@ def test_plate_model_path_default_env_and_off(monkeypatch, tmp_path):
     monkeypatch.setenv("PL_PLATE_MODEL", "off")
     assert objects.plate_model_path() is None
     monkeypatch.setenv("PL_PLATE_MODEL", "/x/other.onnx")
-    assert str(objects.plate_model_path()) == "/x/other.onnx"
+    assert objects.plate_model_path() == Path("/x/other.onnx")   # Windows 에서는 구분자가 \ 라 문자열로 비교하지 않는다
 
 
 def test_mode_and_wording():
@@ -149,3 +151,42 @@ def test_face_detector_rotations_map_back():
     for rot in ((90,), (180,), (270,), (0, 90, 270)):
         (o,) = Fake(rot).detect(im)
         assert (o.box.x, o.box.y, o.box.w, o.box.h) == (40, 120, 61, 21), rot
+
+
+# ------------------------------------------------------------------ 증명사진 전용 모델
+
+def test_face_photo_model_cover_with_card_clue_review_without():
+    photo = Fake(FACE, kind="face_photo")
+    on_card = [TextSpan("누리대학교 학생증", Box(180, 90, 200, 20), 0.95)]
+    fs = objects.find_objects(IMG, on_card, [], mode="card", face_detector=False, plate_detector=False,
+                              face_photo_detector=photo)
+    assert kinds(fs) == [("face_photo", Severity.COVER)] and fs[0].detail["clue"]
+    fs = objects.find_objects(IMG, [], [], mode="card", face_detector=False, plate_detector=False,
+                              face_photo_detector=photo)
+    assert kinds(fs) == [("face_photo", Severity.REVIEW)]   # 단서 없으면 실제 사람일 수 있어 검토 권장
+
+
+def test_face_photo_model_and_yunet_do_not_double_count():
+    fs = objects.find_objects(IMG, [TextSpan("학생증", Box(180, 90, 80, 20), 0.95)], [], mode="all",
+                              face_detector=Fake(FACE), plate_detector=False,
+                              face_photo_detector=Fake(FACE, kind="face_photo"))
+    assert kinds(fs) == [("face_photo", Severity.COVER)]
+
+
+def test_face_photo_model_off_and_paths(monkeypatch, tmp_path):
+    assert objects.find_objects(IMG, [], [], mode="off", face_detector=False, plate_detector=False,
+                                face_photo_detector=Fake(FACE, kind="face_photo")) == []
+    monkeypatch.setattr(objects, "MODELS", tmp_path)
+    monkeypatch.delenv("PL_FACE_PHOTO_MODEL", raising=False)
+    assert objects.face_photo_model_path() is None
+    (tmp_path / objects.FACE_PHOTO_FILE).write_bytes(b"x")
+    assert objects.face_photo_model_path() == tmp_path / objects.FACE_PHOTO_FILE
+    monkeypatch.setenv("PL_FACE_PHOTO_MODEL", "off")
+    assert objects.face_photo_model_path() is None
+    assert any("증명사진 전용 모델 꺼짐" in line for line in objects.status())
+
+
+def test_face_photo_detector_labels_and_no_rotation_by_default(monkeypatch):
+    assert objects.FacePhotoDetector.LABEL == "face_photo" and objects.FacePhotoDetector.ROTATE_DEFAULT == "0"
+    assert objects.FacePhotoDetector._default_conf() == objects.FACE_PHOTO_CONF
+    assert objects.PlateDetector.LABEL == "plate" and objects.PlateDetector._default_conf() == objects.PLATE_CONF

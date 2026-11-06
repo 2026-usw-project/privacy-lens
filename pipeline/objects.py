@@ -6,6 +6,9 @@ OCR 이 못 하는 일만 맡는다. 직접 학습하지 않고 성능이 공개
           10~300px 얼굴용이라 사진을 두 크기로 줄여 두 번 찾는다.
   증명사진 얼굴이 카드 위에 있으면(문서 검출의 학생증·카드 상자 안, 또는 근처 OCR 글자에
           '학생증·주민등록증·성명' 같은 단서나 이름·주민번호·학번 항목이 있으면) 증명사진으로 본다.
+          models/face_photo.onnx(우리 증명사진 전용 YOLO, 드라이브 objects/face_photo_vNNN/)가 있으면
+          그것으로 먼저 찾는다. MIDV-2020 신분증 200장에서 YuNet 보다 훨씬 잘 찾았다(재현율 0.84 → 0.97,
+          1/8 로 작은 사진 0.04 → 0.95, vision/README.md). 카드 단서가 있으면 가림 권장, 없으면 검토 권장.
   번호판  선택. models/plate.onnx 가 있거나 PL_PLATE_MODEL 에 YOLO 번호판 모델(.onnx 권장)을 주면 쓴다.
           PL_PLATE_MODEL=off 로 끈다. 우리 모델은 팀 드라이브 objects/plate_vNNN/ 에 있다(vision/README.md).
           글자는 OCR 이 차량번호로 이미 잡으므로, 글자를 못 읽은 번호판만 영역으로 알린다.
@@ -56,6 +59,7 @@ CARD_WORDS = (kp.CONTEXT_DOCUMENT["student"] + kp.CONTEXT_DOCUMENT["badge"]
 CARD_KINDS = {"name", "rrn", "rrn_unverified", "student_id"}
 CARD_DETECTIONS = {"id_card", "name_tag"}
 PLATE_CONF = 0.4
+FACE_PHOTO_CONF = 0.4   # 팀 평가(eval_face_photo.json)에서 0.3~0.6 사이 결과가 거의 같았다
 
 
 def face_mode(value: str | None = None) -> str:
@@ -165,6 +169,10 @@ class PlateDetector:
 
     2026-11-03 한국 주차장 평가: 누운 사진에서 재현율 0.15~0.2 → 돌려 보면 0.55~0.6."""
 
+    LABEL = "plate"
+    ROTATE_ENV = "PL_PLATE_ROTATE"
+    ROTATE_DEFAULT = "1"
+
     def __init__(self, model: Path, conf: float | None = None, rotations: tuple[int, ...] | None = None):
         # 서버가 요청을 처리하다 패키지를 내려받아 설치하지 않게 한다(Ultralytics 자동 설치는 기본 켜짐).
         # 실제로 첫 분석 중에 onnx·onnxruntime(GPU 면 onnxruntime-gpu 160MB)을 설치했다. 필요한 것은 vision/requirements.txt
@@ -174,12 +182,16 @@ class PlateDetector:
             raise RuntimeError("onnxruntime 이 없습니다. pip install -r vision/requirements.txt")
         from ultralytics import YOLO
         self.model = YOLO(str(model), task="detect")
-        self.conf = PLATE_CONF if conf is None else conf
+        self.conf = self._default_conf() if conf is None else conf
         if rotations is None:
-            rotations = (0,) if os.environ.get("PL_PLATE_ROTATE", "1") == "0" else (0, 90, 270)
+            rotations = (0,) if os.environ.get(self.ROTATE_ENV, self.ROTATE_DEFAULT) == "0" else (0, 90, 270)
         self.rotations = rotations
-        self.name = f"plate:{model.name}"
+        self.name = f"{self.LABEL}:{model.name}"
         self._lock = threading.Lock()
+
+    @staticmethod
+    def _default_conf() -> float:
+        return PLATE_CONF
 
     def _once(self, image: Image.Image) -> list[tuple[float, float, float, float, float]]:
         with self._lock:
@@ -194,7 +206,7 @@ class PlateDetector:
             img = rgb if rot == 0 else rgb.transpose(_TRANSPOSE[rot])
             for p, *xy in self._once(img):
                 x0, y0, x1, y1 = _unrotate(rot, W, H, *xy)
-                out.append(ObjectBox("plate", Box(int(x0), int(y0), int(x1 - x0), int(y1 - y0)), p))
+                out.append(ObjectBox(self.LABEL, Box(int(x0), int(y0), int(x1 - x0), int(y1 - y0)), p))
         return _nms(out, 0.5) if len(self.rotations) > 1 else out
 
 
@@ -260,6 +272,40 @@ def get_plate_detector():
     return _load(f"plate:{path}", lambda: PlateDetector(path))
 
 
+class FacePhotoDetector(PlateDetector):
+    """증명사진 전용 YOLO(우리 학습, 클래스 1개). 누운 사진도 돌려 찾기 없이 재현율 0.83 이라 기본은 0도만.
+    PL_FACE_PHOTO_ROTATE=1 로 90·270도도 찾는다."""
+
+    LABEL = "face_photo"
+    ROTATE_ENV = "PL_FACE_PHOTO_ROTATE"
+    ROTATE_DEFAULT = "0"
+
+    @staticmethod
+    def _default_conf() -> float:
+        return FACE_PHOTO_CONF
+
+
+FACE_PHOTO_FILE = "face_photo.onnx"   # 드라이브 objects/face_photo_vNNN/best.onnx 를 models/face_photo.onnx 로
+
+
+def face_photo_model_path() -> Path | None:
+    """PL_FACE_PHOTO_MODEL(경로, 또는 off) > models/face_photo.onnx. 없으면 None."""
+    raw = os.environ.get("PL_FACE_PHOTO_MODEL", "").strip()
+    if raw.lower() == "off":
+        return None
+    if raw:
+        return Path(raw)
+    default = MODELS / FACE_PHOTO_FILE
+    return default if default.exists() else None
+
+
+def get_face_photo_detector():
+    path = face_photo_model_path()
+    if path is None:
+        return None
+    return _load(f"face_photo:{path}", lambda: FacePhotoDetector(path))
+
+
 # ------------------------------------------------------------------ 판단
 
 def _inside(inner: Box, outer: Box) -> bool:
@@ -287,16 +333,31 @@ def _card_clue(face: Box, spans: list[TextSpan], findings: list[Finding], dets) 
 
 def find_objects(image: Image.Image, spans: list[TextSpan], findings: list[Finding],
                  dets=None, *, mode: str | None = None, face_detector=None,
-                 plate_detector=None) -> list[Finding]:
+                 plate_detector=None, face_photo_detector=None) -> list[Finding]:
     """얼굴·증명사진·번호판 항목. 검출기를 안 주면 환경변수 설정대로 만든다."""
     mode = face_mode(mode)
     # None 이면 환경변수 설정대로 만들고, False 를 주면 끈다(시험·비교용)
     faces = get_face_detector() if face_detector is None else (face_detector or None)
     plates = get_plate_detector() if plate_detector is None else (plate_detector or None)
+    photos = get_face_photo_detector() if face_photo_detector is None else (face_photo_detector or None)
     out: list[Finding] = []
+    already = [f.box for f in findings if f.kind == "face_photo" and f.box is not None]
+
+    # 증명사진 전용 모델이 먼저 찾는다. 카드 단서가 있으면 가림 권장, 없으면(사진 속 실제 사람일 수도 있어) 검토 권장
+    if photos is not None and mode != "off":
+        for o in photos.detect(image):
+            if any(_iou(o.box, b) > 0.3 or _inside(o.box, b) for b in already):
+                continue
+            detail = {"source": "object", "model": getattr(photos, "name", "face_photo"), "score": round(o.score, 3)}
+            clue = _card_clue(o.box, spans, findings, dets)
+            if clue:
+                detail["clue"] = clue
+            out.append(Finding(kind="face_photo", box=o.box, certainty=Certainty.REGION_ONLY,
+                               severity=Severity.COVER if clue else Severity.REVIEW,
+                               message=wording.face_photo_region(), detail=detail))
+            already.append(o.box)
 
     if faces is not None and mode != "off":
-        already = [f.box for f in findings if f.kind == "face_photo" and f.box is not None]
         for o in faces.detect(image):
             if any(_iou(o.box, b) > 0.3 or _inside(o.box, b) for b in already):
                 continue  # 문서 검출이 이미 증명사진으로 냈다
@@ -333,6 +394,9 @@ def status() -> list[str]:
         lines.append(f"얼굴 검출 YuNet ({mode})")
     else:
         lines.append("얼굴 모델 없음 — python -m pipeline.objects download")
+    photo = face_photo_model_path()
+    lines.append(f"증명사진 검출 {photo}" if photo else
+                 f"증명사진 전용 모델 꺼짐(YuNet+카드 단서로 찾음) — 드라이브 objects/face_photo_vNNN/best.onnx 를 models/{FACE_PHOTO_FILE} 로 두면 켜짐")
     plate = plate_model_path()
     if plate and plate.suffix == ".onnx" and importlib.util.find_spec("onnxruntime") is None:
         # 없으면 첫 분석 때 Ultralytics 가 설치하려 든다(자동 설치는 꺼 두었다)
