@@ -1144,7 +1144,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     } catch { return ''; }
   }
 
-  function client(base='', fetchImpl=globalThis.fetch.bind(globalThis), timeoutMs=TIMEOUT_MS) {
+  // API 주소. 화면과 API 가 한 서버면 '' (같은 주소). 따로 띄우면 run_frontend.py 가
+  // globalThis.PRIVACY_LENS_API = 'http://…:8000' 을 페이지에 넣어 준다. http(s) 주소만 받는다.
+  function defaultBase() {
+    const raw=globalThis.PRIVACY_LENS_API;
+    if(typeof raw!=='string' || !raw)return '';
+    try{const u=new URL(raw);return /^https?:$/.test(u.protocol)?u.origin+u.pathname.replace(/\/+$/,''):'';}catch{return '';}
+  }
+
+  function client(base=defaultBase(), fetchImpl=globalThis.fetch.bind(globalThis), timeoutMs=TIMEOUT_MS) {
     async function request(route,init,signal) {
       const controller=new AbortController();
       let timedOut=false;
@@ -1220,7 +1228,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       }
     };
   }
-  globalThis.PrivacyLensAPI=Object.freeze({client,newTicket,logTrace});
+  globalThis.PrivacyLensAPI=Object.freeze({client,newTicket,logTrace,defaultBase});
 })();
 
 'use strict';

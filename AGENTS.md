@@ -42,6 +42,8 @@ Privacy Lens — 사진을 SNS·중고거래에 올리기 전에 배경의 개�
 ```bash
 pip install -r requirements.txt
 python run.py                              # 환경 점검 → 서버 + 화면 (http://127.0.0.1:8000)
+python run_backend.py                      # API 만 (8000, 화면 서버 주소만 CORS 허용)
+python run_frontend.py                     # 화면만 (8080, --api 로 백엔드 주소. 파이썬 기본 기능만)
 python -m pytest tests                     # 백엔드 테스트 (OCR 불필요)
 python -m eval.judgment --check            # 판단 회귀 검사(OCR 불필요, CI 와 같음)
 python -m eval.failures run <폴더>          # 실사 실패 원인 분류(사진은 드라이브)

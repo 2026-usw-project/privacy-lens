@@ -1,8 +1,10 @@
 """환경을 점검하고 서버를 띄운다. Windows / macOS / Linux 공통.
 
-    python run.py            점검 후 서버 실행
+    python run.py            점검 후 서버 실행(화면 + API 한 주소, http://127.0.0.1:8000)
     python run.py --check    점검만
     python run.py --samples  샘플만 생성
+
+화면과 API 를 따로 띄우려면 run_backend.py(API) 와 run_frontend.py(화면)를 쓴다.
 
 에러가 난 뒤에 원인을 찾는 것보다, 시작하기 전에 뭐가 없는지 알려주는 편이 낫다.
 """
@@ -147,9 +149,8 @@ def make_samples(force: bool = False) -> bool:
         return False
 
 
-def main() -> int:
-    args = set(sys.argv[1:])
-
+def run_checks(args: set[str]) -> int:
+    """점검. 0 이면 서버를 띄워도 된다. run_backend.py 도 같이 쓴다."""
     print(f"\nPrivacy Lens — 환경 점검  ({sys.platform}, Python {sys.version.split()[0]})\n")
 
     missing = check_packages()
@@ -177,6 +178,14 @@ def main() -> int:
         print("\nOCR 없이는 탐지가 동작하지 않습니다. 위 안내대로 설치한 뒤 다시 실행하세요.")
         print("EXIF·QR 검사만 먼저 보려면  PL_OCR=none  으로 실행할 수 있습니다.")
         return 1
+    return 0
+
+
+def main() -> int:
+    args = set(sys.argv[1:])
+    code = run_checks(args)
+    if code:
+        return code
 
     if "--check" in args or "--samples" in args:
         print("\n점검 완료.")

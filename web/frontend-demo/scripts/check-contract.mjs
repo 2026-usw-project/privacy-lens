@@ -250,4 +250,19 @@ await test('progress stream: events relayed, closes on done, falls back on failu
   h.close();
 });
 
+await test('API address comes from the page when front and API run separately',()=>{
+  const saved=globalThis.PRIVACY_LENS_API;
+  try {
+    delete globalThis.PRIVACY_LENS_API;assert.equal(A.defaultBase(),'');
+    globalThis.PRIVACY_LENS_API='http://127.0.0.1:8000/';assert.equal(A.defaultBase(),'http://127.0.0.1:8000');
+    globalThis.PRIVACY_LENS_API='https://api.example.org/pl/';assert.equal(A.defaultBase(),'https://api.example.org/pl');
+    for(const bad of ['javascript:alert(1)','ftp://x','not a url',42])
+      {globalThis.PRIVACY_LENS_API=bad;assert.equal(A.defaultBase(),'');}
+  } finally { if(saved===undefined)delete globalThis.PRIVACY_LENS_API;else globalThis.PRIVACY_LENS_API=saved; }
+});
+await test('client sends to the configured API address',async()=>{
+  let seen='';const api=A.client('http://127.0.0.1:8000',async(url)=>{seen=url;return json({running:0,waiting:0});});
+  await api.queue('t-1');assert.equal(seen,'http://127.0.0.1:8000/queue?ticket=t-1');
+});
+
 console.log('\n'+count+' geometry, report and API checks passed.');

@@ -1,7 +1,12 @@
 # 화면 ↔ 서버 규격
 
-서버는 저장소 루트의 `server.py`(Privacy Lens 2 백엔드)이고, 화면과 같은 주소에서 나옵니다.
+서버는 저장소 루트의 `server.py`(Privacy Lens 2 백엔드)이고, 기본은 화면과 같은 주소에서 나옵니다(`run.py`).
 이 문서는 화면(`dist/api.js`, `dist/core.js`)이 쓰는 부분만 정리합니다. 기준은 서버 코드입니다.
+
+- **API 주소**: 같은 주소면 비워 둡니다. 화면과 API 를 따로 띄우면(`run_frontend.py`) 페이지에
+  `globalThis.PRIVACY_LENS_API = "http://…:8000"` 이 들어가고 `api.js` 가 그 주소로 요청합니다(http(s)만).
+  이때 서버는 `PL_CORS_ORIGINS` 에 화면 주소가 있어야 응답합니다(`run_backend.py --cors`).
+- `GET /health` → `{"ok": true, "engine_ready": …}`. 화면 서버가 API 주소를 확인할 때 씁니다.
 
 ## 좌표
 

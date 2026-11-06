@@ -41,6 +41,7 @@ from fastapi.exception_handlers import http_exception_handler, request_validatio
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
 from starlette.formparsers import MultiPartParser
@@ -213,7 +214,18 @@ async def _lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Privacy Lens", lifespan=_lifespan)
-app.mount("/dist/fonts", StaticFiles(directory=FRONT / "dist" / "fonts"), name="fonts")
+
+# 화면과 API 를 한 서버에서(기본, run.py) 또는 따로(run_backend.py + run_frontend.py).
+#   PL_SERVE_FRONT=0      화면(/, /dist/fonts)을 내주지 않는다. API 만
+#   PL_CORS_ORIGINS=a,b   이 주소들(화면 서버)에서 오는 요청을 허용한다. 비우면 같은 주소에서만(지금처럼)
+SERVE_FRONT = os.environ.get("PL_SERVE_FRONT", "1").strip() != "0"
+CORS_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("PL_CORS_ORIGINS", "").split(",") if o.strip()]
+if SERVE_FRONT:
+    app.mount("/dist/fonts", StaticFiles(directory=FRONT / "dist" / "fonts"), name="fonts")
+if CORS_ORIGINS:
+    # 쿠키·인증을 쓰지 않으므로 credentials 는 끈다. 화면이 보내는 것은 multipart 폼과 GET 뿐이다
+    app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["GET", "POST"],
+                       allow_headers=["*"], allow_credentials=False, max_age=600)
 
 
 def _note(request: Request, message: str) -> None:
@@ -392,8 +404,16 @@ def _preview(img: Image.Image, max_side: int = 1400) -> tuple[str, float]:
 
 
 @app.get("/", response_class=HTMLResponse)
-def index() -> str:
+def index():
+    if not SERVE_FRONT:  # API 만 띄웠을 때. 화면은 run_frontend.py 가 내준다
+        return JSONResponse({"service": "privacy-lens-api", "front": False})
     return (FRONT / "privacy-lens.html").read_text(encoding="utf-8")
+
+
+@app.get("/health")
+async def health():
+    """살아 있는지만. 화면 서버(run_frontend.py)가 API 주소가 맞는지 확인할 때 쓴다."""
+    return {"ok": True, "engine_ready": _backend is not None}
 
 
 @app.get("/queue")
@@ -685,5 +705,5 @@ def _redact_turn(data: bytes, boxes: str, style: str, cfg, live: str | None) -> 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=int(os.environ.get("PORT", 8000)),
+    uvicorn.run(app, host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("PORT", 8000)),
                 access_log=False)

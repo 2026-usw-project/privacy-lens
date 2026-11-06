@@ -87,6 +87,32 @@ python run.py
 - 화면의 샘플 3종으로 가상 송장·학생증·복합 문서의 분석 결과를 확인할 수 있습니다.
 - HEIC 사진은 `pillow-heif`가 설치된 환경에서 지원합니다.
 
+<details>
+<summary><b>화면과 백엔드(API)를 따로 실행하기</b></summary>
+
+`run.py`는 화면과 API를 한 서버(8000)에서 함께 띄웁니다. 둘을 나눠 띄우려면 창 두 개에서 각각 실행합니다.
+
+```bash
+python run_backend.py
+```
+
+```bash
+python run_frontend.py
+```
+
+화면은 [http://127.0.0.1:8080](http://127.0.0.1:8080), API는 `http://127.0.0.1:8000`입니다.
+
+| 스크립트 | 하는 일 | 주요 옵션 |
+|---|---|---|
+| `run_backend.py` | `run.py`와 같은 환경 점검 뒤 **API만** 띄웁니다(화면 없음, `PL_SERVE_FRONT=0`). 화면 서버 주소에서 오는 요청만 허용합니다(CORS). | `--host` `--port`(8000) `--cors`(허용할 화면 주소, 쉼표로 여러 개. 기본 이 컴퓨터의 8080) `--check` |
+| `run_frontend.py` | **화면만** 내줍니다. 파이썬 기본 기능만 써서 OCR·패키지 설치가 필요 없습니다. 페이지에 API 주소를 넣어 줍니다. | `--host` `--port`(8080) `--api`(백엔드 주소, 기본 `http://127.0.0.1:8000`) |
+
+- 다른 기기에서 접속하려면 두 서버를 `--host 0.0.0.0`으로 띄우고, 백엔드의 `--cors`에 화면 주소(`http://<화면 PC IP>:8080`)를, 화면의 `--api`에 백엔드 주소(`http://<백엔드 PC IP>:8000`)를 줍니다.
+- 화면 파일은 빌드 결과(`web/frontend-demo/privacy-lens.html`)입니다. 화면을 고쳤으면 먼저 `node scripts/build.mjs`를 실행합니다.
+- PC 웹캠 촬영은 https 또는 localhost에서만 됩니다(브라우저 규칙).
+
+</details>
+
 환경 점검만 실행하려면 다음 명령을 사용합니다.
 
 ```bash
