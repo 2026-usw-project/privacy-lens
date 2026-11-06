@@ -838,9 +838,67 @@
   $('#workspaceNav').addEventListener('click',()=>{$('#workspace').scrollIntoView({behavior:'smooth',block:'start'});});
   $('#changePhoto').addEventListener('click',()=>{reset();notify('새 사진이나 샘플을 선택해 주세요.');});
   $('#fileInput').addEventListener('change',event=>loadFile(event.target.files[0]));
-  // 휴대폰: 카메라를 바로 연다(capture). 찍은 사진은 고른 사진과 똑같이 바로 검사한다.
+  // 사진 찍기. 휴대폰(손가락 입력)은 카메라 앱을 바로 연다(capture, 원본 화질).
+  // PC 는 capture 를 무시하고 파일 창을 열기 때문에, 웹캠을 화면 안에서 켜서 찍는다(getUserMedia).
+  // 웹캠을 쓸 수 없으면(보안 연결이 아님·카메라 없음·거부) 파일 고르기로 돌아간다.
+  // 찍은 사진은 고른 사진과 똑같이 바로 검사한다.
   $('#cameraInput').addEventListener('change',event=>{loadFile(event.target.files[0]);event.target.value='';});
-  $('#cameraButton').addEventListener('click',event=>{event.stopPropagation();$('#cameraInput').click();});
+  const camera={stream:null,devices:[],index:0};
+  const touchDevice=()=>globalThis.matchMedia?.('(pointer:coarse)').matches;
+  function stopCamera() {
+    camera.stream?.getTracks().forEach(t=>t.stop());camera.stream=null;
+    $('#cameraVideo').srcObject=null;$('#cameraShoot').disabled=true;
+  }
+  async function startCamera() {
+    stopCamera();
+    $('#cameraStatus').textContent='카메라를 켜는 중…';
+    const id=camera.devices[camera.index]?.deviceId;
+    // 뒤 카메라 우선, 고를 수 있으면 고른 카메라. 해상도는 되는 만큼 크게
+    const video=id?{deviceId:{exact:id},width:{ideal:3840},height:{ideal:2160}}:{facingMode:{ideal:'environment'},width:{ideal:3840},height:{ideal:2160}};
+    try {
+      camera.stream=await navigator.mediaDevices.getUserMedia({video,audio:false});
+      $('#cameraVideo').srcObject=camera.stream;
+      await $('#cameraVideo').play().catch(()=>{});
+      $('#cameraStatus').textContent='';$('#cameraShoot').disabled=false;
+      if(!camera.devices.length){
+        camera.devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
+        const now=camera.stream.getVideoTracks()[0]?.getSettings().deviceId;
+        camera.index=Math.max(0,camera.devices.findIndex(d=>d.deviceId===now));
+      }
+      $('#cameraSwitch').classList.toggle('hidden',camera.devices.length<2);
+    } catch(error) {
+      stopCamera();
+      $('#cameraStatus').textContent=error?.name==='NotAllowedError'?'카메라 사용이 허용되지 않았어요. 브라우저 주소창의 카메라 권한을 확인해 주세요.':
+        error?.name==='NotFoundError'?'연결된 카메라를 찾지 못했어요.':'카메라를 켜지 못했어요. 다른 앱이 카메라를 쓰고 있는지 확인해 주세요.';
+    }
+  }
+  function openCamera() {
+    if(touchDevice() || !navigator.mediaDevices?.getUserMedia) {
+      // 휴대폰은 카메라 앱. PC 인데 웹캠을 못 쓰는 환경(http 로 접속 등)은 파일 고르기
+      if(!touchDevice()) notify('이 주소에서는 웹캠을 쓸 수 없어요(https 또는 localhost 필요). 사진 파일을 골라 주세요.',true);
+      $(touchDevice()?'#cameraInput':'#fileInput').click();
+      return;
+    }
+    camera.devices=[];camera.index=0;
+    showDialog('cameraDialog');startCamera();
+  }
+  function shootCamera() {
+    const v=$('#cameraVideo');
+    if(!camera.stream||!v.videoWidth)return;
+    const c=document.createElement('canvas');c.width=v.videoWidth;c.height=v.videoHeight;
+    c.getContext('2d').drawImage(v,0,0);
+    c.toBlob(blob=>{
+      if(!blob){notify('사진을 만들지 못했어요. 다시 찍어 주세요.',true);return;}
+      const stamp=new Date().toISOString().replace(/[-:T]/g,'').slice(0,14);
+      closeDialog($('#cameraDialog'));
+      loadFile(new File([blob],'camera-'+stamp+'.jpg',{type:'image/jpeg'}));
+    },'image/jpeg',.92);
+  }
+  $('#cameraButton').addEventListener('click',event=>{event.stopPropagation();openCamera();});
+  $('#cameraButton').addEventListener('keydown',event=>event.stopPropagation());
+  $('#cameraShoot').addEventListener('click',shootCamera);
+  $('#cameraSwitch').addEventListener('click',()=>{if(camera.devices.length>1){camera.index=(camera.index+1)%camera.devices.length;startCamera();}});
+  $('#cameraDialog').addEventListener('close',stopCamera);
   $('#themeToggle').addEventListener('click',()=>{
     applyTheme(theme==='dark'?'light':'dark');
     try{localStorage.setItem('pl.theme',theme);}catch(_){}
