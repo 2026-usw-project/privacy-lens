@@ -273,13 +273,14 @@
       if(serverImage) frozen=placeholder();
       Object.assign(state,{source:frozen,file,width:frozen.width,height:frozen.height,name:file.name,bytes:file.size,sample:false,sampleKey:null,serverImage,
         rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,nextId:1,mode:'original',phase:'ready',drawing:false,zoom:1,analysisStatus:'idle',issues:[],groups:[],gps:[],backend:'',previewState:'none'});
-      releaseExport();showImage();render();
-      // 사진 선택·드롭 후 다음 동작인 분석 시작 영역을 보여 준다.
-      $('#readyPanel').scrollIntoView({
+      releaseExport();showImage();render();layoutCanvas(false);
+      // 고르거나 찍으면 바로 검사한다(버튼을 한 번 더 누르지 않게). 결과 쪽을 보여 준다.
+      notify(serverImage?'HEIC 사진이에요. 검사하면서 서버가 만든 미리보기로 바꿔요.':'사진을 받았어요. 바로 검사할게요.');
+      beginAnalysis();
+      $('#scanningPanel')?.scrollIntoView({
         behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',
         block:'start',inline:'nearest'
       });
-      notify(serverImage?'HEIC 사진이에요. 분석하면 서버가 만든 미리보기를 보여 드려요.':'사진이 준비됐어요. 분석하거나 직접 가릴 영역을 지정하세요.');
     } catch(error) {
       if(token === state.loadToken) notify(error.message && !/decode/i.test(error.message) ? error.message : '손상되었거나 지원되지 않는 사진이에요. 다른 파일을 선택해 주세요.',true);
     } finally {
@@ -448,7 +449,7 @@
     // 결과는 문장 하나로 먼저 알린다. 숫자는 문장 안에 넣고, 목록은 그 아래에 둔다.
     $('#resultTitle').textContent=state.analysisStatus==='empty'?'탐지된 곳이 없어요':state.analysisStatus==='manual'?'가릴 곳을 직접 골라요':state.analysisStatus==='partial'?'일부만 확인했어요':'확인할 곳을 '+count+'곳 찾았어요';
     $('#reviewKicker').textContent=state.analysisStatus==='manual'?'직접 지정':state.judgeShown||'';
-    $('#reviewSubtitle').textContent=state.analysisStatus==='manual'?'직접 추가한 곳만 가려져요. 사진 전체를 한 번 더 확인해 주세요.':'가림 권장·검토 권장이 '+serious+'건 있어요. 기본으로 아무것도 고르지 않았으니 가릴 곳을 골라 주세요.';
+    $('#reviewSubtitle').textContent=state.analysisStatus==='manual'?'직접 추가한 곳만 가려져요. 사진 전체를 한 번 더 확인해 주세요.':'가림 권장·검토 권장이 '+serious+'건 있어요. 가림 권장은 미리 골라 뒀어요. 검토 권장도 확인해 주세요.';
     $('#riskSummary').classList.toggle('safe',count>0&&selected===count);
     $('#riskSummaryText').textContent=count===0?'탐지 결과가 없어도 개인정보가 없다는 뜻은 아니에요.':selected===count?selected+'개 영역을 가리도록 선택했어요.':selected?(count-selected)+'개 영역은 가리지 않아요.':'아직 가릴 영역을 고르지 않았어요.';
     $('#selectAll').textContent=count>0&&selected===count?'모두 해제':'모두 선택';$('#selectAll').disabled=count===0||state.saving;
@@ -634,6 +635,7 @@
       if(state.exportUrl)URL.revokeObjectURL(state.exportUrl);
       downloadBlob=blob;state.exportUrl=candidateUrl;candidateUrl=null;$('#exportPreview').src=state.exportUrl;
       showVerdict(data.verification,boxes.length);
+      $('#shareButton').classList.toggle('hidden',!canShareFile());
       showDialog('exportDialog');
     } catch(error) {
       if(serial===state.requestSerial && error.name!=='AbortError' && error.status!==409) {state.saveError=error.message||'저장하지 못했어요. 다시 시도해 주세요.';notify(state.saveError,true);}
@@ -666,6 +668,25 @@
     setTimeout(()=>URL.revokeObjectURL(url),30000);
     closeDialog($('#exportDialog'));setStep(3);state.mode='protected';renderImage();if(state.previewState!=='ready')schedulePreview();
     notify('다운로드를 요청했어요. 브라우저의 다운로드 목록을 확인하세요.');
+  }
+
+  function exportFile() {
+    const base=state.name.replace(/\.[^/.]+$/,'').replace(/[<>:"/\\|?*\x00-\x1F]/g,'_').slice(0,90) || 'photo';
+    return new File([downloadBlob],base+'-privacy-lens.jpg',{type:'image/jpeg'});
+  }
+  function canShareFile() {
+    try { return !!(downloadBlob && navigator.canShare && navigator.canShare({files:[exportFile()]})); } catch { return false; }
+  }
+  // 휴대폰 공유 시트로 가린 사진을 바로 보낸다(SNS·메신저). 지원하지 않으면 버튼이 안 보인다.
+  async function share() {
+    if(!canShareFile())return;
+    try {
+      await navigator.share({files:[exportFile()],title:'Privacy Lens'});
+      closeDialog($('#exportDialog'));setStep(3);state.mode='protected';renderImage();if(state.previewState!=='ready')schedulePreview();
+      notify('가린 사진을 공유했어요.');
+    } catch(error) {
+      if(error.name!=='AbortError')notify('공유하지 못했어요. 다운로드로 저장해 주세요.',true);
+    }
   }
 
   function cancelRequests() {
@@ -805,6 +826,9 @@
   $('#workspaceNav').addEventListener('click',()=>{$('#workspace').scrollIntoView({behavior:'smooth',block:'start'});});
   $('#changePhoto').addEventListener('click',()=>{reset();notify('새 사진이나 샘플을 선택해 주세요.');});
   $('#fileInput').addEventListener('change',event=>loadFile(event.target.files[0]));
+  // 휴대폰: 카메라를 바로 연다(capture). 찍은 사진은 고른 사진과 똑같이 바로 검사한다.
+  $('#cameraInput').addEventListener('change',event=>{loadFile(event.target.files[0]);event.target.value='';});
+  $('#cameraButton').addEventListener('click',event=>{event.stopPropagation();$('#cameraInput').click();});
   $('#themeToggle').addEventListener('click',()=>{
     applyTheme(theme==='dark'?'light':'dark');
     try{localStorage.setItem('pl.theme',theme);}catch(_){}
@@ -883,6 +907,7 @@
   document.addEventListener('keydown',event=>{if(event.key==='Escape' && state.drawing){state.drawing=false;gesture=null;syncDrawing();}});
   $('#saveButton').addEventListener('click',prepareExport);
   $('#downloadButton').addEventListener('click',download);
+  $('#shareButton').addEventListener('click',share);
   // 서버가 실제로 찾는 항목(pipeline/kr_patterns.py, metadata.py)
   const targets=[['id','이름','받는분·성명 같은 라벨 바로 뒤'],['box','연락처','휴대전화 · 유선 · 이메일. 대표번호는 참고로'],['pin','주소','도로명주소 · 동·호수'],['lock','주민등록번호','체크섬 · 2020년 이후 형식'],['file','카드번호','Luhn 검증'],['box','운송장번호','운송장 라벨 옆 긴 숫자'],['file','차량번호','실제 번호판 글자만'],['grid','QR · 바코드','안의 내용까지 검사, 링크는 열지 않음'],['pin','위치정보','사진 파일의 GPS 좌표']];
   $('#targetsGrid').innerHTML=targets.map(([symbol,label,detail])=>'<div class="target-tile">'+icon(symbol)+'<h3>'+label+'</h3><p>'+detail+'</p></div>').join('');
