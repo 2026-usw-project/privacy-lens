@@ -294,7 +294,8 @@ $("addProp").addEventListener("click", () => {
   [...$("items").children].forEach((row) => { if (!row.querySelector("input").value.trim()) row.remove(); });
   const fresh = prop.items.filter((it) => !have.has(it.text));
   $("items").append(...fresh.map((it) => itemRow(it)));
-  const cat = { "송장(라벨 없음)": "송장", "명함": "명찰·사원증", "학생증": "학생증·신분증" }[prop.kind] || prop.kind;
+  const cat = { "송장(라벨 없음)": "송장", "명함": "명찰·사원증", "학생증": "학생증·신분증", "학생증(세로)": "학생증·신분증",
+    "카드(뒷면)": "카드", "배달 주문서": "영수증", "우편물": "송장" }[prop.kind] || prop.kind;
   if (!$("category").value && CATEGORIES.includes(cat)) $("category").value = cat;
   msg(`${$("prop").value}: ${fresh.length}개 항목을 넣었습니다. 사진에서 안 보이는 글자는 지우세요.`, "ok");
   markDirty();
