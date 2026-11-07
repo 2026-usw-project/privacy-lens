@@ -9,6 +9,7 @@
 - 화면을 정적 호스팅에 따로 올리면 --no-front 로 API 만 띄우고 --cors 에 화면 주소를 준다.
 - 엔진 서버 목록은 --backend 를 여러 번, 또는 PL_BACKENDS=주소,주소. 비밀값은 --token 또는 PL_GATEWAY_TOKEN.
 - 게이트웨이는 OCR·모델이 필요 없다(fastapi·uvicorn·httpx 만).
+- https: 인증서가 있으면 --ssl-cert/--ssl-key 로 직접 연다. 도메인이 있으면 앞에 Caddy(deploy/Caddyfile)를 두는 편이 쉽다.
 """
 
 from __future__ import annotations
@@ -26,6 +27,18 @@ def _url(raw: str) -> str:
     return f"{p.scheme}://{p.netloc}{p.path.rstrip('/')}"
 
 
+def ssl_files(cert: str, key: str) -> dict:
+    """uvicorn 에 넘길 인증서 옵션. 둘 다 없으면 http, 하나만 있거나 파일이 없으면 멈춘다."""
+    if not cert and not key:
+        return {}
+    if not (cert and key):
+        raise SystemExit("--ssl-cert 와 --ssl-key 는 함께 줘야 합니다.")
+    for p in (cert, key):
+        if not os.path.isfile(p):
+            raise SystemExit(f"인증서 파일이 없습니다: {p}")
+    return {"ssl_certfile": cert, "ssl_keyfile": key}
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Privacy Lens 게이트웨이(화면 + 대기열 + 분산)")
     ap.add_argument("--host", default="127.0.0.1")
@@ -35,7 +48,10 @@ def main(argv=None) -> int:
     ap.add_argument("--queue-max", type=int, default=int(os.environ.get("PL_GATEWAY_QUEUE_MAX", 24)))
     ap.add_argument("--no-front", action="store_true", help="화면을 내주지 않는다(정적 호스팅에 따로 올릴 때)")
     ap.add_argument("--cors", default="", help="--no-front 일 때 요청을 허용할 화면 주소(쉼표)")
+    ap.add_argument("--ssl-cert", default=os.environ.get("PL_SSL_CERT", ""), help="https 인증서(PEM)")
+    ap.add_argument("--ssl-key", default=os.environ.get("PL_SSL_KEY", ""), help="https 개인 키(PEM)")
     args = ap.parse_args(argv)
+    tls = ssl_files(args.ssl_cert, args.ssl_key)
 
     backends = [_url(u) for u in (args.backend or os.environ.get("PL_BACKENDS", "").split(",")) if u.strip()]
     if not backends:
@@ -57,11 +73,12 @@ def main(argv=None) -> int:
 
     shown = "127.0.0.1" if args.host in ("0.0.0.0", "") else args.host
     print("\nPrivacy Lens — 게이트웨이\n")
-    print(f"화면·API: http://{shown}:{args.port}" + ("  (API 만)" if args.no_front else ""))
+    scheme = "https" if tls else "http"
+    print(f"화면·API: {scheme}://{shown}:{args.port}" + ("  (API 만)" if args.no_front else ""))
     for b in backends:
         print(f"  엔진: {b}")
     print()
-    uvicorn.run(app, host=args.host, port=args.port, access_log=False)
+    uvicorn.run(app, host=args.host, port=args.port, access_log=False, **tls)
     return 0
 
 
