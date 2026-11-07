@@ -5,6 +5,7 @@
     python run_backend.py --host 0.0.0.0                   다른 기기에서 접속(같은 네트워크)
     python run_backend.py --cors http://192.168.0.10:8080  화면 서버 주소(여러 개면 쉼표)
     python run_backend.py --check                          점검만
+    python run_backend.py --host 0.0.0.0 --token <비밀값>  게이트웨이(run_gateway.py) 뒤의 엔진 서버로
 
 - 화면(/)은 내주지 않는다(PL_SERVE_FRONT=0). '/' 는 서비스 이름만, '/health' 는 살아 있는지.
 - 화면 서버 주소에서 오는 요청만 허용한다(PL_CORS_ORIGINS). 기본은 이 컴퓨터의 8080 번 화면 서버.
@@ -32,6 +33,8 @@ def main(argv=None) -> int:
     ap.add_argument("--cors", default=os.environ.get("PL_CORS_ORIGINS", DEFAULT_CORS),
                     help="요청을 허용할 화면 주소(쉼표로 여러 개)")
     ap.add_argument("--check", action="store_true", help="점검만 하고 끝낸다")
+    ap.add_argument("--token", default=os.environ.get("PL_GATEWAY_TOKEN", ""),
+                    help="게이트웨이와 나눠 가진 비밀값. 주면 이 값을 가진 요청(게이트웨이)만 받는다")
     args = ap.parse_args(argv)
 
     from run import run_checks
@@ -41,7 +44,10 @@ def main(argv=None) -> int:
             print("\n점검 완료.")
         return code
 
-    env = dict(os.environ, PL_SERVE_FRONT="0", PL_CORS_ORIGINS=args.cors, HOST=args.host, PORT=str(args.port))
+    env = dict(os.environ, PL_SERVE_FRONT="0", PL_CORS_ORIGINS=args.cors, HOST=args.host, PORT=str(args.port),
+               PL_GATEWAY_TOKEN=args.token)
+    if args.token:
+        print("\n게이트웨이 전용 엔진: X-PL-Token 이 맞는 요청만 받습니다.")
     print(f"\nAPI: http://{args.host}:{args.port}   (화면 없음)")
     print(f"허용하는 화면 주소: {args.cors}")
     print("화면은 다른 창에서:  python run_frontend.py --api http://127.0.0.1:" + str(args.port) + "\n")

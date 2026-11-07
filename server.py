@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import hmac
 import io
 import json
 import logging
@@ -231,6 +232,17 @@ if CORS_ORIGINS:
 def _note(request: Request, message: str) -> None:
     """실패 이유를 요청에 붙여 둔다. 아래 미들웨어가 상태 코드와 함께 한 줄로 찍는다."""
     request.state.error_note = message[:300]
+
+
+# 엔진 서버로 띄울 때(run_backend.py --token) 게이트웨이만 받는다. 같은 비밀값을 X-PL-Token 헤더로 보내야 한다
+GATEWAY_TOKEN = os.environ.get("PL_GATEWAY_TOKEN", "")
+
+
+@app.middleware("http")
+async def _gateway_only(request: Request, call_next):
+    if GATEWAY_TOKEN and not hmac.compare_digest(request.headers.get("x-pl-token", ""), GATEWAY_TOKEN):
+        return JSONResponse({"detail": "게이트웨이를 거친 요청만 받습니다."}, status_code=403)
+    return await call_next(request)
 
 
 @app.middleware("http")
