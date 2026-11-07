@@ -141,7 +141,21 @@ python run_gateway.py --host 0.0.0.0 --backend http://192.168.0.21:8000 --backen
 - **상태 확인**: 5초마다 엔진의 `/health` 를 묻고, 응답이 없으면 빼고 살아나면 다시 넣습니다. 보내다가 연결이 안 되면(처리 전) 다른 엔진에 다시 보냅니다.
 - **엔진은 게이트웨이만 받습니다.** `--token` 을 주면 같은 비밀값을 가진 요청만 처리하고 나머지는 403 입니다. 비밀값은 저장소에 적지 않습니다.
 - 게이트웨이는 OCR·모델이 필요 없습니다(fastapi·uvicorn·httpx). 사진은 메모리에서만 엔진으로 넘기고 디스크·로그에 남기지 않습니다.
-- 화면을 정적 호스팅에 따로 올릴 때는 `run_gateway.py --no-front --cors <화면 주소>` 로 API 만 띄웁니다.
+
+**화면을 정적 배포로 올리기(GitHub Pages·Netlify 등).** 게이트웨이가 화면을 내주는 방식과 같이 쓸 수 있습니다.
+
+```bash
+cd web/frontend-demo && node scripts/build.mjs --api https://<게이트웨이 주소>
+```
+
+```bash
+python run_gateway.py --host 0.0.0.0 --no-front --cors https://<화면 주소> --backend http://<엔진>:8000 --token <비밀값>
+```
+
+- `build.mjs --api` 가 `web/frontend-demo/site/`(`index.html` + `dist/fonts/` + `.nojekyll`)를 만듭니다. 이 폴더를 그대로 올립니다. 위치는 `--out` 으로 바꿉니다. `site/` 는 커밋하지 않습니다.
+- `--no-front` 는 게이트웨이에서 화면을 빼고 API 만 냅니다. `--cors` 에는 화면이 올라간 주소(쉼표로 여러 개)를 줍니다.
+- 화면이 https 면 게이트웨이도 https 여야 합니다(브라우저가 http 요청을 막습니다). 인증서를 둔 리버스 프록시나 터널 뒤에 게이트웨이를 둡니다.
+- PC 웹캠 촬영도 https(또는 localhost)에서만 됩니다.
 
 </details>
 

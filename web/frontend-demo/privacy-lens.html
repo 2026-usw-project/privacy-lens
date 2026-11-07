@@ -1144,8 +1144,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     } catch { return ''; }
   }
 
-  // API 주소. 화면과 API 가 한 서버면 '' (같은 주소). 따로 띄우면 run_frontend.py 가
-  // globalThis.PRIVACY_LENS_API = 'http://…:8000' 을 페이지에 넣어 준다. http(s) 주소만 받는다.
+  // API 주소. 화면과 API 가 한 서버면 '' (같은 주소). 따로 띄우면 run_frontend.py(내줄 때) 또는
+  // build.mjs --api(정적 배포 빌드)가 globalThis.PRIVACY_LENS_API = 'http://…:8000' 을 페이지에 넣는다. http(s) 주소만 받는다.
   function defaultBase() {
     const raw=globalThis.PRIVACY_LENS_API;
     if(typeof raw!=='string' || !raw)return '';

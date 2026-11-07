@@ -102,3 +102,36 @@ def test_front_serves_page_with_api_and_fonts(front):
 def test_front_serves_nothing_else(front, path):
     assert get(front + path)[0] == 404
 
+
+
+# ------------------------------------------------------------------ 정적 배포(build.mjs --api)
+
+def _node():
+    import shutil
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node 가 없습니다")
+    return node
+
+
+def _build(*args):
+    import subprocess
+    return subprocess.run([_node(), "scripts/build.mjs", *args], cwd=run_frontend.FRONT, capture_output=True,
+                          text=True, encoding="utf-8", timeout=120)
+
+
+def test_static_site_carries_api_and_fonts(tmp_path):
+    out = tmp_path / "site"
+    r = _build("--api", "https://gw.example.org/pl/", "--out", str(out))
+    assert r.returncode == 0, r.stderr
+    page = (out / "index.html").read_text(encoding="utf-8")
+    assert page.index('globalThis.PRIVACY_LENS_API="https://gw.example.org/pl"') < page.index("PrivacyLensAPI")
+    assert "url(dist/fonts/" in page and (out / ".nojekyll").exists()
+    fonts = {p.name for p in (run_frontend.FONTS).glob("*.woff2")}
+    assert fonts and fonts <= {p.name for p in (out / "dist" / "fonts").iterdir()}
+
+
+@pytest.mark.parametrize("args", [("--api", "javascript:alert(1)"), ("--api",), ("--out", "x")])
+def test_static_build_refuses_bad_options(tmp_path, args):
+    r = _build(*args)
+    assert r.returncode == 2 and "[오류]" in r.stderr

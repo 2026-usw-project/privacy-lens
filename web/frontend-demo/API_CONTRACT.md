@@ -6,6 +6,7 @@
 - **API 주소**: 같은 주소면 비워 둡니다. 화면과 API 를 따로 띄우면(`run_frontend.py`) 페이지에
   `globalThis.PRIVACY_LENS_API = "http://…:8000"` 이 들어가고 `api.js` 가 그 주소로 요청합니다(http(s)만).
   이때 서버는 `PL_CORS_ORIGINS` 에 화면 주소가 있어야 응답합니다(`run_backend.py --cors`).
+  정적 배포(`node scripts/build.mjs --api <주소>` → `site/index.html`)는 같은 값을 빌드할 때 넣습니다.
 - `GET /health` → `{"ok": true, "engine_ready": …}`. 화면 서버가 API 주소를 확인할 때 씁니다.
 - **게이트웨이**(`run_gateway.py`) 뒤에서도 화면 쪽 규격은 같습니다. `/health` 와 `/queue` 에
   `engines: {total, alive, busy}` 가 더 붙고, 배정 전 번호표의 `progress` 는 `{"state":"waiting","ahead","eta_s","stages":[],"total_s":null}` 입니다.

@@ -46,6 +46,7 @@ python run_backend.py                      # API 만 (8000, 화면 서버 주소
 python run_frontend.py                     # 화면만 (8080, --api 로 백엔드 주소. 파이썬 기본 기능만)
 python run_backend.py --host 0.0.0.0 --token <비밀값>          # 게이트웨이 뒤 엔진 서버(1 서버 1 엔진)
 python run_gateway.py --backend http://<엔진>:8000 --token <비밀값>   # 화면 + 하나의 대기열 + 엔진 분산(8080)
+cd web/frontend-demo && node scripts/build.mjs --api https://<게이트웨이>   # 정적 배포 폴더 site/ (게이트웨이는 --no-front --cors <화면 주소>)
 python -m pytest tests                     # 백엔드 테스트 (OCR 불필요)
 python -m eval.judgment --check            # 판단 회귀 검사(OCR 불필요, CI 와 같음)
 python -m eval.failures run <폴더>          # 실사 실패 원인 분류(사진은 드라이브)
