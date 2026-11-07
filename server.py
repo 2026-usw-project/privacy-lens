@@ -347,7 +347,8 @@ def _open(data: bytes) -> Image.Image:
         img.load()
     except Image.DecompressionBombError:
         raise HTTPException(413, "화소 수가 너무 많은 이미지입니다.")
-    except (UnidentifiedImageError, OSError, SyntaxError, ValueError):
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError, ImportError):
+        # ImportError: Image.open 을 바꿔 둔 라이브러리가 없는 플러그인(pi_heif 등)을 찾다 실패한 경우(pipeline/ultra.py)
         raise HTTPException(400, "이미지로 읽을 수 없는 파일입니다. JPEG, PNG, HEIC 를 넣어주세요.")
     return ImageOps.exif_transpose(img) or img
 

@@ -83,10 +83,9 @@ def model_family(model) -> str:
 class YoloDetector:
     def __init__(self, weights: str | os.PathLike, conf: float | None = None,
                  imgsz: int | None = None):
-        # 서버가 요청을 처리하다 패키지를 내려받아 설치하지 않게 한다(Ultralytics 자동 설치는 기본 켜짐).
-        # 실제로 첫 분석 중에 onnx·onnxruntime(GPU 면 onnxruntime-gpu 160MB)을 설치했다. 필요한 것은 vision/requirements.txt
-        os.environ.setdefault("YOLO_AUTOINSTALL", "false")
-        from ultralytics import YOLO  # 무거우니 쓸 때만
+        from .ultra import yolo_class  # 자동 설치 끔 + Image.open 원래대로(pipeline/ultra.py)
+
+        YOLO = yolo_class()
 
         self.path = Path(weights)
         self.model = YOLO(str(self.path))
