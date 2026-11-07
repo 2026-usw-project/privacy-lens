@@ -608,11 +608,8 @@
     }));
   }
   function renderQueue(s) {
-    const badge=$('#queueBadge');badge.classList.remove('busy','ready');
-    if(!s.engine_ready){$('#queueText').textContent='OCR 엔진 준비 중';badge.classList.add('busy');}
-    else if(s.running+s.waiting===0){$('#queueText').textContent='대기열 비어 있음';badge.classList.add('ready');}
-    else {$('#queueText').textContent='처리 중 '+s.running+' · 대기 '+s.waiting;badge.classList.add('busy');}
-    badge.title=$('#queueText').textContent;
+    const badge=$('#queueBadge'),view=Core.queueBadge(s);badge.classList.remove('busy','ready','down');
+    $('#queueText').textContent=view.text;badge.classList.add(view.tone);badge.title=view.title;
     if(!state.ticket || !s.state) return;
     // SSE 가 없거나 끊겼으면 폴링에 붙어 온 같은 진행 상태를 쓴다
     if(s.progress && state.live && !state.liveStream) applyLive(s.progress);
