@@ -19,6 +19,9 @@ dist/
 runs/
 weights/
 
+# build.mjs --api 가 만드는 정적 배포 폴더
+web/frontend-demo/site/
+
 # run.py / samples/make_sample.py 가 만드는 합성 샘플
 samples/out/
 

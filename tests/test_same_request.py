@@ -106,7 +106,7 @@ def test_first_failure_is_repeated_to_retry(monkeypatch):
 
 def test_old_results_dropped(slow, monkeypatch):
     slow.gate.set()
-    monkeypatch.setattr(server._SameRequest, "KEEP_S", 0.0)
+    monkeypatch.setattr(server._SameRequest, "KEEP_S", -1.0)  # 윈도 시계는 두 요청이 같은 눈금일 수 있다
     client = TestClient(server.app)
     client.post("/analyze", files={"image": ("a.png", png())}, data={"ticket": "old-00001"})
     client.post("/analyze", files={"image": ("a.png", png())}, data={"ticket": "old-00001"})
