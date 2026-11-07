@@ -526,6 +526,7 @@ dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
 .queue-badge i{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0}
 .queue-badge.busy i{background:#d99a1e}
 .queue-badge.ready i{background:var(--ok)}
+.queue-badge.down i{background:var(--error)}
 /* 판단 방법 칩과 판단 모델 창 대화상자(main 에서 들어온 구성)를 같은 말투로 맞춘다. */
 .judge-chip span{max-width:220px;overflow:hidden;text-overflow:ellipsis}
 .judge-chip.llm{background:var(--warn-bg);color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn-line)}

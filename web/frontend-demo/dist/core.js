@@ -211,5 +211,19 @@
     return view;
   }
 
-  globalThis.PrivacyLensCore=Object.freeze({TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
+  // 상단 대기열 표시. 게이트웨이 뒤면 /queue 에 engines: {total, alive, busy} 가 붙어 엔진 수를 함께 보여 준다.
+  // tone: ready(초록) · busy(주황) · down(빨강, 쓸 수 있는 엔진 없음)
+  function queueBadge(s) {
+    const e=s&&s.engines&&Number.isFinite(s.engines.total)?s.engines:null;
+    const head=e?(e.alive===e.total?'엔진 '+e.total+'대':'엔진 '+e.alive+'/'+e.total+'대')+' · ':'';
+    const title=e?'분석 엔진 '+e.total+'대 중 '+e.alive+'대 사용 가능'+(e.busy?', '+e.busy+'대 처리 중':''):'';
+    if(e&&e.alive===0)return {text:'엔진 0/'+e.total+'대 · 연결 안 됨',tone:'down',title:'사용할 수 있는 분석 엔진이 없습니다. 잠시 후 다시 시도해 주세요.'};
+    let text,tone;
+    if(!s.engine_ready){text='OCR 엔진 준비 중';tone='busy';}
+    else if(s.running+s.waiting===0){text='대기열 비어 있음';tone='ready';}
+    else {text='처리 중 '+s.running+' · 대기 '+s.waiting;tone='busy';}
+    return {text:head+text,tone,title:title?title+' · '+text:text};
+  }
+
+  globalThis.PrivacyLensCore=Object.freeze({queueBadge,TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
 })();
