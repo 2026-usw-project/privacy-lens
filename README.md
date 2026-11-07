@@ -157,6 +157,30 @@ python run_gateway.py --host 0.0.0.0 --no-front --cors https://<화면 주소> -
 - 화면이 https 면 게이트웨이도 https 여야 합니다(브라우저가 http 요청을 막습니다). 인증서를 둔 리버스 프록시나 터널 뒤에 게이트웨이를 둡니다.
 - PC 웹캠 촬영도 https(또는 localhost)에서만 됩니다.
 
+**게이트웨이를 https 로 열기.** 화면을 https 로 올렸거나, 휴대폰에서 카메라를 쓰려면 게이트웨이도 https 여야 합니다. 상황에 맞게 하나를 고릅니다.
+
+| 방법 | 언제 | 사진이 지나는 길 |
+|---|---|---|
+| **A. Caddy 앞단** (`deploy/Caddyfile`) | 도메인이 있고 80·443 포트를 열 수 있을 때. 인증서를 자동으로 받고 갱신합니다. | 이 PC 에서 암호가 풀립니다(중간 업체 없음). |
+| **B. 게이트웨이가 직접** (`--ssl-cert`, `--ssl-key`) | 인증서 파일이 있을 때. 교내망 시연은 `mkcert` 로 만든 인증서를 쓰고, 접속할 기기에 mkcert 루트 인증서를 설치합니다. | 이 PC 에서 암호가 풀립니다. |
+| **C. Cloudflare Tunnel** (`cloudflared tunnel --url http://127.0.0.1:8080`) | 도메인·포트 개방 없이 바로 https 주소(`*.trycloudflare.com`)가 필요할 때. | **Cloudflare 에서 암호가 풀립니다.** 가상 사진 시연에만 씁니다. |
+
+```bash
+# A. 게이트웨이는 이 PC 안에서만, Caddy 가 https 로 받아 넘긴다 (Caddyfile 의 도메인을 바꾼 뒤)
+python run_gateway.py --backend http://<엔진>:8000 --token <비밀값>
+caddy run --config deploy/Caddyfile
+```
+
+```bash
+# B. 인증서로 직접 연다
+python run_gateway.py --host 0.0.0.0 --port 8443 --ssl-cert cert.pem --ssl-key key.pem --backend http://<엔진>:8000 --token <비밀값>
+```
+
+- 정적 배포라면 `build.mjs --api` 에 이 https 주소를 주고, 게이트웨이에는 `--no-front --cors https://<화면 주소>` 를 더합니다.
+- C 의 임시 주소는 실행할 때마다 바뀝니다. 정적 배포와 같이 쓰면 주소가 바뀔 때마다 다시 빌드해야 하니, C 는 게이트웨이가 화면을 내주는 방식과 쓰는 편이 편합니다.
+- 게이트웨이와 엔진 사이는 http + 토큰입니다. 엔진은 같은 교내망·VPN 안에 두고 인터넷에 열지 않습니다.
+- 인증서·개인 키 파일은 저장소에 넣지 않습니다(`*.pem` 은 무시 목록에 있습니다).
+
 </details>
 
 환경 점검만 실행하려면 다음 명령을 사용합니다.

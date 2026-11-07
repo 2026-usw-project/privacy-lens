@@ -19,6 +19,10 @@ dist/
 runs/
 weights/
 
+# https 인증서·개인 키 (run_gateway.py --ssl-cert/--ssl-key, mkcert)
+*.pem
+*.key
+
 # build.mjs --api 가 만드는 정적 배포 폴더
 web/frontend-demo/site/
 

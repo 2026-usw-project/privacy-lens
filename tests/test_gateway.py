@@ -304,6 +304,18 @@ def test_engine_accepts_only_gateway_token(engine_with_token):
     assert client.get("/health", headers={"X-PL-Token": TOKEN}).json()["ok"] is True
 
 
+def test_launcher_https_options(tmp_path):
+    import run_gateway
+    assert run_gateway.ssl_files("", "") == {}
+    cert, key = tmp_path / "c.pem", tmp_path / "k.pem"
+    cert.write_text("x")
+    key.write_text("x")
+    assert run_gateway.ssl_files(str(cert), str(key)) == {"ssl_certfile": str(cert), "ssl_keyfile": str(key)}
+    for bad in ((str(cert), ""), ("", str(key)), (str(cert), str(tmp_path / "none.pem"))):
+        with pytest.raises(SystemExit):
+            run_gateway.ssl_files(*bad)
+
+
 def test_launcher_rejects_bad_backend_url():
     import run_gateway
     assert run_gateway._url("http://192.168.0.21:8000/") == "http://192.168.0.21:8000"
