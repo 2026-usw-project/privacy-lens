@@ -647,6 +647,22 @@ Presidio가 독일 우편번호를 다루는 방식이 같은 발상이다. 패�
 
 ---
 
+## 사진이 아닌 파일이 500 이 되던 문제 — Ultralytics 의 Image.open 바꿔치기 (2026-11-07)
+
+원격 서버(Linux, YOLO 모델 사용)에 사진이 아닌 파일을 올리면 400 대신 500 이 났다. 서버 기록은
+`ModuleNotFoundError: No module named 'pi_heif'` 였다. Ultralytics 는 import 되는 순간 `PIL.Image.open` 을
+자기 함수로 바꿔 두고(`ultralytics/utils/patches.py`), 그 함수는 읽을 수 없는 파일을 만나면 HEIC 플러그인
+`pi-heif` 를 확인·설치하려 든다. 자동 설치를 꺼 두었으니(`YOLO_AUTOINSTALL=false`) import 가 실패했고,
+서버의 `_open()` 은 `ImportError` 를 '읽을 수 없는 파일'로 알아보지 못했다. 로컬 시험에서는 YOLO 를 불러오기 전이라
+드러나지 않았다.
+
+HEIC 는 서버가 `pillow-heif` 로 이미 연다. 그래서 YOLO 는 `pipeline/ultra.py` 의 `yolo_class()` 로만 불러오고,
+불러온 직후 `Image.open` 을 원래 함수로 돌려놓는다(자동 설치 끄기도 여기로 모았다). `_open()` 은 `ImportError` 도
+400 으로 바꾼다. `tests/test_pil_open.py` 가 '바꿔치기 + pi_heif 없음' 상태를 만들어 400 을 확인한다
+(고치기 전 코드에서는 같은 오류로 실패한다). 실제 번호판 모델을 불러온 뒤에도 `/analyze`·`/redact/preview` 가 400 이었다.
+
+---
+
 ## 서버 동시 요청 오류 대응 (2026-10-04)
 
 Linux에서 여러 요청을 처리할 때 글줄 방향 추론의 `predictor.run()`이

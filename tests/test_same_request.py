@@ -142,5 +142,9 @@ def test_plate_detector_needs_onnxruntime(monkeypatch, tmp_path):
 
 def test_autoinstall_off_by_default(monkeypatch):
     monkeypatch.delenv("YOLO_AUTOINSTALL", raising=False)
-    src = Path(objects.__file__).read_text(encoding="utf-8") + Path(server.detect.__file__).read_text(encoding="utf-8")
-    assert src.count('os.environ.setdefault("YOLO_AUTOINSTALL", "false")') == 2
+    # YOLO 는 pipeline/ultra.py 의 yolo_class() 로만 불러온다(자동 설치 끔 + Image.open 원래대로)
+    ultra = Path(objects.__file__).with_name("ultra.py").read_text(encoding="utf-8")
+    assert 'os.environ.setdefault("YOLO_AUTOINSTALL", "false")' in ultra
+    for mod in (objects, server.detect):
+        src = Path(mod.__file__).read_text(encoding="utf-8")
+        assert "yolo_class()" in src and "from ultralytics import YOLO" not in src
