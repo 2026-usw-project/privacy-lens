@@ -92,6 +92,17 @@ await test('redact posts boxes, style and ticket',async()=>{
   const api=A.client('',async(url,o)=>{assert.equal(url,'/redact');assert.equal(o.body.get('ticket'),'abc-12345');assert.equal(o.body.get('style'),'blur');return json({file:'',verification:{passed:true}});});
   assert.equal((await api.redact(file,[],'blur',{ticket:'abc-12345'})).verification.passed,true);
 });
+await test('queue badge shows engine count only behind the gateway',()=>{
+  const one=C.queueBadge({engine_ready:true,running:0,waiting:0});
+  assert.deepEqual([one.text,one.tone],['대기열 비어 있음','ready']);
+  assert.equal(C.queueBadge({engine_ready:false,running:0,waiting:0}).text,'OCR 엔진 준비 중');
+  const all=C.queueBadge({engine_ready:true,running:2,waiting:3,engines:{total:2,alive:2,busy:2}});
+  assert.deepEqual([all.text,all.tone],['엔진 2대 · 처리 중 2 · 대기 3','busy']);
+  assert.match(all.title,/2대 중 2대 사용 가능, 2대 처리 중/);
+  assert.equal(C.queueBadge({engine_ready:true,running:0,waiting:0,engines:{total:3,alive:2,busy:0}}).text,'엔진 2/3대 · 대기열 비어 있음');
+  const down=C.queueBadge({engine_ready:false,running:0,waiting:0,engines:{total:2,alive:0,busy:0}});
+  assert.deepEqual([down.text,down.tone],['엔진 0/2대 · 연결 안 됨','down']);
+});
 await test('queue asks with ticket',async()=>{
   const api=A.client('',async(url,o)=>{assert.equal(url,'/queue?ticket=a%20b');assert.equal(o.method,'GET');return json({running:0,waiting:0});});
   await api.queue('a b');

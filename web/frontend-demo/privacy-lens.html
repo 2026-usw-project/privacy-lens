@@ -536,6 +536,7 @@ dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
 .queue-badge i{width:7px;height:7px;border-radius:50%;background:var(--muted);flex-shrink:0}
 .queue-badge.busy i{background:#d99a1e}
 .queue-badge.ready i{background:var(--ok)}
+.queue-badge.down i{background:var(--error)}
 /* 판단 방법 칩과 판단 모델 창 대화상자(main 에서 들어온 구성)를 같은 말투로 맞춘다. */
 .judge-chip span{max-width:220px;overflow:hidden;text-overflow:ellipsis}
 .judge-chip.llm{background:var(--warn-bg);color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn-line)}
@@ -1096,7 +1097,21 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     return view;
   }
 
-  globalThis.PrivacyLensCore=Object.freeze({TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
+  // 상단 대기열 표시. 게이트웨이 뒤면 /queue 에 engines: {total, alive, busy} 가 붙어 엔진 수를 함께 보여 준다.
+  // tone: ready(초록) · busy(주황) · down(빨강, 쓸 수 있는 엔진 없음)
+  function queueBadge(s) {
+    const e=s&&s.engines&&Number.isFinite(s.engines.total)?s.engines:null;
+    const head=e?(e.alive===e.total?'엔진 '+e.total+'대':'엔진 '+e.alive+'/'+e.total+'대')+' · ':'';
+    const title=e?'분석 엔진 '+e.total+'대 중 '+e.alive+'대 사용 가능'+(e.busy?', '+e.busy+'대 처리 중':''):'';
+    if(e&&e.alive===0)return {text:'엔진 0/'+e.total+'대 · 연결 안 됨',tone:'down',title:'사용할 수 있는 분석 엔진이 없습니다. 잠시 후 다시 시도해 주세요.'};
+    let text,tone;
+    if(!s.engine_ready){text='OCR 엔진 준비 중';tone='busy';}
+    else if(s.running+s.waiting===0){text='대기열 비어 있음';tone='ready';}
+    else {text='처리 중 '+s.running+' · 대기 '+s.waiting;tone='busy';}
+    return {text:head+text,tone,title:title?title+' · '+text:text};
+  }
+
+  globalThis.PrivacyLensCore=Object.freeze({queueBadge,TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
 })();
 
 'use strict';
@@ -1841,11 +1856,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     }));
   }
   function renderQueue(s) {
-    const badge=$('#queueBadge');badge.classList.remove('busy','ready');
-    if(!s.engine_ready){$('#queueText').textContent='OCR 엔진 준비 중';badge.classList.add('busy');}
-    else if(s.running+s.waiting===0){$('#queueText').textContent='대기열 비어 있음';badge.classList.add('ready');}
-    else {$('#queueText').textContent='처리 중 '+s.running+' · 대기 '+s.waiting;badge.classList.add('busy');}
-    badge.title=$('#queueText').textContent;
+    const badge=$('#queueBadge'),view=Core.queueBadge(s);badge.classList.remove('busy','ready','down');
+    $('#queueText').textContent=view.text;badge.classList.add(view.tone);badge.title=view.title;
     if(!state.ticket || !s.state) return;
     // SSE 가 없거나 끊겼으면 폴링에 붙어 온 같은 진행 상태를 쓴다
     if(s.progress && state.live && !state.liveStream) applyLive(s.progress);
