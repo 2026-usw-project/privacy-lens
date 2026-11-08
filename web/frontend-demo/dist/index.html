@@ -72,7 +72,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <li id="step3"><span class="step-number">3</span><span class="step-label">가림 · 저장</span></li>
     </ol>
     <div class="topbar-right">
-      <button type="button" class="queue-badge mono-label" id="queueBadge" disabled aria-haspopup="dialog"><i></i><span id="queueText" role="status" aria-live="polite">대기열 확인 중</span></button>
+      <button type="button" class="queue-badge mono-label" id="queueBadge" disabled aria-haspopup="dialog"><i></i><span id="queueText" role="status" aria-live="polite">대기열 확인 중</span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
       <button class="chip-button judge-chip" id="judgeChip" data-dialog="devDialog" aria-label="판단 모델 열기"><svg><use href="#i-code"/></svg><span id="judgeChipText">문맥·결합</span></button>
       <button class="chip-button icon-only theme-toggle" id="themeToggle" aria-label="어두운 화면으로 바꾸기" aria-pressed="false"><svg class="when-dark"><use href="#i-sun"/></svg><svg class="when-light"><use href="#i-moon"/></svg></button>
       <button class="chip-button icon-only" data-dialog="guideDialog" aria-label="이용 안내"><svg><use href="#i-info"/></svg></button>
@@ -210,8 +210,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <dialog id="payloadDialog"><div class="dialog-header"><h2>최종 영역 데이터</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><p class="dialog-intro" id="payloadSummary"></p><pre id="payloadJson" tabindex="0" aria-label="최종 영역 JSON"></pre><div class="dialog-callout"><svg><use href="#i-info"/></svg><p>방향을 보정한 원본의 왼쪽 위가 (0, 0)입니다. 선택 해제·삭제한 영역은 빠져요. 저장할 때 이 영역(기울어진 글자는 외곽선 poly 포함)과 원본 사진을 서버로 보내요.</p></div><button class="button primary full" id="downloadPayload">영역 JSON 다운로드</button></dialog>
 
 <dialog id="engineDialog" aria-labelledby="engineTitle"><div class="dialog-header"><h2 id="engineTitle">분석 엔진</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div>
-<p class="dialog-intro">게이트웨이가 사진을 나눠 보내는 엔진 서버 목록이에요. 보거나 바꾸려면 관리 키가 필요해요. 게이트웨이를 켠 콘솔에 나와요.</p>
-<form class="dev-form" id="engineKeyForm"><div class="dev-field"><label for="engineKey">관리 키</label><div class="dev-key"><input id="engineKey" type="password" autocomplete="off" spellcheck="false" maxlength="200" required><button type="submit" class="text-button">확인</button></div></div></form>
+<p class="dialog-intro">게이트웨이가 사진을 나눠 보내는 엔진 서버 목록이에요.</p>
+<form class="dev-form" id="engineKeyForm"><div class="dev-field"><label for="engineKey">관리 키</label><div class="dev-key"><input id="engineKey" type="password" autocomplete="off" spellcheck="false" maxlength="200" required><button type="submit" class="text-button">확인</button></div><p class="fine-print">보거나 바꾸려면 관리 키가 필요해요. 게이트웨이를 켠 콘솔에 나와요.</p></div></form>
 <div class="dev-form hidden" id="engineManage">
   <ul class="engine-list" id="engineList" aria-label="엔진 서버 목록"></ul>
   <form class="dev-field" id="engineAddForm"><label for="engineUrl">엔진 서버 추가</label><div class="dev-key"><input id="engineUrl" type="url" placeholder="http://192.168.0.21:8000" autocomplete="off" spellcheck="false" maxlength="300" required><button type="submit" class="text-button" id="engineAdd">추가</button></div>

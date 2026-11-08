@@ -524,9 +524,13 @@ dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
 .region-box.unselected.sev-review>span{background:#8a5a0c}
 .queue-badge{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 6px;border-radius:10px}
 .queue-badge:disabled{opacity:1;cursor:default}
-.queue-badge.linked #queueText{color:var(--primary-ink);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}
-.queue-badge.linked:hover #queueText{text-decoration-thickness:2px}
+.queue-badge.linked{padding:0 12px;border-radius:12px;background:var(--surface);color:var(--ink-2);font-weight:600;
+  box-shadow:inset 0 1px 0 var(--hi-soft),0 1px 0 var(--line-strong),0 4px 10px -6px var(--drop);transition:background .15s,transform .22s var(--spring),box-shadow .15s}
+.queue-badge.linked:hover{background:var(--surface-3);color:var(--ink)}
+.queue-badge.linked:active{transform:translateY(1px);transition-duration:.06s;box-shadow:inset 0 1px 3px var(--drop)}
 .queue-badge.linked:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+.queue-badge .chev{display:none;width:14px;height:14px;color:var(--muted)}
+.queue-badge.linked .chev{display:block}
 .engine-list{display:grid;gap:8px;list-style:none;margin:0;padding:0}
 .engine-list li{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:10px 8px 10px 14px;border-radius:12px;background:var(--surface-2)}
 .engine-list li>i{width:8px;height:8px;border-radius:50%;background:var(--muted)}
@@ -633,6 +637,7 @@ dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
   .side-nav [data-dialog=devDialog]{display:none}
   /* 대기열은 점만. 글자는 title·화면 낭독기로, 분석 중에는 오른쪽 패널에 '대기 N건' */
   .queue-badge{padding:0}
+  .queue-badge.linked{padding:0 10px}
   .queue-badge span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 }
 @media(max-width:400px){
