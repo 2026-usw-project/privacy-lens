@@ -9,6 +9,7 @@
 - 여러 PC 로 나눌 때와 같은 구조다. 엔진을 더 붙이려면 run_gateway.py --backend 를 여러 번 쓴다(README).
 - 엔진은 이 PC 안(127.0.0.1)에서만 열고, 실행할 때마다 새로 만든 비밀값으로 게이트웨이만 받는다.
 - HOST=0.0.0.0 이면 게이트웨이만 다른 기기에 열린다.
+- 포트가 쓰는 중이면 1 씩 올려 빈 포트로 연다(PORT 부터, 엔진은 그 다음 번호부터). 바뀌면 콘솔에 알린다.
 
 에러가 난 뒤에 원인을 찾는 것보다, 시작하기 전에 뭐가 없는지 알려주는 편이 낫다.
 """
@@ -192,8 +193,8 @@ def run_checks(args: set[str]) -> int:
     return 0
 
 
-def port_free(port: int, host: str = "127.0.0.1") -> bool:
-    """uvicorn 이 이 포트를 열 수 있는지. uvicorn 처럼 SO_REUSEADDR 를 켜고 열어 본다.
+def _can_bind(host: str, port: int) -> bool:
+    """uvicorn 처럼 SO_REUSEADDR 를 켜고 열어 본다.
     Linux 는 이 옵션 없이는 방금 끈 서버의 연결(TIME_WAIT)이 남아 있는 동안 '쓰는 중'으로 본다(실제로는 비어 있음).
     Windows 의 SO_REUSEADDR 는 다른 프로그램이 쓰는 포트도 열게 해 버리므로 켜지 않는다."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -204,6 +205,35 @@ def port_free(port: int, host: str = "127.0.0.1") -> bool:
         except OSError:
             return False
     return True
+
+
+def port_free(port: int, host: str = "127.0.0.1") -> bool:
+    """uvicorn 이 이 포트를 열 수 있고, 다른 프로그램과 겹치지 않는지.
+    Windows 는 127.0.0.1 과 0.0.0.0 을 서로 다른 자리로 봐서, 다른 프로그램이 한쪽을 쓰고 있어도 다른 쪽은 열린다
+    (그러면 같은 주소로 들어온 요청이 엉뚱한 프로그램으로 간다). 그래서 Windows 는 둘 다 비어 있어야 비었다고 본다."""
+    addrs = {"0.0.0.0" if host in ("", "0.0.0.0") else host}
+    if os.name == "nt":
+        addrs |= {"127.0.0.1", "0.0.0.0"}
+    return all(_can_bind(a, port) for a in sorted(addrs))
+
+
+def free_port(start: int, host: str = "127.0.0.1", *, avoid=(), tries: int = 50) -> int | None:
+    """start 부터 1 씩 올리며 열 수 있는 첫 포트. tries 번 안에 없으면 None."""
+    for p in range(start, min(start + tries, 65536)):
+        if p not in avoid and port_free(p, host):
+            return p
+    return None
+
+
+def pick_port(want: int, host: str, what: str, *, avoid=()) -> int:
+    """빈 포트를 고르고, 바뀌었으면 알린다. 없으면 SystemExit."""
+    got = free_port(want, host, avoid=avoid)
+    if got is None:
+        raise SystemExit(f"\n{BAD} {want}~{want + 49} 번 포트가 모두 쓰는 중입니다({what}). 다른 번호를 주세요.")
+    if got != want:
+        print(f"{WARN} {want} 번 포트를 쓰는 중이라 {got} 번으로 엽니다({what}). "
+              f"이 주소를 가리키는 터널·게이트웨이 설정이 있으면 함께 바꿔 주세요.")
+    return got
 
 
 def wait_engine(proc: subprocess.Popen, url: str, token: str, timeout: float = 180.0) -> bool:
@@ -250,12 +280,14 @@ def main() -> int:
         return 0
 
     host = os.environ.get("HOST", "127.0.0.1")
-    port = int(os.environ.get("PORT", 8000))
-    engine_port = int(os.environ.get("PL_ENGINE_PORT", 8001))
-    for p, name, env_name in ((port, "화면·API", "PORT"), (engine_port, "엔진 서버", "PL_ENGINE_PORT")):
-        if not port_free(p, "0.0.0.0" if p == port and host in ("0.0.0.0", "") else "127.0.0.1"):
-            print(f"\n{BAD} {p} 번 포트를 이미 쓰고 있습니다({name}). 다른 번호를 주세요:  {env_name}=<번호> python run.py")
-            return 1
+    print()
+    try:
+        port = pick_port(int(os.environ.get("PORT", 8000)), host, "화면·API")
+        # 엔진은 PL_ENGINE_PORT, 없으면 게이트웨이 다음 번호부터
+        engine_port = pick_port(int(os.environ.get("PL_ENGINE_PORT", port + 1)), "127.0.0.1", "엔진 서버", avoid={port})
+    except SystemExit as exc:
+        print(exc)
+        return 1
 
     # 엔진 비밀값. PL_GATEWAY_TOKEN 을 정해 두면 다른 PC 의 엔진(run_backend.py --token 같은 값)도 화면에서 더할 수 있다.
     # 없으면 이번 실행에만 쓰는 값을 만든다(어디에도 저장·출력하지 않는다. 이때는 이 PC 의 엔진만 붙는다)

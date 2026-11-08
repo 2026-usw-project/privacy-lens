@@ -10,6 +10,7 @@
 - 엔진 서버 목록은 --backend 를 여러 번, 또는 PL_BACKENDS=주소,주소. 비밀값은 --token 또는 PL_GATEWAY_TOKEN.
 - 게이트웨이는 OCR·모델이 필요 없다(fastapi·uvicorn·httpx 만).
 - 엔진 목록 관리(화면의 '엔진 N대'): 관리 키가 있어야 한다. --admin-key 또는 PL_ADMIN_KEY, 없으면 켤 때마다 새로 만들어 콘솔에 보여 준다.
+- 포트(--port, 기본 8080)가 쓰는 중이면 1 씩 올려 빈 포트로 연다.
 - https: 인증서가 있으면 --ssl-cert/--ssl-key 로 직접 연다. 도메인이 있으면 앞에 Caddy(deploy/Caddyfile)를 두는 편이 쉽다.
 """
 
@@ -56,6 +57,8 @@ def main(argv=None) -> int:
                     help="화면에서 엔진을 더하고 뺄 때 쓰는 관리 키. 없으면 켤 때마다 새로 만든다")
     args = ap.parse_args(argv)
     tls = ssl_files(args.ssl_cert, args.ssl_key)
+    from run import pick_port
+    args.port = pick_port(args.port, args.host, "게이트웨이")   # 쓰는 중이면 1 씩 올려 빈 포트로
 
     backends = [_url(u) for u in (args.backend or os.environ.get("PL_BACKENDS", "").split(",")) if u.strip()]
     if not backends:
