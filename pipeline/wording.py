@@ -61,6 +61,10 @@ DOC_NOUN = {
     "student": "학생증",
     "id_card": "학생증 또는 카드",
     "screen": "화면",
+    "card": "결제 카드",
+    "document": "개인 서류",
+    "ticket": "티켓",
+    "health_item": "약 또는 건강 관련 물건",
 }
 
 

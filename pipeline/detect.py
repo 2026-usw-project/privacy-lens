@@ -43,11 +43,17 @@ DOC_CLASSES = {
     "id_card": "id_card",
     "name_tag": "badge",
     "screen": "screen",
+    # 일상 사진 9종 모델(models/daily.onnx, D-19)에만 있는 클래스
+    "card": "card",
+    "receipt": "receipt",
+    "document": "document",
+    "ticket": "ticket",
+    "health_item": "health_item",
 }
-# 내용을 못 읽었을 때 바로 '가림 권장'으로 올릴 문서. 신원과 직결된다
-COVER_WHEN_UNREAD = {"id_card", "name_tag"}
-# 원래 개인정보가 적혀 있는 문서. 읽었는데 개인정보를 못 찾았으면 '검토 권장'
-ALWAYS_PERSONAL = {"waybill", "id_card", "name_tag"}
+# 내용을 못 읽었을 때 바로 '가림 권장'으로 올릴 문서. 신원·결제와 직결된다
+COVER_WHEN_UNREAD = {"id_card", "name_tag", "card"}
+# 원래 개인정보가 적혀 있는 물건. 읽었는데 개인정보를 못 찾았으면 '검토 권장'
+ALWAYS_PERSONAL = {"waybill", "id_card", "name_tag", "card", "health_item"}
 
 CONFIDENT = 0.75          # context._certainty_from_ocr 의 '내용 확인됨' 기준과 같게
 MIN_READ_CHARS = 6        # 문서 안에서 확실히 읽은 글자가 이보다 적으면 '못 읽음'
@@ -88,7 +94,8 @@ class YoloDetector:
         YOLO = yolo_class()
 
         self.path = Path(weights)
-        self.model = YOLO(str(self.path))
+        # .onnx 는 클래스 정보로 작업 종류를 알 수 없어 detect 로 알려 준다
+        self.model = YOLO(str(self.path), task="detect") if self.path.suffix == ".onnx" else YOLO(str(self.path))
         self.names = {int(k): v for k, v in self.model.names.items()}
         self.conf = conf if conf is not None else float(os.environ.get("PL_YOLO_CONF", "0.35"))
         self.imgsz = imgsz or _imgsz_for(self.path)
@@ -136,6 +143,55 @@ def _default_weights() -> Path:
         return max(versions, key=lambda p: (int(p.name[1:]), p.name)) / "best.pt"
     return DEFAULT_WEIGHTS
 
+class MultiDetector:
+    """문서 모델 + 일상 사진 9종 모델을 함께 돌린다. 같은 클래스 상자가 겹치면 확신도 높은 쪽만 남긴다."""
+
+    def __init__(self, detectors: list):
+        self.detectors = detectors
+        self.name = "+".join(getattr(d, "name", "yolo") for d in detectors)
+
+    @property
+    def device(self) -> str:
+        return getattr(self.detectors[0], "device", "")
+
+    def detect(self, image: Image.Image) -> list[Detection]:
+        found = [d for det in self.detectors for d in det.detect(image)]
+        kept: list[Detection] = []
+        for d in sorted(found, key=lambda x: -x.confidence):
+            if all(k.name != d.name or not _overlaps(k.box, d.box, 0.6) for k in kept):
+                kept.append(d)
+        return kept
+
+
+DAILY_FILE = "daily.onnx"   # 드라이브 objects/daily_vNNN/best.onnx 를 models/daily.onnx 로 두면 자동으로 쓴다
+DAILY_IMGSZ = 640           # 학습·내보내기 크기(vision/next_steps.train_daily)
+
+
+def daily_model_path() -> Path | None:
+    """PL_DAILY_MODEL(경로, 또는 off) > models/daily.onnx. 없으면 None."""
+    raw = os.environ.get("PL_DAILY_MODEL", "").strip()
+    if raw.lower() == "off":
+        return None
+    if raw:
+        return Path(raw)
+    default = DEFAULT_WEIGHTS.parent / DAILY_FILE
+    return default if default.exists() else None
+
+
+def _load_daily():
+    path = daily_model_path()
+    if path is None:
+        return None
+    try:
+        if not path.exists():
+            raise FileNotFoundError(path)
+        imgsz = int(os.environ.get("PL_DAILY_IMGSZ", DAILY_IMGSZ))
+        return YoloDetector(path, imgsz=imgsz)
+    except Exception as exc:
+        print(f"[detect] 일상 사진 물건 검출을 끕니다: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return None
+
+
 _detector = None
 _detector_lock = threading.Lock()
 _UNSET = object()
@@ -152,17 +208,20 @@ def get_detector():
     with _detector_lock:
         if _loaded is _UNSET:
             _loaded = None
+            if os.environ.get("PL_YOLO", "on").lower() == "off":
+                return None
+            docs = None
             configured = os.environ.get("PL_YOLO_WEIGHTS", "").strip()
-            if os.environ.get("PL_YOLO", "on").lower() != "off":
-                try:
-                    weights = Path(configured) if configured else _default_weights()
-                    if not Path(weights).exists():
-                        if not configured:
-                            return None
-                        raise FileNotFoundError(weights)
-                    _loaded = YoloDetector(weights)
-                except Exception as exc:
-                    print(f"[detect] 문서 검출을 끕니다: {type(exc).__name__}: {exc}", file=sys.stderr)
+            try:
+                weights = Path(configured) if configured else _default_weights()
+                if Path(weights).exists():
+                    docs = YoloDetector(weights)
+                elif configured:
+                    raise FileNotFoundError(weights)
+            except Exception as exc:
+                print(f"[detect] 문서 검출을 끕니다: {type(exc).__name__}: {exc}", file=sys.stderr)
+            found = [d for d in (docs, _load_daily()) if d is not None]
+            _loaded = found[0] if len(found) == 1 else (MultiDetector(found) if found else None)
         return _loaded
 
 

@@ -38,7 +38,10 @@
 1. 얼굴: `python -m pipeline.objects download` (YuNet, SHA-256 확인).
 2. 번호판: 팀 드라이브 `PrivacyLens-YOLO/objects/plate_v003/best.onnx`(2026-11-03 기준 추천) 를 받아 저장소의 `models/plate.onnx` 로 둔다
    (`*.onnx` 는 git 무시). 다른 경로면 `PL_PLATE_MODEL=<경로>`, 끄려면 `PL_PLATE_MODEL=off`.
-3. `python run.py --check` 에 `얼굴 검출 YuNet (card)`, `번호판 검출 …plate.onnx` 가 보이면 된다.
+3. 일상 사진 9종(D-19): 드라이브 `objects/daily_v001/best.onnx`(2026-11-08, 해외 공개 데이터 검증 mAP50 0.535, VizWiz-Priv 빠진 데이터로 학습)를
+   `models/daily.onnx` 로 둔다. 문서 모델(`models/v<N>/best.pt`)이 있으면 둘을 함께 돌리고 같은 클래스가 겹치면 확신도 높은 쪽만 남긴다.
+   다른 경로면 `PL_DAILY_MODEL=<경로>`, 끄려면 `PL_DAILY_MODEL=off`. 입력 크기는 학습과 같은 640(`PL_DAILY_IMGSZ`).
+4. `python run.py --check` 에 `얼굴 검출 YuNet (card)`, `번호판 검출 …plate.onnx` 가 보이면 된다.
 
 #### 첫 측정 (2026-11-02, Colab T4, Open Images 검증 300장 = 번호판 403개)
 

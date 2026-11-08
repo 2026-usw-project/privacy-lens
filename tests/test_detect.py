@@ -262,3 +262,52 @@ def test_missing_weights_file_disables_detection_instead_of_crashing(
     monkeypatch.setenv("PL_YOLO_WEIGHTS", str(tmp_path / "없음.pt"))
     assert detect.get_detector() is None
     assert "문서 검출을 끕니다" in capsys.readouterr().err
+
+
+# ------------------------------------------------------------ 일상 사진 9종 모델(D-19)
+
+class _FakeDet:
+    def __init__(self, name, dets):
+        self.name, self.device, self._dets = name, "cpu", dets
+
+    def detect(self, image):
+        return list(self._dets)
+
+
+def test_multi_detector_keeps_best_of_same_class():
+    a = _FakeDet("yolo:v005", [Detection("waybill", Box(0, 0, 100, 100), 0.5)])
+    b = _FakeDet("yolo:daily", [Detection("waybill", Box(5, 5, 100, 100), 0.8),
+                               Detection("card", Box(300, 300, 50, 30), 0.6)])
+    m = detect.MultiDetector([a, b])
+    got = m.detect(Image.new("RGB", (10, 10)))
+    assert m.name == "yolo:v005+yolo:daily"
+    assert [(d.name, d.confidence) for d in got] == [("waybill", 0.8), ("card", 0.6)]
+
+
+def test_daily_model_loaded_next_to_document_model(fresh_detector_state, monkeypatch, tmp_path):
+    monkeypatch.delenv("PL_YOLO_WEIGHTS", raising=False)
+    monkeypatch.delenv("PL_YOLO", raising=False)
+    monkeypatch.delenv("PL_DAILY_MODEL", raising=False)
+    monkeypatch.setattr(detect, "DEFAULT_WEIGHTS", tmp_path / "best.pt")
+    (tmp_path / "daily.onnx").touch()
+    loaded = []
+    monkeypatch.setattr(detect, "YoloDetector",
+                        lambda path, imgsz=None: loaded.append((path.name, imgsz)) or _FakeDet(path.name, []))
+    assert detect.get_detector().name == "daily.onnx"       # 문서 모델이 없으면 일상 모델만
+    assert loaded == [("daily.onnx", 640)]
+    (tmp_path / "best.pt").touch()
+    monkeypatch.setattr(detect, "_loaded", detect._UNSET)
+    assert isinstance(detect.get_detector(), detect.MultiDetector)
+    monkeypatch.setenv("PL_DAILY_MODEL", "off")
+    monkeypatch.setattr(detect, "_loaded", detect._UNSET)
+    assert detect.get_detector().name == "best.pt"
+
+
+def test_unread_daily_objects_become_regions():
+    dets = [Detection("card", Box(0, 0, 200, 120), 0.7),
+            Detection("health_item", Box(300, 0, 80, 160), 0.6),
+            Detection("ticket", Box(0, 300, 200, 80), 0.6)]
+    out = detect.region_findings(dets, [], [])
+    sev = {f.detail["detector_class"]: f.severity for f in out}
+    assert sev == {"card": Severity.COVER, "health_item": Severity.REVIEW, "ticket": Severity.REVIEW}
+    assert "결제 카드" in out[0].message and "약 또는 건강 관련 물건" in out[1].message
