@@ -38,7 +38,7 @@
 1. 얼굴: `python -m pipeline.objects download` (YuNet, SHA-256 확인).
 2. 번호판: 팀 드라이브 `PrivacyLens-YOLO/objects/plate_v003/best.onnx`(2026-11-03 기준 추천) 를 받아 저장소의 `models/plate.onnx` 로 둔다
    (`*.onnx` 는 git 무시). 다른 경로면 `PL_PLATE_MODEL=<경로>`, 끄려면 `PL_PLATE_MODEL=off`.
-3. 일상 사진 9종(D-19): 드라이브 `objects/daily_v001/best.onnx`(2026-11-08, 해외 공개 데이터 검증 mAP50 0.535, VizWiz-Priv 빠진 데이터로 학습)를
+3. 일상 사진 9종(D-19): 드라이브 `objects/daily_v002/best.onnx`(2026-11-08, 공개 데이터 검증 mAP50 0.824, 아래 '학습 결과')를
    `models/daily.onnx` 로 둔다. 문서 모델(`models/v<N>/best.pt`)이 있으면 둘을 함께 돌리고 같은 클래스가 겹치면 확신도 높은 쪽만 남긴다.
    다른 경로면 `PL_DAILY_MODEL=<경로>`, 끄려면 `PL_DAILY_MODEL=off`. 입력 크기는 학습과 같은 640(`PL_DAILY_IMGSZ`).
 4. `python run.py --check` 에 `얼굴 검출 YuNet (card)`, `번호판 검출 …plate.onnx` 가 보이면 된다.
@@ -172,6 +172,30 @@ GPU 한도가 풀리면 노트북을 위에서부터 돌린다. 칸마다 혼자
 | DIPA / DIPA2 | 1,495 / 1,304장 | 작고 받는 곳이 안 보임 |
 | BIV-Priv-Seg / VizWiz-Priv | 1,028 / 약 5천 장 | 시각장애인이 가까이 찍은 사진, 평가 서버로만 |
 | Open Images V7 | - | 모니터·휴대폰·노트북·TV·봉투 클래스(CC BY 4.0) — **화면 클래스 후보** |
+
+#### 학습 결과 (2026-11-08, Colab T4, YOLO26n, 30 epoch, 입력 640)
+
+| 모델 | 학습 사진 | 검증 사진 | 전체 mAP50 | 비고 |
+|---|---|---|---|---|
+| `daily_v001` | 2,612 | 845 | 0.535 | VizWiz-Priv 7,447장이 전부 '사진 없음'으로 빠진 데이터(11-04 빌드) |
+| `daily_v002` | 6,661 | 4,572 | **0.824** | 고친 데이터(PR #51). GitHub 기본 모델 받기가 504 로 실패해 `daily_v001` 에서 이어 학습 |
+
+| 클래스 | v002 재현율 | v002 mAP50 | (v001 mAP50) |
+|---|---|---|---|
+| 우편물·송장 `waybill` | 0.84 | 0.916 | 0.555 |
+| 개인 서류 `document` | 0.90 | 0.912 | 0.492 |
+| 결제 카드 `card` | 0.83 | 0.896 | 0.586 |
+| 명함·명찰 `name_tag` | 0.83 | 0.876 | 0.108 |
+| 화면 `screen` | 0.77 | 0.828 | 0.768 |
+| 신분증 `id_card` | 0.80 | 0.823 | 0.857 |
+| 약·건강 `health_item` | 0.72 | 0.773 | 0.196 |
+| 영수증·고지서 `receipt` | 0.64 | 0.729 | 0.549 |
+| 티켓 `ticket` | 0.60 | 0.668 | 0.702 |
+
+- 검증 사진이 바뀌어(845 → 4,572장) 두 모델 숫자를 직접 비교할 수 없다. 늘어난 검증 사진 대부분이 VizWiz-Priv(시각장애인 촬영)라
+  학습 사진과 비슷한 사진에서 잰 값이다. **한국 일상 사진 성능은 팀 실사로 다시 잰다**(D-21).
+- VizWiz-Priv: 사진 9,291장 들어감(못 찾은 것 1장). `Text:Miscellaneous Papers` 4,052개 → `document`. 얼굴·액자 사진 등은 쓰지 않음.
+- 데이터 집계는 드라이브 `objects/daily_ds_counts.json`, 클래스별 결과는 `objects/daily_v00N_val.json`.
 
 새 클래스 후보 — 서명(OCR 이 못 읽는 개인 식별 정보):
 

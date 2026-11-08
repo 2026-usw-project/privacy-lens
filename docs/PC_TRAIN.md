@@ -54,8 +54,8 @@ python -m vision.pc_train face_eval  # 증명사진 평가
 | 결과 | 드라이브 |
 |---|---|
 | 학습 기록(이어서 하기용) | `objects/runs/<이름>/` |
-| 모델 | `objects/daily_v001/`, `objects/plate_v004/` (`best.pt`, `best.onnx`) |
-| 평가 | `objects/daily_v001_val.json`, `objects/eval_plate_v004.json`, `objects/eval_face_photo.json` |
+| 모델 | `objects/daily_v002/`(최신), `objects/daily_v001/`, `objects/plate_v004/` (`best.pt`, `best.onnx`) |
+| 평가 | `objects/daily_v002_val.json`, `objects/daily_v001_val.json`, `objects/eval_plate_v004.json`, `objects/eval_face_photo.json` |
 | 받은 원본 | `objects/raw/` (다시 받지 않게 보관) |
 
 사진·데이터는 드라이브와 `PL_WORK` 에만 둔다. 저장소에 올리지 않는다.
