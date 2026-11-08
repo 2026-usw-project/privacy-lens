@@ -99,6 +99,34 @@ def test_port_free_detects_used_port():
         assert run.port_free(s.getsockname()[1]) is False
 
 
+def test_port_free_reuses_addr_like_uvicorn_except_windows(monkeypatch):
+    """Linux 에서 방금 끈 서버의 TIME_WAIT 때문에 '쓰는 중'으로 잘못 알리던 문제(2026-11-08 minipc)."""
+    calls = []
+
+    class FakeSocket:
+        def __init__(self, *a):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def setsockopt(self, *a):
+            calls.append(a)
+
+        def bind(self, addr):
+            pass
+
+    monkeypatch.setattr(run.socket, "socket", FakeSocket)
+    for name, expect in (("posix", True), ("nt", False)):
+        calls.clear()
+        monkeypatch.setattr(run.os, "name", name)
+        assert run.port_free(8000) is True
+        assert (calls == [(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)]) is expect
+
+
 def test_wait_engine_gives_up_when_engine_exits():
     proc = subprocess.Popen([sys.executable, "-c", "pass"])
     proc.wait()
