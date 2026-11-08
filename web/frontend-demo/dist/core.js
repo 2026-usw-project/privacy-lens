@@ -217,13 +217,20 @@
     const e=s&&s.engines&&Number.isFinite(s.engines.total)?s.engines:null;
     const head=e?(e.alive===e.total?'엔진 '+e.total+'대':'엔진 '+e.alive+'/'+e.total+'대')+' · ':'';
     const title=e?'분석 엔진 '+e.total+'대 중 '+e.alive+'대 사용 가능'+(e.busy?', '+e.busy+'대 처리 중':''):'';
-    if(e&&e.alive===0)return {text:'엔진 0/'+e.total+'대 · 연결 안 됨',tone:'down',title:'사용할 수 있는 분석 엔진이 없습니다. 잠시 후 다시 시도해 주세요.'};
+    if(e&&e.alive===0)return {text:'엔진 0/'+e.total+'대 · 연결 안 됨',tone:'down',title:'사용할 수 있는 분석 엔진이 없습니다. 잠시 후 다시 시도해 주세요.',link:true};
     let text,tone;
     if(!s.engine_ready){text='OCR 엔진 준비 중';tone='busy';}
     else if(s.running+s.waiting===0){text='대기열 비어 있음';tone='ready';}
     else {text='처리 중 '+s.running+' · 대기 '+s.waiting;tone='busy';}
-    return {text:head+text,tone,title:title?title+' · '+text:text};
+    return {text:head+text,tone,title:title?title+' · '+text:text,link:!!e};
   }
 
-  globalThis.PrivacyLensCore=Object.freeze({queueBadge,TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
+  // 엔진 관리 창의 한 줄: 상태 이름과 점 색
+  const ENGINE_STATES={ready:['사용 가능','ready'],warming:['OCR 준비 중','busy'],down:['응답 없음','down'],rejected:['비밀값이 달라 거절됨','down']};
+  function engineRow(e) {
+    const [label,tone]=ENGINE_STATES[e&&e.state]||['알 수 없음','down'];
+    return {url:String(e?.url||''),label:e?.busy?label+' · 처리 중':label,tone};
+  }
+
+  globalThis.PrivacyLensCore=Object.freeze({queueBadge,engineRow,TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
 })();

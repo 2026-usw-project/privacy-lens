@@ -44,6 +44,8 @@
 - 줄 서지 않는 요청: `/redact/preview`, `/llm/models` 는 살아 있는 엔진에 번갈아.
 - 연결 실패(처리 전)는 그 엔진을 빼고 줄 맨 앞에 다시 세운다(최대 3번). 처리 중 끊기면 다시 보내지 않고 503.
 - 같은 번호표·같은 요청의 재시도는 결과를 30초 동안 메모리에서 다시 준다(엔진의 규칙과 같다).
+- 엔진 목록 관리: `GET /admin/engines`, `POST /admin/engines {url}`, `POST /admin/engines/remove {url}`. `X-PL-Admin`(관리 키)가 맞을 때만.
+  바꾼 목록은 메모리에만 있다. 게이트웨이는 `X-PL-Gateway`(이름)를 보내고, 엔진은 처음 연결·30초 넘게 조용함(끊김)·비밀값 거절을 콘솔에 적는다.
 - https 는 게이트웨이 앞에서만 끝낸다: Caddy(`deploy/Caddyfile`) 또는 `run_gateway.py --ssl-cert/--ssl-key`. 게이트웨이 → 엔진은 교내망 http + 토큰.
 
 DB 는 없습니다. 사진은 요청 처리 함수 안에서만 존재하고, 디스크(임시 파일 포함)·로그에 남기지 않습니다.

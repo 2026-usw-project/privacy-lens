@@ -103,6 +103,29 @@ await test('queue badge shows engine count only behind the gateway',()=>{
   const down=C.queueBadge({engine_ready:false,running:0,waiting:0,engines:{total:2,alive:0,busy:0}});
   assert.deepEqual([down.text,down.tone],['엔진 0/2대 · 연결 안 됨','down']);
 });
+await test('engine badge is a link only behind the gateway',()=>{
+  assert.equal(C.queueBadge({engine_ready:true,running:0,waiting:0}).link,false);
+  assert.equal(C.queueBadge({engine_ready:true,running:0,waiting:0,engines:{total:1,alive:1,busy:0}}).link,true);
+  assert.equal(C.queueBadge({engine_ready:false,running:0,waiting:0,engines:{total:2,alive:0,busy:0}}).link,true);
+});
+await test('engine rows name each state',()=>{
+  assert.deepEqual(C.engineRow({url:'http://a:8000',state:'ready',busy:false}),{url:'http://a:8000',label:'사용 가능',tone:'ready'});
+  assert.deepEqual(C.engineRow({url:'http://a:8000',state:'ready',busy:true}).label,'사용 가능 · 처리 중');
+  assert.equal(C.engineRow({url:'x',state:'warming'}).tone,'busy');
+  assert.equal(C.engineRow({url:'x',state:'rejected'}).label,'비밀값이 달라 거절됨');
+  assert.equal(C.engineRow({url:'x',state:'??'}).tone,'down');
+});
+await test('engine admin sends the key only in a header',async()=>{
+  const seen=[];
+  const api=A.client('',async(url,o)=>{seen.push({url,o});return json({engines:[],total:0,alive:0,busy:0});});
+  await api.engines('k-1');
+  await api.addEngine('k-1','http://192.168.0.21:8000');
+  await api.removeEngine('k-1','http://192.168.0.21:8000');
+  assert.deepEqual(seen.map(x=>x.url),['/admin/engines','/admin/engines','/admin/engines/remove']);
+  assert.deepEqual(seen.map(x=>x.o.method),['GET','POST','POST']);
+  assert.ok(seen.every(x=>x.o.headers['X-PL-Admin']==='k-1'&&!x.url.includes('k-1')));
+  assert.deepEqual(JSON.parse(seen[1].o.body),{url:'http://192.168.0.21:8000'});
+});
 await test('queue asks with ticket',async()=>{
   const api=A.client('',async(url,o)=>{assert.equal(url,'/queue?ticket=a%20b');assert.equal(o.method,'GET');return json({running:0,waiting:0});});
   await api.queue('a b');

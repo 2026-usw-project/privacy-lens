@@ -238,10 +238,79 @@ def _note(request: Request, message: str) -> None:
 GATEWAY_TOKEN = os.environ.get("PL_GATEWAY_TOKEN", "")
 
 
+class _Peers:
+    """누가 연결을 요청했는지 엔진 콘솔에 남긴다(3-way handshake 처럼 '요청 → 수락/거절').
+    게이트웨이는 5초마다 /health 를 묻는다. 처음 보거나 RECONNECT_S 넘게 조용했던 상대만 적고,
+    거절은 상대마다 QUIET_S 에 한 번만 적는다. 사진·결과는 적지 않는다."""
+
+    RECONNECT_S = 30.0
+    QUIET_S = 60.0
+    WATCH_EVERY_S = 10.0
+
+    def __init__(self):
+        self._seen: dict[str, float] = {}
+        self._denied: dict[str, float] = {}
+        self._lock = threading.Lock()
+        self._watcher: threading.Thread | None = None
+
+    def sweep(self, now: float | None = None) -> list[str]:
+        """RECONNECT_S 넘게 조용한 게이트웨이를 '연결 끊김'으로 적고 지운다. 지운 이름 목록."""
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            gone = [k for k, t in self._seen.items() if now - t > self.RECONNECT_S]
+            for k in gone:
+                del self._seen[k]
+        for k in gone:
+            name, ip = k.rsplit("@", 1)
+            log.info("게이트웨이 %s(%s) 연결이 끊겼습니다 — %d초 넘게 요청이 없습니다", name or "이름 없음", ip,
+                     int(self.RECONNECT_S))
+        return gone
+
+    def _watch(self) -> None:
+        while True:
+            time.sleep(self.WATCH_EVERY_S)
+            self.sweep()
+
+    @staticmethod
+    def _who(request: Request) -> tuple[str, str]:
+        ip = request.client.host if request.client else "알 수 없음"
+        name = re.sub(r"[^\w.-]", "", request.headers.get("x-pl-gateway", ""))[:64]
+        return ip, name
+
+    def accepted(self, request: Request) -> None:
+        ip, name = self._who(request)
+        if not name:
+            return  # 게이트웨이(X-PL-Gateway 이름을 보냄)만 적는다. 브라우저·run.py 시작 확인은 적지 않는다
+        key, now = f"{name}@{ip}", time.monotonic()
+        with self._lock:
+            last = self._seen.get(key)
+            self._seen[key] = now
+            if self._watcher is None:
+                self._watcher = threading.Thread(target=self._watch, name="pl-peers", daemon=True)
+                self._watcher.start()
+        if last is None or now - last > self.RECONNECT_S:
+            log.info("게이트웨이 %s(%s) 에서 연결을 요청했습니다 → 수락했습니다", name or "이름 없음", ip)
+
+    def denied(self, request: Request) -> None:
+        ip, name = self._who(request)
+        now = time.monotonic()
+        with self._lock:
+            last = self._denied.get(ip)
+            if last is not None and now - last < self.QUIET_S:
+                return
+            self._denied[ip] = now
+        log.warning("%s(%s) 에서 연결을 요청했습니다 → 비밀값이 맞지 않아 거절했습니다", name or "이름 없음", ip)
+
+
+PEERS = _Peers()
+
+
 @app.middleware("http")
 async def _gateway_only(request: Request, call_next):
     if GATEWAY_TOKEN and not hmac.compare_digest(request.headers.get("x-pl-token", ""), GATEWAY_TOKEN):
+        PEERS.denied(request)
         return JSONResponse({"detail": "게이트웨이를 거친 요청만 받습니다."}, status_code=403)
+    PEERS.accepted(request)
     return await call_next(request)
 
 

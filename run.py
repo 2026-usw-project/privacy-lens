@@ -257,7 +257,9 @@ def main() -> int:
             print(f"\n{BAD} {p} 번 포트를 이미 쓰고 있습니다({name}). 다른 번호를 주세요:  {env_name}=<번호> python run.py")
             return 1
 
-    token = secrets.token_urlsafe(24)   # 이번 실행에만 쓰는 비밀값(어디에도 저장·출력하지 않는다)
+    # 엔진 비밀값. PL_GATEWAY_TOKEN 을 정해 두면 다른 PC 의 엔진(run_backend.py --token 같은 값)도 화면에서 더할 수 있다.
+    # 없으면 이번 실행에만 쓰는 값을 만든다(어디에도 저장·출력하지 않는다. 이때는 이 PC 의 엔진만 붙는다)
+    token = os.environ.get("PL_GATEWAY_TOKEN") or secrets.token_urlsafe(24)
     engine_url = f"http://127.0.0.1:{engine_port}"
     print(f"\n엔진 서버를 띄우는 중... ({engine_url}, 이 PC 안에서만)")
     engine = start_engine(engine_port, token)
