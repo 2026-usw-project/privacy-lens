@@ -127,6 +127,49 @@ def test_port_free_reuses_addr_like_uvicorn_except_windows(monkeypatch):
         assert (calls == [(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)]) is expect
 
 
+def test_free_port_moves_up_past_busy_ports():
+    with socket.socket() as a, socket.socket() as b:
+        a.bind(("127.0.0.1", 0))
+        a.listen()
+        start = a.getsockname()[1]
+        try:
+            b.bind(("127.0.0.1", start + 1))
+            b.listen()
+        except OSError:
+            pytest.skip("바로 다음 포트를 잡지 못했습니다")
+        got = run.free_port(start)
+        assert got is not None and got >= start + 2                 # 두 칸 다 쓰는 중이면 그 다음
+        assert run.free_port(start, avoid={got}) not in (start, start + 1, got)
+
+
+def test_pick_port_tells_when_it_moves(monkeypatch, capsys):
+    monkeypatch.setattr(run, "port_free", lambda p, host="127.0.0.1": p >= 8002)
+    assert run.pick_port(8000, "127.0.0.1", "화면·API") == 8002
+    assert "8000 번 포트를 쓰는 중이라 8002 번으로 엽니다" in capsys.readouterr().out
+    assert run.pick_port(8002, "127.0.0.1", "화면·API") == 8002
+    assert capsys.readouterr().out == ""                              # 그대로면 조용히
+    monkeypatch.setattr(run, "port_free", lambda p, host="127.0.0.1": False)
+    with pytest.raises(SystemExit):
+        run.pick_port(8000, "127.0.0.1", "화면·API")
+
+
+def test_engine_port_skips_gateway_port(monkeypatch):
+    monkeypatch.setattr(run, "port_free", lambda p, host="127.0.0.1": True)
+    assert run.free_port(8001, avoid={8001}) == 8002
+
+
+def test_windows_checks_both_local_and_any_address(monkeypatch):
+    seen = []
+    monkeypatch.setattr(run, "_can_bind", lambda host, port: seen.append(host) or True)
+    monkeypatch.setattr(run.os, "name", "nt")
+    run.port_free(8000)
+    assert sorted(seen) == ["0.0.0.0", "127.0.0.1"]
+    seen.clear()
+    monkeypatch.setattr(run.os, "name", "posix")
+    run.port_free(8000)
+    assert seen == ["127.0.0.1"]
+
+
 def test_wait_engine_gives_up_when_engine_exits():
     proc = subprocess.Popen([sys.executable, "-c", "pass"])
     proc.wait()

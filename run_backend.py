@@ -8,6 +8,7 @@
 - 화면(/)은 내주지 않는다(PL_SERVE_FRONT=0). '/' 는 서비스 이름만, '/health' 는 살아 있는지.
 - --token 을 주면 같은 비밀값을 가진 요청(게이트웨이)만 받는다. 엔진을 인터넷에 열지 않는다.
 - 환경 점검은 run.py 와 같다(OCR·글꼴·모델).
+- 포트가 쓰는 중이면 1 씩 올려 빈 포트로 연다. 바뀌면 게이트웨이의 --backend 주소도 그 번호로 준다.
 """
 
 from __future__ import annotations
@@ -41,6 +42,8 @@ def main(argv=None) -> int:
             print("\n점검 완료.")
         return code
 
+    from run import pick_port
+    args.port = pick_port(args.port, args.host, "엔진 서버")   # 쓰는 중이면 1 씩 올려 빈 포트로
     env = dict(os.environ, PL_SERVE_FRONT="0", PL_CORS_ORIGINS=args.cors, HOST=args.host, PORT=str(args.port),
                PL_GATEWAY_TOKEN=args.token)
     if args.token:
