@@ -1,16 +1,19 @@
-"""화면·API 따로 실행(run_frontend.py, run_backend.py, PL_SERVE_FRONT, PL_CORS_ORIGINS)."""
+"""엔진 서버(PL_SERVE_FRONT=0, PL_CORS_ORIGINS), 정적 배포 빌드, run.py(게이트웨이 + 엔진)."""
 
 import importlib
-import threading
-import urllib.error
-import urllib.request
+import socket
+import subprocess
+import sys
 
 import pytest
 
 pytest.importorskip("httpx")
 from fastapi.testclient import TestClient  # noqa: E402
 
-import run_frontend  # noqa: E402
+import run  # noqa: E402
+
+FRONT = run.ROOT / "web" / "frontend-demo"
+FONTS = FRONT / "dist" / "fonts"
 
 
 # ------------------------------------------------------------------ 백엔드
@@ -54,56 +57,6 @@ def test_api_only_with_cors(reload_server):
     assert pre.status_code == 200 and pre.headers["access-control-allow-origin"] == "http://127.0.0.1:8080"
 
 
-# ------------------------------------------------------------------ 화면 서버
-
-def test_api_origin_validation():
-    assert run_frontend.api_origin("http://127.0.0.1:8000/") == "http://127.0.0.1:8000"
-    assert run_frontend.api_origin(" https://api.example.org/pl/ ") == "https://api.example.org/pl"
-    for bad in ("javascript:alert(1)", "127.0.0.1:8000", "file:///etc/passwd", ""):
-        with pytest.raises(ValueError):
-            run_frontend.api_origin(bad)
-
-
-def test_api_injected_safely():
-    html = run_frontend.page_with_api("<html><head><title>t</title></head>", 'http://a:1/</script><b>')
-    assert html.index("PRIVACY_LENS_API") < html.index("<title>")
-    assert "</script><b>" not in html.split("PRIVACY_LENS_API", 1)[1].split(";</script>")[0]
-
-
-@pytest.fixture
-def front():
-    server = run_frontend.make_server("127.0.0.1", 0, "http://127.0.0.1:8000")
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_address[1]}"
-    server.shutdown()
-    server.server_close()
-
-
-def get(url):
-    try:
-        with urllib.request.urlopen(url, timeout=5) as r:
-            return r.status, r.headers, r.read()
-    except urllib.error.HTTPError as e:
-        return e.code, e.headers, e.read()
-
-
-def test_front_serves_page_with_api_and_fonts(front):
-    status, headers, body = get(front + "/")
-    text = body.decode("utf-8")
-    assert status == 200 and headers["Content-Type"].startswith("text/html")
-    assert 'globalThis.PRIVACY_LENS_API="http://127.0.0.1:8000"' in text and "PrivacyLensAPI" in text
-    font = next(run_frontend.FONTS.glob("*.woff2"))
-    status, headers, body = get(front + "/dist/fonts/" + font.name)
-    assert status == 200 and headers["Content-Type"] == "font/woff2" and body == font.read_bytes()
-
-
-@pytest.mark.parametrize("path", ["/server.py", "/dist/fonts/../../../server.py", "/dist/fonts/%2e%2e/%2e%2e/index.html",
-                                  "/dist/app.js", "/.env"])
-def test_front_serves_nothing_else(front, path):
-    assert get(front + path)[0] == 404
-
-
-
 # ------------------------------------------------------------------ 정적 배포(build.mjs --api)
 
 def _node():
@@ -116,7 +69,7 @@ def _node():
 
 def _build(*args):
     import subprocess
-    return subprocess.run([_node(), "scripts/build.mjs", *args], cwd=run_frontend.FRONT, capture_output=True,
+    return subprocess.run([_node(), "scripts/build.mjs", *args], cwd=FRONT, capture_output=True,
                           text=True, encoding="utf-8", timeout=120)
 
 
@@ -127,7 +80,7 @@ def test_static_site_carries_api_and_fonts(tmp_path):
     page = (out / "index.html").read_text(encoding="utf-8")
     assert page.index('globalThis.PRIVACY_LENS_API="https://gw.example.org/pl"') < page.index("PrivacyLensAPI")
     assert "url(dist/fonts/" in page and (out / ".nojekyll").exists()
-    fonts = {p.name for p in (run_frontend.FONTS).glob("*.woff2")}
+    fonts = {p.name for p in FONTS.glob("*.woff2")}
     assert fonts and fonts <= {p.name for p in (out / "dist" / "fonts").iterdir()}
 
 
@@ -135,3 +88,33 @@ def test_static_site_carries_api_and_fonts(tmp_path):
 def test_static_build_refuses_bad_options(tmp_path, args):
     r = _build(*args)
     assert r.returncode == 2 and "[오류]" in r.stderr
+
+
+# ------------------------------------------------------------------ run.py(게이트웨이 + 엔진)
+
+def test_port_free_detects_used_port():
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        s.listen()
+        assert run.port_free(s.getsockname()[1]) is False
+
+
+def test_wait_engine_gives_up_when_engine_exits():
+    proc = subprocess.Popen([sys.executable, "-c", "pass"])
+    proc.wait()
+    assert run.wait_engine(proc, "http://127.0.0.1:9", "t", timeout=5) is False
+
+
+def test_engine_runs_locally_with_token(monkeypatch):
+    seen = {}
+
+    class FakePopen:
+        def __init__(self, cmd, env):
+            seen.update(cmd=cmd, env=env)
+
+    monkeypatch.setattr(run.subprocess, "Popen", FakePopen)
+    run.start_engine(8123, "secret-x")
+    env = seen["env"]
+    assert seen["cmd"][-1].endswith("server.py")
+    assert env["HOST"] == "127.0.0.1" and env["PORT"] == "8123" and env["PL_SERVE_FRONT"] == "0"
+    assert env["PL_GATEWAY_TOKEN"] == "secret-x" and env["PL_CORS_ORIGINS"] == ""

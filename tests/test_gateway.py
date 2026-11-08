@@ -85,12 +85,15 @@ class Router(httpx.AsyncBaseTransport):
     def __init__(self, engines: dict[str, FakeEngine]):
         self.engines = engines
         self.down: set[str] = set()
+        self.slow: set[str] = set()
         self.transports = {n: httpx.ASGITransport(app=e.app) for n, e in engines.items()}
 
     async def handle_async_request(self, request):
         host = request.url.host
         if host in self.down:
             raise httpx.ConnectError("down", request=request)
+        if host in self.slow and request.url.path == "/health":
+            raise httpx.ReadTimeout("slow", request=request)
         return await self.transports[host].handle_async_request(request)
 
 
@@ -263,10 +266,35 @@ def test_no_engine_alive():
     run_with_gateway(["e1"], body)
 
 
+def test_slow_health_needs_two_misses_but_refused_drops_at_once():
+    async def body(client, gw, engines, router):
+        b = gw.backends[0]
+        router.slow.add("e1")                     # 켠 직후 모델을 불러오느라 늦게 답함
+        await gw.check(b)
+        assert b.healthy is True                  # 한 번 늦은 것으로는 빼지 않는다
+        router.slow.clear()
+        await gw.check(b)
+        router.slow.add("e1")
+        await gw.check(b)
+        assert b.healthy is True                  # 사이에 답했으면 다시 처음부터 센다
+        await gw.check(b)
+        assert b.healthy is False                 # 연속 두 번이면 뺀다
+        router.slow.clear()
+        await gw.check(b)
+        assert b.healthy is True
+        router.down.add("e1")
+        await gw.check(b)
+        assert b.healthy is False                 # 연결 거부(꺼짐)는 바로 뺀다
+
+    run_with_gateway(["e1"], body)
+
+
 def test_unhealthy_engine_is_skipped():
     async def body(client, gw, engines, router):
         engines["e1"].healthy = False
         await gw.check_all()
+        await gw.check_all()                      # 오류 응답은 두 번 연속이어야 뺀다(SLOW_FAILS)
+        assert gw.backends[0].healthy is False
         engines["e2"].gate.set()
         assert (await post(client, T[0])).json()["engine"] == "e2"
         assert engines["e1"].seen == []

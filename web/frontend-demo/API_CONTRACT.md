@@ -1,14 +1,13 @@
 # 화면 ↔ 서버 규격
 
-서버는 저장소 루트의 `server.py`(Privacy Lens 2 백엔드)이고, 기본은 화면과 같은 주소에서 나옵니다(`run.py`).
+분석은 저장소 루트의 `server.py`(엔진 서버)가 하고, 화면은 게이트웨이(`gateway.py`, `run.py`)를 거쳐 같은 주소로 요청합니다.
 이 문서는 화면(`dist/api.js`, `dist/core.js`)이 쓰는 부분만 정리합니다. 기준은 서버 코드입니다.
 
-- **API 주소**: 같은 주소면 비워 둡니다. 화면과 API 를 따로 띄우면(`run_frontend.py`) 페이지에
-  `globalThis.PRIVACY_LENS_API = "http://…:8000"` 이 들어가고 `api.js` 가 그 주소로 요청합니다(http(s)만).
-  이때 서버는 `PL_CORS_ORIGINS` 에 화면 주소가 있어야 응답합니다(`run_backend.py --cors`).
-  정적 배포(`node scripts/build.mjs --api <주소>` → `site/index.html`)는 같은 값을 빌드할 때 넣습니다.
-- `GET /health` → `{"ok": true, "engine_ready": …}`. 화면 서버가 API 주소를 확인할 때 씁니다.
-- **게이트웨이**(`run_gateway.py`) 뒤에서도 화면 쪽 규격은 같습니다. `/health` 와 `/queue` 에
+- **API 주소**: 게이트웨이가 화면을 내주면 같은 주소라 비워 둡니다. 정적 배포(`node scripts/build.mjs --api <주소>` → `site/index.html`)는
+  `globalThis.PRIVACY_LENS_API = "https://…"` 를 빌드할 때 넣고, `api.js` 가 그 주소로 요청합니다(http(s)만).
+  이때 게이트웨이는 `--cors` 에 화면 주소가 있어야 응답합니다(`run_gateway.py --no-front --cors`).
+- `GET /health` → `{"ok": true, "engine_ready": …}`. 게이트웨이가 엔진 상태를 확인할 때 씁니다.
+- **게이트웨이** 뒤에서 화면 쪽 규격은 엔진 서버와 같습니다. `/health` 와 `/queue` 에
   `engines: {total, alive, busy}` 가 더 붙고, 배정 전 번호표의 `progress` 는 `{"state":"waiting","ahead","eta_s","stages":[],"total_s":null}` 입니다.
 
 ## 좌표

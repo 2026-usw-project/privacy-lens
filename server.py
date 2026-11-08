@@ -216,7 +216,7 @@ async def _lifespan(_app: FastAPI):
 
 app = FastAPI(title="Privacy Lens", lifespan=_lifespan)
 
-# 화면과 API 를 한 서버에서(기본, run.py) 또는 따로(run_backend.py + run_frontend.py).
+# 화면과 API 를 한 서버에서, 또는 엔진 서버로(API 만, run_backend.py·run.py 가 게이트웨이 뒤에 띄움).
 #   PL_SERVE_FRONT=0      화면(/, /dist/fonts)을 내주지 않는다. API 만
 #   PL_CORS_ORIGINS=a,b   이 주소들(화면 서버)에서 오는 요청을 허용한다. 비우면 같은 주소에서만(지금처럼)
 SERVE_FRONT = os.environ.get("PL_SERVE_FRONT", "1").strip() != "0"
@@ -418,14 +418,14 @@ def _preview(img: Image.Image, max_side: int = 1400) -> tuple[str, float]:
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    if not SERVE_FRONT:  # API 만 띄웠을 때. 화면은 run_frontend.py 가 내준다
+    if not SERVE_FRONT:  # API 만 띄웠을 때(엔진 서버). 화면은 게이트웨이가 내준다
         return JSONResponse({"service": "privacy-lens-api", "front": False})
     return (FRONT / "privacy-lens.html").read_text(encoding="utf-8")
 
 
 @app.get("/health")
 async def health():
-    """살아 있는지만. 화면 서버(run_frontend.py)가 API 주소가 맞는지 확인할 때 쓴다."""
+    """살아 있는지만. 게이트웨이가 엔진 상태를 확인할 때 쓴다."""
     return {"ok": True, "engine_ready": _backend is not None}
 
 
