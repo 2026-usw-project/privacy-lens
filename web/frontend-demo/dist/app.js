@@ -612,6 +612,8 @@
     $('#queueText').textContent=view.text;badge.classList.add(view.tone);
     // 게이트웨이 뒤면 눌러서 엔진 목록을 연다
     badge.classList.toggle('linked',view.link);badge.disabled=!view.link;state.manage=!!s.manage;
+    // 왼쪽 메뉴의 '분석 엔진'도 게이트웨이 뒤에서만, 엔진 수와 함께
+    $('#engineNav').classList.toggle('hidden',!view.link);$('#engineNavCount').textContent=view.link?String(s.engines.total):'';
     badge.title=view.link?view.title+' · 눌러서 엔진 관리':view.title;
     if(!state.ticket || !s.state) return;
     // SSE 가 없거나 끊겼으면 폴링에 붙어 온 같은 진행 상태를 쓴다
@@ -658,11 +660,13 @@
     try{const data=await api.removeEngine(adminKey(),url);renderEngines(data);engineMessage(url+' 를 뺐어요.');pollSoon();}
     catch(error){engineFailed(error);}
   }
-  $('#queueBadge').addEventListener('click',()=>{
+  function openEngines() {
     if($('#queueBadge').disabled)return;
     showDialog('engineDialog');engineMessage('');loadEngines();
     clearInterval(engineTimer);engineTimer=setInterval(()=>loadEngines(true),3000);
-  });
+  }
+  $('#queueBadge').addEventListener('click',openEngines);
+  $('#engineNav').addEventListener('click',openEngines);
   $('#engineDialog').addEventListener('close',()=>{clearInterval(engineTimer);engineTimer=null;});
   $('#engineKeyForm').addEventListener('submit',event=>{
     event.preventDefault();const value=$('#engineKey').value.trim();if(!value)return;
