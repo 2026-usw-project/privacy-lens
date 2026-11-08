@@ -193,7 +193,12 @@ def run_checks(args: set[str]) -> int:
 
 
 def port_free(port: int, host: str = "127.0.0.1") -> bool:
+    """uvicorn 이 이 포트를 열 수 있는지. uvicorn 처럼 SO_REUSEADDR 를 켜고 열어 본다.
+    Linux 는 이 옵션 없이는 방금 끈 서버의 연결(TIME_WAIT)이 남아 있는 동안 '쓰는 중'으로 본다(실제로는 비어 있음).
+    Windows 의 SO_REUSEADDR 는 다른 프로그램이 쓰는 포트도 열게 해 버리므로 켜지 않는다."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        if os.name != "nt":
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             s.bind((host, port))
         except OSError:
