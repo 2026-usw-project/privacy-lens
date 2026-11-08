@@ -125,7 +125,10 @@ input[type=range]{accent-color:var(--primary);cursor:pointer}
 .brand-mark:before{content:"";position:absolute;left:-30%;top:-60%;width:120%;height:90%;border-radius:50%;background:linear-gradient(180deg,rgb(255 255 255/.32),transparent)}
 .brand-mark svg{position:relative;width:19px;height:19px;stroke-width:2.2;--duo:rgb(255 255 255/.22)}
 .brand-name{font-size:18px;font-weight:700;letter-spacing:-.03em}
-.side-nav{display:grid;gap:4px}
+.side-nav{display:grid;gap:12px}
+.nav-group{display:grid;gap:4px}
+/* 두 묶음 사이 가는 선 */
+.nav-group+.nav-group{padding-top:12px;border-top:1px solid var(--line-strong)}
 .nav-item{display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;border-radius:12px;font-size:14px;font-weight:600;color:var(--ink-2);text-align:left;transition:background .15s,color .15s}
 .nav-item:hover{background:var(--surface-3);color:var(--ink)}
 .nav-item.active{background:var(--primary-tint);color:var(--primary-ink)}
@@ -599,7 +602,9 @@ dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
   .brand-name{display:block;font-size:17px}
   .side-nav{display:flex;margin-left:auto}
   .nav-item{width:40px}
-  .nav-item:first-child{display:none}
+  #workspaceNav{display:none}
+  .nav-group{display:contents}
+  .nav-group+.nav-group{padding:0;border:0}
   .topbar{padding:0 12px;gap:8px}
   .steps li+li:before{width:10px;margin:0 6px}
   .step-label{font-size:12px}
@@ -645,6 +650,8 @@ dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
   .judge-chip span{display:none}
   /* 판단 방법 칩이 같은 대화상자를 열고 LLM 사용 여부도 색으로 보여 주므로, 위쪽 메뉴의 같은 아이콘은 뺀다. */
   .side-nav [data-dialog=devDialog]{display:none}
+  /* 엔진 관리도 위쪽 대기열 칩으로 연다 */
+  .side-nav #engineNav{display:none}
   /* 대기열은 점만. 글자는 title·화면 낭독기로, 분석 중에는 오른쪽 패널에 '대기 N건' */
   .queue-badge{padding:0}
   .queue-badge.linked{padding:0 10px}
@@ -728,16 +735,21 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 11a9 9 0 1 1 2 7M3 4v7h7"/></symbol>
 <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.4v2.2M12 19.4v2.2M4.2 12H2M22 12h-2.2M6.5 6.5 4.9 4.9M19.1 19.1l-1.6-1.6M17.5 6.5l1.6-1.6M4.9 19.1l1.6-1.6"/></symbol><symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.3A8.6 8.6 0 0 1 9.7 3.5a8.6 8.6 0 1 0 10.8 10.8Z"/></symbol>
 <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5-12-7.5Z"/></symbol>
-<symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5m8-10 5 5-5 5"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5m8-10 5 5-5 5"/></symbol><symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
 </svg>
 
 <aside class="sidebar">
   <a class="brand" href="./index.html" aria-label="프라이버시 렌즈 처음으로"><span class="brand-mark"><svg><use href="#i-lens"/></svg></span><span class="brand-name">Privacy Lens</span></a>
   <nav class="side-nav" aria-label="주 메뉴">
-    <button class="nav-item active" id="workspaceNav"><svg><use href="#i-scan"/></svg><span>사진 검사</span></button>
-    <button class="nav-item" data-dialog="targetsDialog"><svg><use href="#i-grid"/></svg><span>탐지 항목</span><span class="nav-count">9</span></button>
-    <button class="nav-item" data-dialog="guideDialog"><svg><use href="#i-book"/></svg><span>이용 안내</span></button>
-    <button class="nav-item" data-dialog="devDialog"><svg><use href="#i-code"/></svg><span>판단 모델</span></button>
+    <div class="nav-group" role="group" aria-label="검사">
+      <button class="nav-item active" id="workspaceNav"><svg><use href="#i-scan"/></svg><span>사진 검사</span></button>
+      <button class="nav-item" data-dialog="devDialog"><svg><use href="#i-code"/></svg><span>판단 모델</span></button>
+      <button class="nav-item hidden" id="engineNav" aria-haspopup="dialog"><svg><use href="#i-server"/></svg><span>분석 엔진</span><span class="nav-count" id="engineNavCount"></span></button>
+    </div>
+    <div class="nav-group" role="group" aria-label="안내">
+      <button class="nav-item" data-dialog="targetsDialog"><svg><use href="#i-grid"/></svg><span>탐지 항목</span><span class="nav-count">9</span></button>
+      <button class="nav-item" data-dialog="guideDialog"><svg><use href="#i-book"/></svg><span>이용 안내</span></button>
+    </div>
   </nav>
   <div class="sidebar-bottom">
     <div class="private-card"><svg><use href="#i-lock"/></svg><div><strong>남기지 않아요.</strong><p>분석·저장할 때만 사진을 이 서버로 보내요. 디스크에 쓰지 않고 로그에도 남기지 않아요.</p></div></div>
@@ -1908,6 +1920,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     $('#queueText').textContent=view.text;badge.classList.add(view.tone);
     // 게이트웨이 뒤면 눌러서 엔진 목록을 연다
     badge.classList.toggle('linked',view.link);badge.disabled=!view.link;state.manage=!!s.manage;
+    // 왼쪽 메뉴의 '분석 엔진'도 게이트웨이 뒤에서만, 엔진 수와 함께
+    $('#engineNav').classList.toggle('hidden',!view.link);$('#engineNavCount').textContent=view.link?String(s.engines.total):'';
     badge.title=view.link?view.title+' · 눌러서 엔진 관리':view.title;
     if(!state.ticket || !s.state) return;
     // SSE 가 없거나 끊겼으면 폴링에 붙어 온 같은 진행 상태를 쓴다
@@ -1954,11 +1968,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     try{const data=await api.removeEngine(adminKey(),url);renderEngines(data);engineMessage(url+' 를 뺐어요.');pollSoon();}
     catch(error){engineFailed(error);}
   }
-  $('#queueBadge').addEventListener('click',()=>{
+  function openEngines() {
     if($('#queueBadge').disabled)return;
     showDialog('engineDialog');engineMessage('');loadEngines();
     clearInterval(engineTimer);engineTimer=setInterval(()=>loadEngines(true),3000);
-  });
+  }
+  $('#queueBadge').addEventListener('click',openEngines);
+  $('#engineNav').addEventListener('click',openEngines);
   $('#engineDialog').addEventListener('close',()=>{clearInterval(engineTimer);engineTimer=null;});
   $('#engineKeyForm').addEventListener('submit',event=>{
     event.preventDefault();const value=$('#engineKey').value.trim();if(!value)return;
