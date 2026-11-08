@@ -46,3 +46,24 @@ def test_coco_vizwiz_writer(tmp_path: Path):
     cls, cx, cy, bw, bh = (out / "labels" / "train" / "hit_a_1.txt").read_text().split()
     assert int(cls) == dd.CLASSES.index("card") and abs(float(cx) - 0.15) < 1e-6 and abs(float(bh) - 0.2) < 1e-6
     assert "health_item" in (out / "data.yaml").read_text()
+
+
+def test_vizwiz_priv_extension_mismatch(tmp_path: Path):
+    """라벨은 .jpg 인데 채운 사진은 .png 로 들어 있어도 찾는다(11-04 빌드에서 7,447장이 모두 빠졌던 문제)."""
+    imgs = tmp_path / "Filling_Image"
+    imgs.mkdir()
+    Image.new("RGB", (400, 300), "white").save(imgs / "VizWiz_train_00000001.png")
+    vwp = tmp_path / "vwp"
+    vwp.mkdir()
+    (vwp / "train.json").write_text(json.dumps([
+        {"image": "VizWiz_train_00000001.jpg", "private": 1, "private_regions": [
+            {"class": "Text:Miscellaneous Papers", "polygon": [[10, 10], [110, 10], [110, 60]]}]},
+        {"image": "VizWiz_train_00000002.jpg", "private": 1, "private_regions": [
+            {"class": "Text:Miscellaneous Papers", "polygon": [[10, 10], [110, 10], [110, 60]]}]}]))
+    w = dd.Writer(tmp_path / "out", max_side=1000)
+    dd.add_vizwiz_priv(w, vwp, imgs, keep_empty=0.0)
+    res = w.finish()
+    assert res["counts"]["train:document"] == 1                    # Miscellaneous Papers → 개인 서류
+    assert res["안 씀"]["vizwiz_priv:사진 없음"] == 1
+    assert any("VizWiz_train_00000002.jpg" in k for k in res["안 씀"])   # 없는 이름 예시를 남김
+    assert any("사진 폴더 파일 1개" in k for k in res["안 씀"])

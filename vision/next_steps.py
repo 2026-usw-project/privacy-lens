@@ -352,12 +352,15 @@ def build_daily(*, oi_train: int = 2000, oi_val: int = 300, hit_step: int = 2, r
     return res
 
 
-def train_daily(*, epochs: int = 30, base: str = "yolo26n.pt") -> Path:
-    """일상 사진 개인정보 물체 9종 YOLO26n(GPU). 데이터는 build_daily 가 만든 드라이브 zip. 끊기면 이어서."""
+def train_daily(*, epochs: int = 30, base: str = "yolo26n.pt", run: str = "daily_objects") -> Path:
+    """일상 사진 개인정보 물체 9종 YOLO26n(GPU). 데이터는 build_daily 가 만든 드라이브 zip. 끊기면 이어서.
+
+    run: 학습 기록 이름. 데이터를 다시 만들고 새로 학습할 때는 새 이름을 준다(예: daily_objects_v2).
+    같은 이름은 DONE 표시 때문에 다시 돌리지 않는다."""
     from ultralytics import YOLO
     dd = _fresh("vision.daily_data")
     done = sorted(OUT.glob("daily_v[0-9][0-9][0-9]/best.onnx"))
-    if done and (OUT / "runs" / "daily_objects" / "DONE").exists():
+    if done and (OUT / "runs" / run / "DONE").exists():
         print("이미 있음:", done[-1])
         return done[-1]
     if not (DAILY_DS / "data.yaml").exists():
@@ -366,7 +369,7 @@ def train_daily(*, epochs: int = 30, base: str = "yolo26n.pt") -> Path:
         (DAILY_DS / "data.yaml").write_text(
             f"path: {DAILY_DS}\ntrain: images/train\nval: images/val\nnames:\n" +
             "".join(f"  {i}: {n}\n" for i, n in enumerate(dd.CLASSES)))
-    last = resumable_train(base, data=str(DAILY_DS / "data.yaml"), name="daily_objects", epochs=epochs)
+    last = resumable_train(base, data=str(DAILY_DS / "data.yaml"), name=run, epochs=epochs)
     m = YOLO(str(last))
     metrics = m.val(data=str(DAILY_DS / "data.yaml"), imgsz=640, verbose=False, plots=False)
     per = {}

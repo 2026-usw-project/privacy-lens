@@ -11,7 +11,7 @@ Colab 무료 GPU 한도가 모자랄 때 쓴다(2026-11-04 하루에 두 번 바
 
 ```powershell
 cd D:\
-git clone -b feat/vision-objects https://github.com/2026-usw-project/privacy-lens
+git clone https://github.com/2026-usw-project/privacy-lens
 cd privacy-lens
 py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
