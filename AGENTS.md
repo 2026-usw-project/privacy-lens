@@ -9,7 +9,8 @@ Privacy Lens — 사진을 SNS·중고거래에 올리기 전에 배경의 개�
 ## 현재 구조 (2026-10-04 백엔드 교체 후)
 
 - **백엔드는 Privacy Lens 2** 를 그대로 가져온 것입니다(`pipeline/`, `server.py`, `jobqueue.py`, `run.py`, `eval/`, `samples/`, `tests/`). 기준은 이 코드와 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)의 설계 원칙입니다.
-- **화면은 `web/frontend-demo/`** 입니다. `dist/` 가 편집 원본이고 `scripts/build.mjs` 가 `privacy-lens.html` 로 묶습니다. 서버가 `/` 에서 이 파일을 내줍니다.
+- **화면은 `web/frontend-demo/`** 입니다. `dist/` 가 편집 원본이고 `scripts/build.mjs` 가 `privacy-lens.html` 로 묶습니다. 게이트웨이(`gateway.py`)가 `/` 에서 이 파일을 내줍니다.
+- **실행 구조(D-20)**: `run.py` 는 게이트웨이(화면 + 대기열) + 엔진 서버(`server.py`, 화면 없음) 1개를 함께 띄웁니다. 엔진을 늘릴 때는 `run_backend.py` 를 PC 마다 띄우고 `run_gateway.py --backend` 로 묶습니다.
 - 이전의 `server/`·`reader/`·`schema/`·`data/`·React 앱은 삭제했습니다. [docs/DECISIONS.md](docs/DECISIONS.md)의 '교체로 사실상 정해진 것'을 먼저 봅니다.
 - **YOLO 문서 검출(선택)**: `pipeline/detect.py` 는 `PL_YOLO_WEIGHTS` 또는 프로젝트 `models/v<최대 숫자>/best.pt`(버전 폴더가 없으면 `models/best.pt`)를 사용합니다. 모델이 없으면 OCR만 실행하며 `PL_YOLO=off`로 끌 수 있습니다. 학습 도구는 새 `vision/`(예전 `vision/` 과 무관, **YOLO26**, `ultralytics>=8.4`)이고, 사진·라벨·모델은 저장소가 아니라 팀 구글 드라이브 `PrivacyLens-YOLO` 에 둡니다. 사용법은 [vision/README.md](vision/README.md).
 - **YOLO 역할 전환(D-16, 2026-11-02)**: 글자는 OCR 이 충분히 읽으므로 YOLO 는 글자가 아닌 이미지 객체(증명사진·얼굴·번호판·보안 표식) 쪽으로 옮깁니다. 문서 클래스는 지금 모델로 동결합니다.
@@ -43,11 +44,9 @@ Privacy Lens — 사진을 SNS·중고거래에 올리기 전에 배경의 개�
 
 ```bash
 pip install -r requirements.txt
-python run.py                              # 환경 점검 → 서버 + 화면 (http://127.0.0.1:8000)
-python run_backend.py                      # API 만 (8000, 화면 서버 주소만 CORS 허용)
-python run_frontend.py                     # 화면만 (8080, --api 로 백엔드 주소. 파이썬 기본 기능만)
-python run_backend.py --host 0.0.0.0 --token <비밀값>          # 게이트웨이 뒤 엔진 서버(1 서버 1 엔진)
-python run_gateway.py --backend http://<엔진>:8000 --token <비밀값>   # 화면 + 하나의 대기열 + 엔진 분산(8080)
+python run.py                              # 환경 점검 → 게이트웨이(화면 + 대기열, 8000) + 엔진 서버 1개(이 PC 안, 8001)
+python run_backend.py --host 0.0.0.0 --token <비밀값>          # 엔진 서버만(1 서버 1 엔진, 화면 없음)
+python run_gateway.py --backend http://<엔진>:8000 --token <비밀값>   # 게이트웨이만: 화면 + 하나의 대기열 + 엔진 분산(8080)
 cd web/frontend-demo && node scripts/build.mjs --api https://<게이트웨이>   # 정적 배포 폴더 site/ (게이트웨이는 --no-front --cors <화면 주소>)
 python run_gateway.py ... --ssl-cert cert.pem --ssl-key key.pem       # 게이트웨이 https 직접. 도메인이 있으면 caddy run --config deploy/Caddyfile
 python -m pytest tests                     # 백엔드 테스트 (OCR 불필요)

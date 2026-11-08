@@ -1,18 +1,28 @@
-"""환경을 점검하고 서버를 띄운다. Windows / macOS / Linux 공통.
+"""환경을 점검하고 게이트웨이 + 엔진 서버 1개를 함께 띄운다. Windows / macOS / Linux 공통.
 
-    python run.py            점검 후 서버 실행(화면 + API 한 주소, http://127.0.0.1:8000)
+    python run.py            점검 후 실행(화면 + API, http://127.0.0.1:8000)
     python run.py --check    점검만
     python run.py --samples  샘플만 생성
 
-화면과 API 를 따로 띄우려면 run_backend.py(API) 와 run_frontend.py(화면)를 쓴다.
+    사용자 ──▶ 게이트웨이(화면 + 대기열, PORT=8000) ──▶ 엔진 서버(이 PC 안, PL_ENGINE_PORT=8001)
+
+- 여러 PC 로 나눌 때와 같은 구조다. 엔진을 더 붙이려면 run_gateway.py --backend 를 여러 번 쓴다(README).
+- 엔진은 이 PC 안(127.0.0.1)에서만 열고, 실행할 때마다 새로 만든 비밀값으로 게이트웨이만 받는다.
+- HOST=0.0.0.0 이면 게이트웨이만 다른 기기에 열린다.
 
 에러가 난 뒤에 원인을 찾는 것보다, 시작하기 전에 뭐가 없는지 알려주는 편이 낫다.
 """
 
 from __future__ import annotations
 
+import os
+import secrets
+import socket
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -28,6 +38,7 @@ REQUIRED = {
     "uvicorn": "uvicorn",
     "multipart": "python-multipart",
     "qrcode": "qrcode",
+    "httpx": "httpx",
 }
 
 
@@ -181,6 +192,48 @@ def run_checks(args: set[str]) -> int:
     return 0
 
 
+def port_free(port: int, host: str = "127.0.0.1") -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
+def wait_engine(proc: subprocess.Popen, url: str, token: str, timeout: float = 180.0) -> bool:
+    """엔진 서버가 /health 에 답할 때까지 기다린다. 엔진 프로세스가 먼저 끝나면 False."""
+    end = time.monotonic() + timeout
+    req = urllib.request.Request(url + "/health", headers={"X-PL-Token": token})
+    while time.monotonic() < end:
+        if proc.poll() is not None:
+            return False
+        try:
+            with urllib.request.urlopen(req, timeout=2) as r:
+                if r.status == 200:
+                    return True
+        except (urllib.error.URLError, OSError):
+            pass
+        time.sleep(0.5)
+    return False
+
+
+def start_engine(port: int, token: str) -> subprocess.Popen:
+    """엔진 서버(server.py, 화면 없음)를 이 PC 안에서만 띄운다."""
+    env = dict(os.environ, PL_SERVE_FRONT="0", PL_CORS_ORIGINS="", HOST="127.0.0.1", PORT=str(port),
+               PL_GATEWAY_TOKEN=token)
+    return subprocess.Popen([sys.executable, str(ROOT / "server.py")], env=env)
+
+
+def stop(proc: subprocess.Popen) -> None:
+    if proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
 def main() -> int:
     args = set(sys.argv[1:])
     code = run_checks(args)
@@ -191,11 +244,28 @@ def main() -> int:
         print("\n점검 완료.")
         return 0
 
+    host = os.environ.get("HOST", "127.0.0.1")
+    port = int(os.environ.get("PORT", 8000))
+    engine_port = int(os.environ.get("PL_ENGINE_PORT", 8001))
+    for p, name, env_name in ((port, "화면·API", "PORT"), (engine_port, "엔진 서버", "PL_ENGINE_PORT")):
+        if not port_free(p, "0.0.0.0" if p == port and host in ("0.0.0.0", "") else "127.0.0.1"):
+            print(f"\n{BAD} {p} 번 포트를 이미 쓰고 있습니다({name}). 다른 번호를 주세요:  {env_name}=<번호> python run.py")
+            return 1
+
+    token = secrets.token_urlsafe(24)   # 이번 실행에만 쓰는 비밀값(어디에도 저장·출력하지 않는다)
+    engine_url = f"http://127.0.0.1:{engine_port}"
+    print(f"\n엔진 서버를 띄우는 중... ({engine_url}, 이 PC 안에서만)")
+    engine = start_engine(engine_port, token)
     try:
-        subprocess.run([sys.executable, str(ROOT / "server.py")], check=False)
+        if not wait_engine(engine, engine_url, token):
+            print(f"{BAD} 엔진 서버가 뜨지 않았습니다. 위의 오류를 확인하세요.")
+            return 1
+        import run_gateway
+        return run_gateway.main(["--host", host, "--port", str(port), "--backend", engine_url, "--token", token])
     except KeyboardInterrupt:
-        pass
-    return 0
+        return 0
+    finally:
+        stop(engine)
 
 
 if __name__ == "__main__":

@@ -38,6 +38,8 @@ TICKET = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 MAX_BYTES = 25 * 1024 * 1024
 TOKEN_HEADER = "X-PL-Token"
 HEALTH_EVERY_S = 5.0
+HEALTH_TIMEOUT_S = 5.0
+SLOW_FAILS = 2           # 느리거나 오류인 상태 확인이 이만큼 연속이면 뺀다(연결 거부는 바로)
 JOB_TIMEOUT_S = 15 * 60.0
 KEEP_DONE_S = 30.0
 MAX_ATTEMPTS = 3          # 연결 실패로 다른 엔진에 다시 보내는 최대 횟수
@@ -116,20 +118,28 @@ class Gateway:
     # ------------------------------------------------------------ 상태 확인
 
     async def check(self, b: Backend) -> None:
+        """연결이 거부되면(꺼짐) 바로 빼고, 느리거나 오류면 SLOW_FAILS 번 연속일 때 뺀다.
+        엔진은 켠 직후 OCR 모델을 불러오느라 몇 초씩 늦게 답한다(그동안 빼 두면 화면에 '연결 안 됨'이 깜빡인다)."""
+        refused = False
         try:
-            r = await self.client.get(b.url + "/health", timeout=3.0)
+            r = await self.client.get(b.url + "/health", timeout=HEALTH_TIMEOUT_S)
             ok = r.status_code == 200
             data = r.json() if ok else {}
+        except (httpx.ConnectError, httpx.ConnectTimeout):
+            ok, data, refused = False, {}, True
         except (httpx.HTTPError, ValueError):
             ok, data = False, {}
-        if ok and not b.healthy:
-            log.info("엔진 %s 사용 가능", b.url)
-        if not ok and b.healthy:
-            log.warning("엔진 %s 응답 없음 — 빼 둔다", b.url)
-        b.healthy, b.engine_ready, b.checked = ok, bool(data.get("engine_ready")), time.monotonic()
+        b.checked = time.monotonic()
         if ok:
-            b.fails = 0
+            if not b.healthy:
+                log.info("엔진 %s 사용 가능", b.url)
+            b.healthy, b.engine_ready, b.fails = True, bool(data.get("engine_ready")), 0
             self.wake.set()
+            return
+        b.fails += 1
+        if b.healthy and (refused or b.fails >= SLOW_FAILS):
+            log.warning("엔진 %s 응답 없음 — 빼 둔다", b.url)
+            b.healthy = False
 
     async def check_all(self) -> None:
         await asyncio.gather(*(self.check(b) for b in self.backends))

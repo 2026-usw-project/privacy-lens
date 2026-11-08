@@ -8,10 +8,13 @@
 
 ```
 사용자 브라우저
-  └─ 화면 web/frontend-demo (HTML·CSS·JS, 의존성 없음)
-       │  같은 주소(run.py) 또는 다른 주소(run_frontend.py → run_backend.py), 원본 파일 업로드
+  └─ 화면 web/frontend-demo (HTML·CSS·JS, 의존성 없음) — 게이트웨이가 내주거나 정적 배포(build.mjs --api)
+       │  원본 파일 업로드
        ▼
-  server.py (FastAPI, 무상태)  PL_SERVE_FRONT=0 이면 API 만, PL_CORS_ORIGINS 로 화면 주소 허용
+  gateway.py (run.py / run_gateway.py: 화면 + 대기열 하나 + 엔진 분산 + 상태 확인)
+       │  X-PL-Token
+       ▼
+  server.py × N (엔진 서버, FastAPI, 무상태)  PL_SERVE_FRONT=0 이면 API 만. run.py 는 이 PC 안에 1개
        ├─ jobqueue.py      OCR 대기열 (순서·번호표·취소·한도)
        ├─ timing.py        단계별 걸린 시간 기록·추정 (~/.privacy-lens/timing.json, 숫자만)
        ├─ progress.py      번호표별 단계 계획·남은 시간 (메모리) → /progress SSE
@@ -28,7 +31,7 @@
             wording.py     사용자 문구 (단정 표현 차단)
 ```
 
-여러 PC 로 나눠 돌릴 때(D-20)는 앞에 게이트웨이를 둡니다.
+기본 실행(`run.py`)도 게이트웨이 + 엔진 1개입니다. 여러 PC 로 나눠 돌릴 때(D-20)는 엔진 서버를 늘려 게이트웨이에 묶습니다.
 
 ```
 사용자 브라우저 ──▶ gateway.py (run_gateway.py: 화면 + 대기열 하나 + 분산 + 5초마다 /health)

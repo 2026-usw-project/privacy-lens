@@ -1,14 +1,12 @@
-"""백엔드(API)만 띄운다. 화면은 run_frontend.py 로 따로 띄운다.
+"""엔진 서버(API, 화면 없음)를 띄운다. 보통 게이트웨이(run_gateway.py) 뒤에 둔다. 1 서버 1 엔진.
 
-    python run_backend.py                                  점검 후 API 실행(http://127.0.0.1:8000)
+    python run_backend.py --host 0.0.0.0 --token <비밀값>  게이트웨이 뒤의 엔진 서버(기본 포트 8000)
     python run_backend.py --port 9000
-    python run_backend.py --host 0.0.0.0                   다른 기기에서 접속(같은 네트워크)
-    python run_backend.py --cors http://192.168.0.10:8080  화면 서버 주소(여러 개면 쉼표)
+    python run_backend.py --cors https://<화면 주소>         게이트웨이 없이 정적 화면이 바로 붙을 때(쉼표로 여러 개)
     python run_backend.py --check                          점검만
-    python run_backend.py --host 0.0.0.0 --token <비밀값>  게이트웨이(run_gateway.py) 뒤의 엔진 서버로
 
 - 화면(/)은 내주지 않는다(PL_SERVE_FRONT=0). '/' 는 서비스 이름만, '/health' 는 살아 있는지.
-- 화면 서버 주소에서 오는 요청만 허용한다(PL_CORS_ORIGINS). 기본은 이 컴퓨터의 8080 번 화면 서버.
+- --token 을 주면 같은 비밀값을 가진 요청(게이트웨이)만 받는다. 엔진을 인터넷에 열지 않는다.
 - 환경 점검은 run.py 와 같다(OCR·글꼴·모델).
 """
 
@@ -23,15 +21,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-DEFAULT_CORS = "http://127.0.0.1:8080,http://localhost:8080"
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Privacy Lens 백엔드(API)만 실행")
     ap.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
-    ap.add_argument("--cors", default=os.environ.get("PL_CORS_ORIGINS", DEFAULT_CORS),
-                    help="요청을 허용할 화면 주소(쉼표로 여러 개)")
+    ap.add_argument("--cors", default=os.environ.get("PL_CORS_ORIGINS", ""),
+                    help="게이트웨이 없이 브라우저가 바로 붙을 때 허용할 화면 주소(쉼표로 여러 개)")
     ap.add_argument("--check", action="store_true", help="점검만 하고 끝낸다")
     ap.add_argument("--token", default=os.environ.get("PL_GATEWAY_TOKEN", ""),
                     help="게이트웨이와 나눠 가진 비밀값. 주면 이 값을 가진 요청(게이트웨이)만 받는다")
@@ -48,9 +45,11 @@ def main(argv=None) -> int:
                PL_GATEWAY_TOKEN=args.token)
     if args.token:
         print("\n게이트웨이 전용 엔진: X-PL-Token 이 맞는 요청만 받습니다.")
-    print(f"\nAPI: http://{args.host}:{args.port}   (화면 없음)")
-    print(f"허용하는 화면 주소: {args.cors}")
-    print("화면은 다른 창에서:  python run_frontend.py --api http://127.0.0.1:" + str(args.port) + "\n")
+    print(f"\n엔진 API: http://{args.host}:{args.port}   (화면 없음)")
+    if args.cors:
+        print(f"허용하는 화면 주소: {args.cors}")
+    print("화면·대기열은 게이트웨이에서:  python run_gateway.py --backend http://<이 PC>:" + str(args.port)
+          + (" --token <같은 비밀값>" if args.token else "") + "\n")
     try:
         subprocess.run([sys.executable, str(ROOT / "server.py")], env=env, check=False)
     except KeyboardInterrupt:

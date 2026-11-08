@@ -15,7 +15,7 @@ export function apiOrigin(raw){
   if(!/^https?:$/.test(u.protocol)||!u.host||u.search||u.hash||u.username||u.password)throw new Error('API 주소는 http(s)://호스트[/경로] 형식이어야 합니다: '+raw);
   return u.origin+u.pathname.replace(/\/+$/,'');
 }
-// run_frontend.py 의 page_with_api 와 같은 방식: <head> 바로 뒤에, </ 를 끊어서 넣는다
+// <head> 바로 뒤에, </ 를 끊어서 넣는다(화면 스크립트보다 먼저 실행된다)
 export function pageWithApi(page,api){
   const tag='<script>globalThis.PRIVACY_LENS_API='+JSON.stringify(api).replaceAll('</','<\\/')+';</script>';
   const i=page.indexOf('<head>');if(i<0)throw new Error('<head> 가 없습니다.');
