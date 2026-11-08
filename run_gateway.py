@@ -9,6 +9,7 @@
 - 화면을 정적 호스팅에 따로 올리면 --no-front 로 API 만 띄우고 --cors 에 화면 주소를 준다.
 - 엔진 서버 목록은 --backend 를 여러 번, 또는 PL_BACKENDS=주소,주소. 비밀값은 --token 또는 PL_GATEWAY_TOKEN.
 - 게이트웨이는 OCR·모델이 필요 없다(fastapi·uvicorn·httpx 만).
+- 엔진 목록 관리(화면의 '엔진 N대'): 관리 키가 있어야 한다. --admin-key 또는 PL_ADMIN_KEY, 없으면 켤 때마다 새로 만들어 콘솔에 보여 준다.
 - https: 인증서가 있으면 --ssl-cert/--ssl-key 로 직접 연다. 도메인이 있으면 앞에 Caddy(deploy/Caddyfile)를 두는 편이 쉽다.
 """
 
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import secrets
 import sys
 import urllib.parse
 
@@ -50,6 +52,8 @@ def main(argv=None) -> int:
     ap.add_argument("--cors", default="", help="--no-front 일 때 요청을 허용할 화면 주소(쉼표)")
     ap.add_argument("--ssl-cert", default=os.environ.get("PL_SSL_CERT", ""), help="https 인증서(PEM)")
     ap.add_argument("--ssl-key", default=os.environ.get("PL_SSL_KEY", ""), help="https 개인 키(PEM)")
+    ap.add_argument("--admin-key", default=os.environ.get("PL_ADMIN_KEY", ""),
+                    help="화면에서 엔진을 더하고 뺄 때 쓰는 관리 키. 없으면 켤 때마다 새로 만든다")
     args = ap.parse_args(argv)
     tls = ssl_files(args.ssl_cert, args.ssl_key)
 
@@ -65,7 +69,11 @@ def main(argv=None) -> int:
 
     from gateway import create_app
 
-    app = create_app(backends, token=args.token, serve_front=not args.no_front, max_waiting=args.queue_max)
+    admin_key, generated = args.admin_key, not args.admin_key
+    if generated:
+        admin_key = secrets.token_urlsafe(18)
+    app = create_app(backends, token=args.token, serve_front=not args.no_front, max_waiting=args.queue_max,
+                     admin_key=admin_key)
     origins = [o.strip().rstrip("/") for o in args.cors.split(",") if o.strip()]
     if origins:
         app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["GET", "POST"],
@@ -77,6 +85,12 @@ def main(argv=None) -> int:
     print(f"화면·API: {scheme}://{shown}:{args.port}" + ("  (API 만)" if args.no_front else ""))
     for b in backends:
         print(f"  엔진: {b}")
+    if generated:
+        # 콘솔에만 보여 준다(파일·로그에 따로 남기지 않음). 매번 같은 키를 쓰려면 PL_ADMIN_KEY 를 정해 둔다
+        print(f"\n엔진 관리 키(이번 실행에만): {admin_key}")
+        print("  화면 오른쪽 위 '엔진 N대'를 눌러 엔진을 더하거나 뺄 때 입력합니다.")
+    else:
+        print("\n엔진 관리 키: --admin-key / PL_ADMIN_KEY 로 정한 값")
     print()
     uvicorn.run(app, host=args.host, port=args.port, access_log=False, **tls)
     return 0

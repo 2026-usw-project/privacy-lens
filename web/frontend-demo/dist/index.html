@@ -72,7 +72,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       <li id="step3"><span class="step-number">3</span><span class="step-label">가림 · 저장</span></li>
     </ol>
     <div class="topbar-right">
-      <span class="queue-badge mono-label" id="queueBadge" role="status" aria-live="polite"><i></i><span id="queueText">대기열 확인 중</span></span>
+      <button type="button" class="queue-badge mono-label" id="queueBadge" disabled aria-haspopup="dialog"><i></i><span id="queueText" role="status" aria-live="polite">대기열 확인 중</span></button>
       <button class="chip-button judge-chip" id="judgeChip" data-dialog="devDialog" aria-label="판단 모델 열기"><svg><use href="#i-code"/></svg><span id="judgeChipText">문맥·결합</span></button>
       <button class="chip-button icon-only theme-toggle" id="themeToggle" aria-label="어두운 화면으로 바꾸기" aria-pressed="false"><svg class="when-dark"><use href="#i-sun"/></svg><svg class="when-light"><use href="#i-moon"/></svg></button>
       <button class="chip-button icon-only" data-dialog="guideDialog" aria-label="이용 안내"><svg><use href="#i-info"/></svg></button>
@@ -209,6 +209,16 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <dialog id="exportDialog"><div class="dialog-header"><h2>저장 전 마지막 확인</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><p id="exportOrigin" class="mono-label"></p><div class="export-preview"><img id="exportPreview" alt="가림 처리가 적용된 최종 이미지"></div><dl class="export-details"><div><dt>가림 처리</dt><dd id="exportRegionCount"></dd></div><div><dt>촬영 메타데이터</dt><dd id="exportMetadata">원본 정보 제외</dd></div><div><dt>파일 형식</dt><dd>JPEG</dd></div></dl><div class="export-warning" id="exportWarning"></div><div class="export-actions"><button class="button ghost" data-close>계속 편집</button><button class="button ghost hidden" id="shareButton"><svg><use href="#i-arrow"/></svg>공유하기</button><button class="button primary" id="downloadButton"><svg><use href="#i-download"/></svg>다운로드</button></div></dialog>
 <dialog id="payloadDialog"><div class="dialog-header"><h2>최종 영역 데이터</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div><p class="dialog-intro" id="payloadSummary"></p><pre id="payloadJson" tabindex="0" aria-label="최종 영역 JSON"></pre><div class="dialog-callout"><svg><use href="#i-info"/></svg><p>방향을 보정한 원본의 왼쪽 위가 (0, 0)입니다. 선택 해제·삭제한 영역은 빠져요. 저장할 때 이 영역(기울어진 글자는 외곽선 poly 포함)과 원본 사진을 서버로 보내요.</p></div><button class="button primary full" id="downloadPayload">영역 JSON 다운로드</button></dialog>
 
+<dialog id="engineDialog" aria-labelledby="engineTitle"><div class="dialog-header"><h2 id="engineTitle">분석 엔진</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div>
+<p class="dialog-intro">게이트웨이가 사진을 나눠 보내는 엔진 서버 목록이에요. 보거나 바꾸려면 관리 키가 필요해요. 게이트웨이를 켠 콘솔에 나와요.</p>
+<form class="dev-form" id="engineKeyForm"><div class="dev-field"><label for="engineKey">관리 키</label><div class="dev-key"><input id="engineKey" type="password" autocomplete="off" spellcheck="false" maxlength="200" required><button type="submit" class="text-button">확인</button></div></div></form>
+<div class="dev-form hidden" id="engineManage">
+  <ul class="engine-list" id="engineList" aria-label="엔진 서버 목록"></ul>
+  <form class="dev-field" id="engineAddForm"><label for="engineUrl">엔진 서버 추가</label><div class="dev-key"><input id="engineUrl" type="url" placeholder="http://192.168.0.21:8000" autocomplete="off" spellcheck="false" maxlength="300" required><button type="submit" class="text-button" id="engineAdd">추가</button></div>
+  <p class="fine-print">엔진 PC 에서 <code>python run_backend.py --host 0.0.0.0 --token &lt;비밀값&gt;</code> 으로 띄운 주소를 넣어요. 비밀값은 게이트웨이와 같아야 해요(<code>PL_GATEWAY_TOKEN</code>). 바꾼 목록은 게이트웨이를 다시 켜면 처음 목록으로 돌아가요.</p></form>
+</div>
+<p class="fine-print engine-status" id="engineStatus" role="status"></p>
+</dialog>
 <dialog id="devDialog" aria-labelledby="devTitle"><div class="dialog-header"><h2 id="devTitle">판단 모델</h2><button class="icon-button" data-close aria-label="닫기"><svg><use href="#i-close"/></svg></button></div>
 <p class="dialog-intro">글자를 읽은 뒤(OCR) 개인정보인지 판단할 방법을 골라요. LLM 을 고르면 규칙 기반 판단은 꺼지고, 모든 글자 판단을 그 모델이 해요. 위치정보·QR·문서 영역 검사는 그대로예요.</p>
 <div class="dev-form">

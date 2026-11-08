@@ -10,6 +10,9 @@
 - **상태 확인**: 엔진마다 /health 를 주기적으로 묻고, 안 되는 엔진은 빼고 살아나면 다시 넣는다.
   보내다가 연결이 안 되면(처리 전) 그 엔진을 빼고 같은 요청을 줄 맨 앞에 다시 세운다.
 - **엔진은 게이트웨이만 받는다.** 공유 비밀값(PL_GATEWAY_TOKEN)을 X-PL-Token 헤더로 보낸다(run_backend.py --token).
+- **엔진 목록 관리**: 화면의 '엔진 N대'를 누르면 엔진을 더하고 뺄 수 있다(/admin/engines). 관리 키(PL_ADMIN_KEY,
+  X-PL-Admin 헤더)가 맞을 때만 된다. 누구나 엔진을 빼거나(서비스 중단) 자기 서버를 넣으면(사진이 그리로 감) 안 되기 때문이다.
+  목록 변경은 메모리에만 남고, 게이트웨이를 다시 켜면 실행 옵션(--backend)의 목록으로 돌아간다.
 - **무상태 원칙은 그대로다.** 기다리는 사진은 메모리에만 있고, 디스크·로그에 남기지 않는다. 결과도 돌려주면 버린다
   (같은 번호표 재시도를 위해 끝난 뒤 30초만 메모리에 둔다).
 """
@@ -18,11 +21,14 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import logging
 import os
 import re
+import socket
 import time
+import urllib.parse
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -37,6 +43,9 @@ FRONT = Path(__file__).resolve().parent / "web" / "frontend-demo"
 TICKET = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 MAX_BYTES = 25 * 1024 * 1024
 TOKEN_HEADER = "X-PL-Token"
+GATEWAY_HEADER = "X-PL-Gateway"   # 엔진 로그에 '어느 게이트웨이가 연결했는지' 보이게(이름만, 비밀 아님)
+ADMIN_HEADER = "X-PL-Admin"
+MAX_BACKENDS = 32
 HEALTH_EVERY_S = 5.0
 HEALTH_TIMEOUT_S = 5.0
 SLOW_FAILS = 2           # 느리거나 오류인 상태 확인이 이만큼 연속이면 뺀다(연결 거부는 바로)
@@ -54,6 +63,18 @@ if not log.handlers:
     log.propagate = False
 
 
+def backend_url(raw: str) -> str:
+    """엔진 주소를 http(s)://호스트[:포트][/경로] 로 맞춘다. 아니면 ValueError."""
+    p = urllib.parse.urlsplit(str(raw).strip())
+    if p.scheme not in ("http", "https") or not p.netloc or p.query or p.fragment or "@" in p.netloc:
+        raise ValueError("엔진 주소는 http:// 또는 https:// 로 시작해야 합니다.")
+    return f"{p.scheme}://{p.netloc}{p.path.rstrip('/')}"
+
+
+def gateway_name() -> str:
+    return re.sub(r"[^\w.-]", "", socket.gethostname())[:64] or "gateway"
+
+
 @dataclass
 class Backend:
     url: str
@@ -62,6 +83,18 @@ class Backend:
     busy: bool = False              # 게이트웨이가 보낸 줄 선 요청을 처리하는 중
     fails: int = 0
     checked: float = 0.0
+    rejected: bool = False          # 엔진이 403(비밀값이 다름)으로 거절했다
+    seen: bool = False              # 한 번이라도 연결된 적이 있다(로그 문구용)
+
+    def state(self) -> str:
+        if self.rejected:
+            return "rejected"
+        if not self.healthy:
+            return "down"
+        return "ready" if self.engine_ready else "warming"
+
+    def info(self) -> dict:
+        return {"url": self.url, "state": self.state(), "busy": self.busy}
 
 
 @dataclass
@@ -84,7 +117,7 @@ class Gateway:
                  transport: httpx.AsyncBaseTransport | None = None):
         if not backends:
             raise ValueError("엔진 서버 주소가 하나도 없습니다(--backend).")
-        self.backends = [Backend(u.rstrip("/")) for u in backends]
+        self.backends = [Backend(backend_url(u)) for u in backends]
         self.token = token
         self.max_waiting = max_waiting
         self.transport = transport
@@ -99,8 +132,13 @@ class Gateway:
     # ------------------------------------------------------------ 시작·끝
 
     async def start(self) -> None:
+        headers = {GATEWAY_HEADER: gateway_name()}
+        if self.token:
+            headers[TOKEN_HEADER] = self.token
         self.client = httpx.AsyncClient(transport=self.transport, timeout=httpx.Timeout(JOB_TIMEOUT_S, connect=5.0),
-                                        headers={TOKEN_HEADER: self.token} if self.token else {})
+                                        headers=headers)
+        for b in self.backends:
+            log.info("엔진 %s 에 연결을 요청합니다", b.url)
         await self.check_all()
         self._tasks = [asyncio.create_task(self._health_loop()), asyncio.create_task(self._dispatch_loop())]
 
@@ -120,29 +158,68 @@ class Gateway:
     async def check(self, b: Backend) -> None:
         """연결이 거부되면(꺼짐) 바로 빼고, 느리거나 오류면 SLOW_FAILS 번 연속일 때 뺀다.
         엔진은 켠 직후 OCR 모델을 불러오느라 몇 초씩 늦게 답한다(그동안 빼 두면 화면에 '연결 안 됨'이 깜빡인다)."""
-        refused = False
+        refused = rejected = False
         try:
             r = await self.client.get(b.url + "/health", timeout=HEALTH_TIMEOUT_S)
-            ok = r.status_code == 200
+            ok, rejected = r.status_code == 200, r.status_code == 403
             data = r.json() if ok else {}
         except (httpx.ConnectError, httpx.ConnectTimeout):
             ok, data, refused = False, {}, True
         except (httpx.HTTPError, ValueError):
             ok, data = False, {}
+        if b not in self.backends:
+            return  # 확인하는 사이 목록에서 빠졌다
         b.checked = time.monotonic()
         if ok:
+            ready = bool(data.get("engine_ready"))
             if not b.healthy:
-                log.info("엔진 %s 사용 가능", b.url)
-            b.healthy, b.engine_ready, b.fails = True, bool(data.get("engine_ready")), 0
+                log.info("엔진 %s 에 %s연결되었습니다 (%s)", b.url, "다시 " if b.seen else "",
+                         "OCR 준비됨" if ready else "OCR 준비 중")
+            elif ready and not b.engine_ready:
+                log.info("엔진 %s OCR 준비 완료", b.url)
+            b.healthy, b.engine_ready, b.fails, b.rejected, b.seen = True, ready, 0, False, True
             self.wake.set()
             return
         b.fails += 1
+        if rejected:
+            if not b.rejected:
+                log.warning("엔진 %s 이 연결을 거절했습니다 — 비밀값(--token)이 다릅니다", b.url)
+            b.rejected, b.healthy = True, False
+            return
         if b.healthy and (refused or b.fails >= SLOW_FAILS):
-            log.warning("엔진 %s 응답 없음 — 빼 둔다", b.url)
+            log.warning("엔진 %s 연결이 끊겼습니다(%s) — 목록에서 잠시 빼 둡니다", b.url,
+                        "연결 거부" if refused else "응답 없음")
             b.healthy = False
 
+    # ------------------------------------------------------------ 엔진 목록 관리(관리 키)
+
+    async def add_backend(self, raw: str) -> Backend:
+        url = backend_url(raw)
+        if any(b.url == url for b in self.backends):
+            raise GatewayError(409, "이미 목록에 있는 엔진입니다.")
+        if len(self.backends) >= MAX_BACKENDS:
+            raise GatewayError(400, f"엔진은 {MAX_BACKENDS}대까지 둘 수 있습니다.")
+        b = Backend(url)
+        self.backends.append(b)
+        log.info("관리: 엔진 %s 를 목록에 넣고 연결을 요청합니다", url)
+        await self.check(b)
+        if not b.healthy and not b.rejected:
+            log.warning("관리: 엔진 %s 가 아직 답하지 않습니다 — 목록에 두고 %d초마다 다시 확인합니다", url, int(HEALTH_EVERY_S))
+        return b
+
+    def remove_backend(self, raw: str) -> Backend:
+        url = backend_url(raw)
+        b = next((b for b in self.backends if b.url == url), None)
+        if b is None:
+            raise GatewayError(404, "목록에 없는 엔진입니다.")
+        self.backends.remove(b)
+        b.healthy = False
+        log.info("관리: 엔진 %s 를 목록에서 뺐습니다 — 연결을 끊습니다%s", url,
+                 " (처리 중인 1건은 끝까지 받습니다)" if b.busy else "")
+        return b
+
     async def check_all(self) -> None:
-        await asyncio.gather(*(self.check(b) for b in self.backends))
+        await asyncio.gather(*(self.check(b) for b in list(self.backends)))
 
     async def _health_loop(self) -> None:
         while True:
@@ -269,7 +346,8 @@ class GatewayError(Exception):
 # ------------------------------------------------------------------ 앱
 
 def create_app(backends: list[str], *, token: str = "", serve_front: bool = True,
-               transport: httpx.AsyncBaseTransport | None = None, max_waiting: int = 24) -> FastAPI:
+               transport: httpx.AsyncBaseTransport | None = None, max_waiting: int = 24,
+               admin_key: str = "") -> FastAPI:
     gw = Gateway(backends, token=token, transport=transport, max_waiting=max_waiting)
 
     from contextlib import asynccontextmanager
@@ -294,6 +372,54 @@ def create_app(backends: list[str], *, token: str = "", serve_front: bool = True
         @app.get("/", response_class=HTMLResponse)
         def index() -> str:
             return (FRONT / "privacy-lens.html").read_text(encoding="utf-8")
+
+    # ---------------- 엔진 목록 관리: 관리 키가 맞을 때만
+    def admin_error(request: Request) -> JSONResponse | None:
+        if not admin_key:
+            return error(403, "관리 기능이 꺼져 있습니다. 게이트웨이를 관리 키(PL_ADMIN_KEY)와 함께 켜 주세요.")
+        if not hmac.compare_digest(request.headers.get(ADMIN_HEADER.lower(), "").encode(), admin_key.encode()):
+            return error(403, "관리 키가 맞지 않습니다.")
+        return None
+
+    async def admin_url(request: Request) -> str:
+        try:
+            body = await request.json()
+        except ValueError:
+            raise GatewayError(400, "요청 형식이 올바르지 않습니다.")
+        url = body.get("url") if isinstance(body, dict) else None
+        if not isinstance(url, str) or len(url) > 300:
+            raise GatewayError(400, "엔진 주소가 필요합니다.")
+        try:
+            return backend_url(url)
+        except ValueError as exc:
+            raise GatewayError(400, str(exc))
+
+    def engine_list() -> dict:
+        return {"engines": [b.info() for b in gw.backends], **gw.engines()}
+
+    @app.get("/admin/engines")
+    async def admin_engines(request: Request):
+        return admin_error(request) or engine_list()
+
+    @app.post("/admin/engines")
+    async def admin_add(request: Request):
+        if (denied := admin_error(request)) is not None:
+            return denied
+        try:
+            b = await gw.add_backend(await admin_url(request))
+        except GatewayError as exc:
+            return error(exc.status, exc.detail)
+        return {"added": b.info(), **engine_list()}
+
+    @app.post("/admin/engines/remove")
+    async def admin_remove(request: Request):
+        if (denied := admin_error(request)) is not None:
+            return denied
+        try:
+            b = gw.remove_backend(await admin_url(request))
+        except GatewayError as exc:
+            return error(exc.status, exc.detail)
+        return {"removed": b.url, **engine_list()}
 
     @app.get("/health")
     async def health():
@@ -366,7 +492,7 @@ def create_app(backends: list[str], *, token: str = "", serve_front: bool = True
     @app.get("/queue")
     async def queue_status(ticket: Optional[str] = None):
         e = gw.engines()
-        out = {"running": e["busy"], "waiting": len(gw.queue), "max_waiting": gw.max_waiting,
+        out = {"running": e["busy"], "waiting": len(gw.queue), "max_waiting": gw.max_waiting, "manage": bool(admin_key),
                "avg_s": round(gw.avg_s, 1) if gw.avg_s is not None else None,
                "engine_ready": any(b.healthy and b.engine_ready for b in gw.backends), "engines": e}
         if not ticket:

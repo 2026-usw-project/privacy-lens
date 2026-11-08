@@ -29,6 +29,7 @@ class FakeEngine:
         self.seen: list[str] = []          # 받은 번호표 순서
         self.tokens: set[str] = set()
         self.healthy = True
+        self.reject = False                 # 비밀값이 달라 403 으로 거절하는 엔진
         app = FastAPI()
 
         @app.middleware("http")
@@ -38,6 +39,8 @@ class FakeEngine:
 
         @app.get("/health")
         async def health():
+            if self.reject:
+                return JSONResponse({"detail": "게이트웨이를 거친 요청만 받습니다."}, status_code=403)
             if not self.healthy:
                 return JSONResponse({"ok": False}, status_code=503)
             return {"ok": True, "engine_ready": True}
@@ -106,14 +109,15 @@ async def until(cond, timeout=3.0):
         await asyncio.sleep(0.01)
 
 
-def run_with_gateway(names, body, *, max_waiting=24, token=TOKEN):
-    """가짜 엔진들 + 게이트웨이를 띄우고 body(client, gw, engines, router)를 실행한다."""
+def run_with_gateway(names, body, *, max_waiting=24, token=TOKEN, spare=(), admin_key=""):
+    """가짜 엔진들 + 게이트웨이를 띄우고 body(client, gw, engines, router)를 실행한다.
+    spare: 처음 목록에는 없지만 네트워크에는 있는 엔진(관리 화면에서 더할 것)."""
 
     async def main():
-        engines = {n: FakeEngine(n) for n in names}
+        engines = {n: FakeEngine(n) for n in (*names, *spare)}
         router = Router(engines)
         app = gateway.create_app([f"http://{n}:8000" for n in names], token=token, serve_front=False,
-                                 transport=router, max_waiting=max_waiting)
+                                 transport=router, max_waiting=max_waiting, admin_key=admin_key)
         gw = app.state.gateway
         await gw.start()
         try:
@@ -350,3 +354,167 @@ def test_launcher_rejects_bad_backend_url():
     with pytest.raises(SystemExit):
         run_gateway._url("192.168.0.21:8000")
     assert run_gateway.main(["--port", "0"]) == 2                          # 엔진 주소 없음
+
+
+# ------------------------------------------------------------------ 엔진 목록 관리(관리 키)
+
+ADMIN = "admin-key-for-tests"
+H = {"X-PL-Admin": ADMIN}
+
+
+def test_admin_needs_key():
+    async def body(client, gw, engines, router):
+        assert (await client.get("/admin/engines")).status_code == 403
+        assert (await client.get("/admin/engines", headers={"X-PL-Admin": "wrong"})).status_code == 403
+        r = await client.post("/admin/engines", json={"url": "http://e2:8000"}, headers={"X-PL-Admin": "wrong"})
+        assert r.status_code == 403 and len(gw.backends) == 1
+        r = await client.get("/admin/engines", headers=H)
+        assert r.json()["engines"] == [{"url": "http://e1:8000", "state": "ready", "busy": False}]
+        assert (await client.get("/queue")).json()["manage"] is True
+
+    run_with_gateway(["e1"], body, admin_key=ADMIN)
+
+
+def test_admin_off_without_key():
+    async def body(client, gw, engines, router):
+        r = await client.get("/admin/engines", headers={"X-PL-Admin": ""})
+        assert r.status_code == 403 and "꺼져" in r.json()["detail"]
+        assert (await client.get("/queue")).json()["manage"] is False
+
+    run_with_gateway(["e1"], body)
+
+
+def test_admin_add_engine_then_it_takes_work():
+    async def body(client, gw, engines, router):
+        r = await client.post("/admin/engines", json={"url": "http://e2:8000/"}, headers=H)
+        assert r.status_code == 200 and r.json()["added"] == {"url": "http://e2:8000", "state": "ready", "busy": False}
+        assert r.json()["total"] == 2 and r.json()["alive"] == 2
+        assert (await client.post("/admin/engines", json={"url": "http://e2:8000"}, headers=H)).status_code == 409
+        for bad in ("e2:8000", "ftp://x", "http://u:p@e2:8000", "http://e2:8000/?a=1"):
+            assert (await client.post("/admin/engines", json={"url": bad}, headers=H)).status_code == 400
+        # 두 건을 동시에 보내면 새 엔진도 한 건을 맡는다
+        tasks = [asyncio.create_task(post(client, t)) for t in T[:2]]
+        await until(lambda: engines["e1"].seen and engines["e2"].seen)
+        engines["e1"].gate.set()
+        engines["e2"].gate.set()
+        assert {r.json()["engine"] for r in await asyncio.gather(*tasks)} == {"e1", "e2"}
+
+    run_with_gateway(["e1"], body, spare=["e2"], admin_key=ADMIN)
+
+
+def test_admin_add_shows_down_and_rejected_engines():
+    async def body(client, gw, engines, router):
+        router.down.add("e2")
+        r = await client.post("/admin/engines", json={"url": "http://e2:8000"}, headers=H)
+        assert r.json()["added"]["state"] == "down"           # 목록에는 두고, 켜지면 상태 확인이 넣는다
+        router.down.clear()
+        await gw.check_all()
+        assert gw.backends[1].healthy is True
+        engines["e3"].reject = True
+        r = await client.post("/admin/engines", json={"url": "http://e3:8000"}, headers=H)
+        assert r.json()["added"]["state"] == "rejected"       # 비밀값이 다른 엔진
+
+    run_with_gateway(["e1"], body, spare=["e2", "e3"], admin_key=ADMIN)
+
+
+def test_admin_remove_engine_disconnects_but_finishes_running_job():
+    async def body(client, gw, engines, router):
+        running = asyncio.create_task(post(client, T[0]))
+        await until(lambda: engines["e1"].seen or engines["e2"].seen)
+        owner = "e1" if engines["e1"].seen else "e2"
+        other = "e2" if owner == "e1" else "e1"
+        r = await client.post("/admin/engines/remove", json={"url": f"http://{owner}:8000"}, headers=H)
+        assert r.status_code == 200 and [e["url"] for e in r.json()["engines"]] == [f"http://{other}:8000"]
+        engines[owner].gate.set()
+        assert (await running).json()["engine"] == owner        # 처리 중이던 건은 끝까지 받는다
+        engines[other].gate.set()
+        assert (await post(client, T[1])).json()["engine"] == other   # 새 요청은 남은 엔진으로
+        await gw.check_all()
+        assert all(b.url != f"http://{owner}:8000" for b in gw.backends)  # 다시 들어오지 않는다
+        r = await client.post("/admin/engines/remove", json={"url": f"http://{owner}:8000"}, headers=H)
+        assert r.status_code == 404
+
+    run_with_gateway(["e1", "e2"], body, admin_key=ADMIN)
+
+
+def _capture(logger):
+    import logging
+    records = []
+    handler = logging.Handler()
+    handler.emit = records.append
+    logger.addHandler(handler)
+    return records, handler
+
+
+def test_gateway_logs_connect_and_reject():
+    records, handler = _capture(gateway.log)
+
+    async def body(client, gw, engines, router):
+        engines["e2"].reject = True
+        await client.post("/admin/engines", json={"url": "http://e2:8000"}, headers=H)
+        await gw.check(gw.backends[1])
+        router.down.add("e1")
+        await gw.check(gw.backends[0])
+
+    try:
+        run_with_gateway(["e1"], body, spare=["e2"], admin_key=ADMIN)
+    finally:
+        gateway.log.removeHandler(handler)
+    text = [r.getMessage() for r in records]
+    assert any("e1:8000 에 연결을 요청합니다" in t for t in text)
+    assert any("e1:8000 에 연결되었습니다" in t for t in text)
+    assert sum("e2:8000 이 연결을 거절했습니다" in t for t in text) == 1   # 거절은 한 번만
+    assert any("e1:8000 연결이 끊겼습니다(연결 거부)" in t for t in text)
+
+
+def test_gateway_tells_engine_its_name():
+    async def body(client, gw, engines, router):
+        assert engines["e1"].names
+
+    orig = FakeEngine.__init__
+
+    def init(self, name):
+        orig(self, name)
+        self.names = []
+
+        @self.app.middleware("http")
+        async def remember(request, call_next):
+            self.names.append(request.headers.get("x-pl-gateway"))
+            return await call_next(request)
+
+    FakeEngine.__init__ = init
+    try:
+        run_with_gateway(["e1"], body)
+    finally:
+        FakeEngine.__init__ = orig
+
+
+def test_engine_logs_handshake_once_and_throttles_rejects(engine_with_token):
+    server = engine_with_token
+    records, handler = _capture(server.log)
+    try:
+        client = TestClient(server.app)
+        gw = {"X-PL-Token": TOKEN, "X-PL-Gateway": "gw-pc;rm -rf"}
+        for _ in range(3):
+            client.get("/health", headers=gw)
+        for _ in range(3):
+            client.get("/health", headers={"X-PL-Token": "wrong"})
+    finally:
+        server.log.removeHandler(handler)
+    text = [r.getMessage() for r in records]
+    accepted = [t for t in text if "수락했습니다" in t]
+    assert len(accepted) == 1 and "gw-pcrm-rf" in accepted[0]    # 이름은 글자·숫자·.-_ 만 남긴다(로그 위조 방지)
+    assert sum("비밀값이 맞지 않아 거절했습니다" in t for t in text) == 1
+
+
+def test_engine_logs_disconnect_after_silence(engine_with_token):
+    import time as _time
+    server = engine_with_token
+    records, handler = _capture(server.log)
+    try:
+        TestClient(server.app).get("/health", headers={"X-PL-Token": TOKEN, "X-PL-Gateway": "gw-pc"})
+        assert server.PEERS.sweep() == []                                    # 방금 왔으면 그대로
+        assert server.PEERS.sweep(_time.monotonic() + 31) == ["gw-pc@testclient"]
+    finally:
+        server.log.removeHandler(handler)
+    assert any("gw-pc(testclient) 연결이 끊겼습니다" in r.getMessage() for r in records)

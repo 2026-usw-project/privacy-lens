@@ -609,12 +609,76 @@
   }
   function renderQueue(s) {
     const badge=$('#queueBadge'),view=Core.queueBadge(s);badge.classList.remove('busy','ready','down');
-    $('#queueText').textContent=view.text;badge.classList.add(view.tone);badge.title=view.title;
+    $('#queueText').textContent=view.text;badge.classList.add(view.tone);
+    // 게이트웨이 뒤면 눌러서 엔진 목록을 연다
+    badge.classList.toggle('linked',view.link);badge.disabled=!view.link;state.manage=!!s.manage;
+    badge.title=view.link?view.title+' · 눌러서 엔진 관리':view.title;
     if(!state.ticket || !s.state) return;
     // SSE 가 없거나 끊겼으면 폴링에 붙어 온 같은 진행 상태를 쓴다
     if(s.progress && state.live && !state.liveStream) applyLive(s.progress);
     if(state.phase==='scanning' && !s.engine_ready) $('#scanModeLabel').textContent='OCR 엔진 준비 중 (서버를 켠 뒤 처음 한 번, 1~2분)';
   }
+  // ---------------- 엔진 관리(게이트웨이). 관리 키는 브라우저에 저장하지 않고 이 페이지 메모리에만 둔다(새로 고치면 다시 입력).
+  // 서버에는 X-PL-Admin 헤더로만 보낸다.
+  let engineTimer=null;
+  function adminKey() { return state.adminKey||''; }
+  function setAdminKey(value) { state.adminKey=value; }
+  function engineMessage(text,error=false) { const el=$('#engineStatus');el.textContent=text||'';el.classList.toggle('error',!!error); }
+  function showEngineKey(show) { $('#engineKeyForm').classList.toggle('hidden',!show);$('#engineManage').classList.toggle('hidden',show); }
+  function renderEngines(data) {
+    const list=$('#engineList'),engines=Array.isArray(data?.engines)?data.engines:[];
+    if(!engines.length){const li=document.createElement('li');li.className='empty';li.textContent='엔진이 없어요. 아래에서 추가해 주세요.';list.replaceChildren(li);return;}
+    list.replaceChildren(...engines.map(e=>{
+      const row=Core.engineRow(e),li=document.createElement('li'),dot=document.createElement('i'),text=document.createElement('div'),
+        url=document.createElement('code'),label=document.createElement('small'),remove=document.createElement('button');
+      li.className=row.tone;url.textContent=row.url;label.textContent=row.label;text.append(url,label);
+      remove.type='button';remove.className='icon-button';remove.innerHTML='<svg><use href="#i-close"/></svg>';
+      remove.setAttribute('aria-label',row.url+' 목록에서 빼기');remove.title='목록에서 빼고 연결 끊기';
+      remove.addEventListener('click',()=>removeEngine(row.url));
+      li.append(dot,text,remove);return li;
+    }));
+  }
+  function engineFailed(error) {
+    if(error?.status===403){
+      if(!state.manage){showEngineKey(false);$('#engineManage').classList.add('hidden');}
+      else {setAdminKey('');showEngineKey(true);}
+    }
+    engineMessage(error?.message||'엔진 목록을 불러오지 못했어요.',true);
+  }
+  async function loadEngines(quiet=false) {
+    if(!state.manage){showEngineKey(false);$('#engineManage').classList.add('hidden');
+      engineMessage('관리 기능이 꺼져 있어요. 게이트웨이를 관리 키(PL_ADMIN_KEY)와 함께 켜 주세요.',true);return;}
+    const key=adminKey();
+    if(!key){showEngineKey(true);if(!quiet)engineMessage('');return;}
+    try{const data=await api.engines(key);showEngineKey(false);renderEngines(data);if(!quiet)engineMessage('');}
+    catch(error){engineFailed(error);}
+  }
+  async function removeEngine(url) {
+    if(!globalThis.confirm(url+'\n이 엔진을 목록에서 빼고 연결을 끊을까요? 처리 중인 1건은 끝까지 받아요.'))return;
+    try{const data=await api.removeEngine(adminKey(),url);renderEngines(data);engineMessage(url+' 를 뺐어요.');pollSoon();}
+    catch(error){engineFailed(error);}
+  }
+  $('#queueBadge').addEventListener('click',()=>{
+    if($('#queueBadge').disabled)return;
+    showDialog('engineDialog');engineMessage('');loadEngines();
+    clearInterval(engineTimer);engineTimer=setInterval(()=>loadEngines(true),3000);
+  });
+  $('#engineDialog').addEventListener('close',()=>{clearInterval(engineTimer);engineTimer=null;});
+  $('#engineKeyForm').addEventListener('submit',event=>{
+    event.preventDefault();const value=$('#engineKey').value.trim();if(!value)return;
+    setAdminKey(value);$('#engineKey').value='';loadEngines();
+  });
+  $('#engineAddForm').addEventListener('submit',async event=>{
+    event.preventDefault();const input=$('#engineUrl'),url=input.value.trim();if(!url)return;
+    $('#engineAdd').disabled=true;engineMessage(url+' 에 연결을 요청하는 중…');
+    try{
+      const data=await api.addEngine(adminKey(),url),row=Core.engineRow(data.added);
+      renderEngines(data);input.value='';pollSoon();
+      engineMessage(row.url+' 를 넣었어요 — '+row.label+(data.added.state==='down'?' (켜지면 자동으로 연결돼요)':''),data.added.state==='rejected');
+    } catch(error){engineFailed(error);}
+    finally{$('#engineAdd').disabled=false;}
+  });
+
   async function pollQueue() {
     clearTimeout(queueTimer);
     try { renderQueue(await api.queue(state.ticket)); } catch(_) { /* 다음 차례에 다시 묻는다 */ }

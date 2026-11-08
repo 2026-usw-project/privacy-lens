@@ -120,6 +120,16 @@
       queue(ticket,{signal}={}) {
         return request('/queue'+(ticket?'?ticket='+encodeURIComponent(ticket):''),{method:'GET'},signal);
       },
+      // 엔진 목록 관리(게이트웨이). 관리 키는 X-PL-Admin 헤더로만 보낸다(주소창·로그에 남지 않게).
+      engines(adminKey,{signal}={}) {
+        return request('/admin/engines',{method:'GET',headers:{'X-PL-Admin':adminKey}},signal);
+      },
+      addEngine(adminKey,url,{signal}={}) {
+        return request('/admin/engines',{method:'POST',headers:{'X-PL-Admin':adminKey,'Content-Type':'application/json'},body:JSON.stringify({url})},signal);
+      },
+      removeEngine(adminKey,url,{signal}={}) {
+        return request('/admin/engines/remove',{method:'POST',headers:{'X-PL-Admin':adminKey,'Content-Type':'application/json'},body:JSON.stringify({url})},signal);
+      },
       // 창을 닫는 중에도 나가도록 keepalive. 응답은 기다리지 않는다.
       cancel(ticket) {
         if(!ticket)return;
