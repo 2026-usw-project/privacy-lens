@@ -42,7 +42,7 @@ RULES: list[tuple[str, str]] = [
     (r"letter|\bmail\b|envelope|package|parcel|shipping|address.?label", "waybill"),
     (r"receipt|bill", "receipt"),
     (r"bank.?statement|statement|prescription|medical.?record|transcript|mortgage|investment|\btax\b|"
-     r"\bcheck\b|cheque|\bform\b|document|report", "document"),
+     r"\bcheck\b|cheque|\bform\b|document|report|miscellaneous.?papers?", "document"),
     (r"ticket|boarding", "ticket"),
     (r"screen|monitor|laptop|computer|television|\btv\b|mobile.?phone|cell.?phone|smartphone|tablet", "screen"),
     (r"pill|medicine|pregnancy|condom", "health_item"),
@@ -209,8 +209,17 @@ class Writer:
 
 
 def _index(root: Path) -> dict[str, Path]:
-    return {Path(p).name: Path(p) for p in glob.glob(f"{root}/**/*", recursive=True)
-            if p.lower().endswith((".jpg", ".jpeg", ".png"))}
+    """파일 이름과 확장자 뺀 소문자 이름 둘 다로 찾는다(라벨은 .jpg, 사진은 .png 처럼 다를 때)."""
+    idx: dict[str, Path] = {}
+    for p in glob.glob(f"{root}/**/*", recursive=True):
+        if p.lower().endswith((".jpg", ".jpeg", ".png")):
+            idx[Path(p).name] = Path(p)
+            idx.setdefault("~" + Path(p).stem.lower(), Path(p))
+    return idx
+
+
+def _lookup(idx: dict[str, Path], name: str) -> Path | None:
+    return idx.get(Path(name).name) or idx.get("~" + Path(name).stem.lower())
 
 
 def _split_of(key: str, val_frac: float) -> str:
@@ -256,7 +265,9 @@ def add_coco(w: Writer, ann: Path, images_root: Path, source: str, *, split: str
 def add_vizwiz_priv(w: Writer, ann_root: Path, images_root: Path, *, keep_empty: float = 0.1, seed: int = 0) -> None:
     """VizWiz-Priv: {"image", "private", "private_regions": [{"class", "polygon": [[x, y], ...]}]} 의 목록(분할별 json)."""
     idx = _index(images_root)
+    w.skipped[f"vizwiz_priv:사진 폴더 파일 {sum(1 for k in idx if not k.startswith('~'))}개"] += 1
     rng = random.Random(seed)
+    missing = 0
     for js in sorted(glob.glob(f"{ann_root}/**/*.json", recursive=True)):
         low = Path(js).name.lower()
         split = "val" if "val" in low else ("test" if "test" in low else "train")
@@ -279,9 +290,12 @@ def add_vizwiz_priv(w: Writer, ann_root: Path, images_root: Path, *, keep_empty:
                     boxes.append((c, min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)))
             if not boxes and rng.random() > keep_empty:
                 continue
-            src = idx.get(Path(e["image"]).name)
+            src = _lookup(idx, e["image"])
             if src is None:
                 w.skipped["vizwiz_priv:사진 없음"] += 1
+                missing += 1
+                if missing <= 3:   # 다음에 원인을 바로 보이게 이름 예시를 남긴다
+                    w.skipped[f"vizwiz_priv:없는 사진 예 '{e['image']}'"] += 1
                 continue
             w.add(src, split, boxes, f"vwp_{Path(e['image']).stem}", "vizwiz_priv")
 
