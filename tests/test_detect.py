@@ -311,3 +311,51 @@ def test_unread_daily_objects_become_regions():
     sev = {f.detail["detector_class"]: f.severity for f in out}
     assert sev == {"card": Severity.COVER, "health_item": Severity.REVIEW, "ticket": Severity.REVIEW}
     assert "결제 카드" in out[0].message and "약 또는 건강 관련 물건" in out[1].message
+
+
+def test_tiled_detector_adds_small_objects_and_drops_cut_ones():
+    """전체 보기는 큰 송장만, 조각에서는 구석의 작은 카드와 잘린 송장 조각이 보이는 상황."""
+    class Inner:
+        name, device, imgsz = "yolo:daily", "cpu", 640
+
+        def detect(self, image):
+            w, h = image.size
+            if (w, h) == (4000, 3000):   # 전체 보기
+                return [Detection("waybill", Box(1500, 1000, 1200, 900), 0.8)]
+            # 조각: 모든 조각에 자른 선에 닿는 송장 조각, 오른쪽 아래 조각에만 작은 카드
+            x0 = image._box[0]
+            out = [Detection("waybill", Box(0 if x0 > 0 else w - 300, 100, 300, 300), 0.9)]
+            if getattr(image, "_corner", False):
+                out.append(Detection("card", Box(500, 500, 60, 40), 0.6))
+            return out
+
+    img = Image.new("RGB", (4000, 3000))
+    det = detect.TiledDetector(Inner(), grid=2)
+    tiles = det.tiles(4000, 3000)
+    assert len(tiles) == 4 and tiles[0][:2] == (0, 0) and tiles[-1][2:] == (4000, 3000)
+    orig_crop = Image.Image.crop
+
+    def crop(self, box):
+        c = orig_crop(self, box)
+        c._corner = box == tiles[-1]
+        c._box = box
+        return c
+
+    import pytest
+    mp = pytest.MonkeyPatch()
+    mp.setattr(Image.Image, "crop", crop)
+    try:
+        got = det.detect(img)
+    finally:
+        mp.undo()
+    names = sorted((d.name, d.box.x >= tiles[-1][0]) for d in got)
+    # 큰 송장 1개(전체 보기) + 작은 카드 1개(조각, 원래 좌표로 옮김). 자른 선에 닿은 송장 조각은 버림
+    assert names == [("card", True), ("waybill", False)]
+    card = next(d for d in got if d.name == "card")
+    assert (card.box.x, card.box.y) == (tiles[-1][0] + 500, tiles[-1][1] + 500)
+    assert "조각2x2" in det.name
+
+
+def test_tiled_detector_skips_small_photos():
+    det = detect.TiledDetector(_FakeDet("d", []), grid=2, min_side=1280)
+    assert det.tiles(1000, 750) == []

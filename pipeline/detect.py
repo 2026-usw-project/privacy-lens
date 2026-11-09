@@ -163,6 +163,54 @@ class MultiDetector:
         return kept
 
 
+class TiledDetector:
+    """작게 찍힌 물건용(D-21). 사진 전체를 한 번 보고, 큰 사진은 겹치게 grid×grid 조각으로 나눠 한 번 더 본다.
+
+    입력 640 으로 줄이면 4000px 사진 구석의 송장은 몇십 px 이 되어 놓친다. 조각으로 보면 같은 물건이 2배 이상 크게 보인다.
+    - 사진 긴 변이 min_side 보다 작으면 조각을 만들지 않는다(이미 충분히 크다).
+    - 조각에서 찾은 상자가 조각을 자른 선에 닿으면 버린다(잘린 물건). 겹침(overlap) 덕분에 옆 조각이나 전체 보기에서 온전히 잡힌다.
+    - 전체 보기 결과를 우선한다. 조각 결과는 같은 클래스 상자와 겹치지 않을 때만 더한다(큰 물건이 조각으로 쪼개지는 것 방지).
+    """
+
+    def __init__(self, inner, grid: int = 2, overlap: float = 0.2, min_side: int | None = None):
+        self.inner = inner
+        self.grid = max(1, int(grid))
+        self.overlap = overlap
+        self.min_side = min_side or 2 * int(getattr(inner, "imgsz", 640) or 640)
+        self.name = f"{getattr(inner, 'name', 'yolo')}·조각{self.grid}x{self.grid}"
+
+    @property
+    def device(self) -> str:
+        return getattr(self.inner, "device", "")
+
+    def tiles(self, w: int, h: int) -> list[tuple[int, int, int, int]]:
+        if self.grid < 2 or max(w, h) < self.min_side:
+            return []
+        out = []
+        tw, th = w / (self.grid - (self.grid - 1) * self.overlap), h / (self.grid - (self.grid - 1) * self.overlap)
+        for r in range(self.grid):
+            for c in range(self.grid):
+                x0, y0 = round(c * tw * (1 - self.overlap)), round(r * th * (1 - self.overlap))
+                out.append((x0, y0, min(w, round(x0 + tw)), min(h, round(y0 + th))))
+        return out
+
+    def detect(self, image: Image.Image) -> list[Detection]:
+        kept = list(self.inner.detect(image))
+        w, h = image.size
+        extra: list[Detection] = []
+        for x0, y0, x1, y1 in self.tiles(w, h):
+            for d in self.inner.detect(image.crop((x0, y0, x1, y1))):
+                b = d.box
+                cut = ((x0 > 0 and b.x <= 2) or (y0 > 0 and b.y <= 2)
+                       or (x1 < w and b.x + b.w >= x1 - x0 - 2) or (y1 < h and b.y + b.h >= y1 - y0 - 2))
+                if not cut:
+                    extra.append(Detection(d.name, Box(b.x + x0, b.y + y0, b.w, b.h), d.confidence))
+        for d in sorted(extra, key=lambda x: -x.confidence):
+            if all(k.name != d.name or not _overlaps(k.box, d.box, 0.5) for k in kept):
+                kept.append(d)
+        return kept
+
+
 DAILY_FILE = "daily.onnx"   # 드라이브 objects/daily_vNNN/best.onnx 를 models/daily.onnx 로 두면 자동으로 쓴다
 DAILY_IMGSZ = 640           # 학습·내보내기 크기(vision/next_steps.train_daily)
 
@@ -186,7 +234,10 @@ def _load_daily():
         if not path.exists():
             raise FileNotFoundError(path)
         imgsz = int(os.environ.get("PL_DAILY_IMGSZ", DAILY_IMGSZ))
-        return YoloDetector(path, imgsz=imgsz)
+        det = YoloDetector(path, imgsz=imgsz)
+        # 조각 검출은 팀 실사로 효과를 재기 전까지 끈다(PLAN 16). 켜려면 PL_DAILY_TILES=2
+        grid = int(os.environ.get("PL_DAILY_TILES", "0") or 0)
+        return TiledDetector(det, grid=grid) if grid >= 2 else det
     except Exception as exc:
         print(f"[detect] 일상 사진 물건 검출을 끕니다: {type(exc).__name__}: {exc}", file=sys.stderr)
         return None

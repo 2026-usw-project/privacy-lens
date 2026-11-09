@@ -18,6 +18,7 @@
 사용법:
     PL_OCR=paddleocr python -m eval.detector <폴더> --weights <best.pt>
     PL_OCR=paddleocr python -m eval.detector <작업폴더>/dataset --list test.txt --weights …
+    PL_OCR=paddleocr python -m eval.detector <폴더> --weights models/daily.onnx --imgsz 640 --tiles 2   # 조각 검출(PLAN 16)
 
 <폴더>에는 images/ 와 labels/ 가 있어야 한다. 최종 시험 묶음은 학습 작업 폴더와 다른
 작업 폴더(예: PrivacyLens-YOLO/최종시험)에서 ingest·검수·build 해서 그 dataset 을 넣는다.
@@ -165,6 +166,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--weights", required=True, help="YOLO 가중치(best.pt)")
     ap.add_argument("--list", help="폴더 안의 목록 파일(예: test.txt). 없으면 images/ 전부")
     ap.add_argument("--conf", type=float, help="검출 기준값(기본 PL_YOLO_CONF 또는 0.35)")
+    ap.add_argument("--imgsz", type=int, help="입력 크기(일상 사진 9종 모델은 640)")
+    ap.add_argument("--tiles", type=int, default=0, help="큰 사진을 겹쳐 N×N 조각으로 한 번 더 검출(2 권장, 0 이면 끔)")
     a = ap.parse_args(argv)
 
     folder = Path(a.folder)
@@ -172,7 +175,9 @@ def main(argv: list[str] | None = None) -> None:
     if a.list:
         names = [l.strip() for l in (folder / a.list).read_text(encoding="utf-8").splitlines() if l.strip()]
     backend = ocr.get_backend()
-    detector = detect.YoloDetector(a.weights, conf=a.conf)
+    detector = detect.YoloDetector(a.weights, conf=a.conf, imgsz=a.imgsz)
+    if a.tiles >= 2:
+        detector = detect.TiledDetector(detector, grid=a.tiles)
     print(f"OCR {backend.name} · 검출 {detector.name}\n")
     print(report_text(evaluate(_items(folder, names), backend, detector)))
 
