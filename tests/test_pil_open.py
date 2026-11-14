@@ -51,3 +51,15 @@ def test_yolo_class_keeps_autoinstall_off_and_open_original(monkeypatch):
     ultra.yolo_class()
     assert os.environ["YOLO_AUTOINSTALL"] == "false"
     assert Image.open is not patches.image_open
+
+
+def test_preload_torch_only_on_windows(monkeypatch):
+    """Windows GPU 에서 Paddle 보다 PyTorch 를 먼저 불러온다(DLL 충돌). 다른 OS 는 건드리지 않는다."""
+    import importlib.util as iu
+    monkeypatch.setattr(iu, "find_spec", lambda name, *a: object() if name == "torch" else None)
+    monkeypatch.setattr(ultra.os, "name", "posix")
+    assert ultra.preload_torch() is False
+    monkeypatch.setattr(ultra.os, "name", "nt")
+    assert ultra.preload_torch() is True            # torch 가 설치돼 있으면 불러온다
+    monkeypatch.setattr(iu, "find_spec", lambda name, *a: None)
+    assert ultra.preload_torch() is False           # 없으면 그냥 넘어간다

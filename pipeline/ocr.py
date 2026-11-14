@@ -228,6 +228,9 @@ class PaddleBackend:
     ):
         import inspect
 
+        from .ultra import preload_torch
+
+        preload_torch()  # Windows GPU: Paddle 보다 PyTorch 를 먼저(DLL 충돌, pipeline/ultra.py)
         import paddleocr
         from paddleocr import PaddleOCR
 

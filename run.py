@@ -82,6 +82,9 @@ def check_ocr_choice() -> str:
 
 
 def check_paddle() -> bool:
+    from pipeline.ultra import preload_torch
+
+    preload_torch()  # Windows GPU: Paddle 보다 PyTorch 를 먼저(DLL 충돌, pipeline/ultra.py)
     try:
         import paddleocr
     except ImportError:
