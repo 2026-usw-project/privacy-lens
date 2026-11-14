@@ -130,7 +130,7 @@ def check_inputs(client) -> list[dict]:
 
 
 def check_redact(client) -> dict:
-    """분석 → 가림 → 결과 파일 재검사까지 한 바퀴. 결과에 EXIF 가 남지 않아야 한다."""
+    """분석하고 가린 JPEG 를 저장한다. 결과에 EXIF 가 남지 않아야 한다."""
     wb = _waybill()
     exif = Image.Exif()
     exif[0x8825] = {1: "N", 2: (37.0, 30.0, 0.0), 3: "E", 4: (127.0, 0.0, 0.0)}
@@ -141,7 +141,7 @@ def check_redact(client) -> dict:
                     data={"boxes": json.dumps(boxes), "style": "solid"})
     body = r.json()
     out = Image.open(io.BytesIO(base64.b64decode(body["file"])))
-    return {"code": r.status_code, "boxes": len(boxes), "verification": body.get("verification"),
+    return {"code": r.status_code, "boxes": body["selected_count"],
             "exif_left": bool(out.getexif()), "size_same": out.size == wb.size}
 
 
@@ -203,7 +203,6 @@ def main(argv=None) -> int:
         red_ok = red["code"] == 200 and not red["exif_left"] and red["size_same"]
         print(f"\n가림 한 바퀴  {'통과' if red_ok else '실패'}  상태 {red['code']}, 가린 곳 {red['boxes']}, "
               f"EXIF 남음 {red['exif_left']}, 크기 그대로 {red['size_same']}")
-        print(f"  재검사: {json.dumps(red['verification'], ensure_ascii=False)[:160]}")
         seq = check_sequence(client, 3 if a.quick else a.n)
         seq_ok = seq["errors"] == 0 and seq["max"] <= SLOW_SEC
         print(f"\n연속 {seq['n']}장  {'통과' if seq_ok else '실패'}  오류 {seq['errors']}, "

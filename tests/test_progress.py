@@ -128,11 +128,11 @@ def test_reread_inserted_after_current(clock):
     assert labels.index("작은 문서 확대해 다시 읽기") == labels.index("문서·객체 찾기") + 1
 
 
-def test_redact_plan_has_mask_then_recheck(clock):
+def test_redact_plan_has_only_save_stages(clock):
     b = board()
     register(b, kind="redact")
     keys = [x["key"] for x in snap(b, waiting=["t1"])["stages"]]
-    assert keys == ["decode", "mask", "export", "ocr", "judge:rules", "codes"]
+    assert keys == ["decode", "mask", "export"]
 
 
 def test_waiting_eta_adds_running_remainder_and_each_job(clock):

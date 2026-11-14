@@ -52,7 +52,7 @@ from progress import ProgressBoard
 from timing import TimingStore, default_path
 
 from pipeline import analyze as pl
-from pipeline import detect, llm_judge, metadata, ocr, redact, wording
+from pipeline import detect, llm_judge, ocr, redact, wording
 from pipeline.worker import OcrUnavailable, ThreadBoundBackend
 from pipeline.types import Box
 
@@ -727,39 +727,34 @@ def redact_endpoint(
     boxes: str = Form("[]"),
     style: str = Form(redact.DEFAULT_STYLE),
     ticket: str | None = Form(None),
-    judge: str | None = Form(None),
 ):
     style = _style(style)
     data = _read(image)
-    cfg = _judge(judge)  # 가린 결과를 다시 검사할 때도 분석과 같은 판단 방법을 쓴다
     t = _ticket(ticket)
-    body = SAME.run("redact:" + t, _fingerprint(data, judge, boxes, style),
-                    lambda: _redact_request(data, boxes, style, cfg, t))
+    body = SAME.run("redact:" + t, _fingerprint(data, boxes, style),
+                    lambda: _redact_request(data, boxes, style, t))
     return JSONResponse(body)
 
 
-def _redact_request(data: bytes, boxes: str, style: str, cfg, t: str) -> dict:
-    live = _register(t, "redact", data, cfg)
+def _redact_request(data: bytes, boxes: str, style: str, t: str) -> dict:
+    live = _register(t, "redact", data, None)
     ok = False
     try:
         with _Turn(t):
             BOARD.begin(live)
-            out, check = _redact_turn(data, boxes, style, cfg, live)
+            out, selected_count = _redact_turn(data, boxes, style, live)
         ok = True
     finally:
         BOARD.finish(live, ok)
-    trace = check.pop("_trace", [])
-
     return {
         "file": base64.b64encode(out).decode(),
-        "verification": check,
         "bytes": len(out),
-        **({"llm_trace": trace} if trace else {}),
+        "selected_count": selected_count,
     }
 
 
-def _redact_turn(data: bytes, boxes: str, style: str, cfg, live: str | None) -> tuple[bytes, dict]:
-    """/redact 의 차례가 온 뒤의 일. 가리고, 파일을 만들고, 그 파일을 다시 검사한다."""
+def _redact_turn(data: bytes, boxes: str, style: str, live: str | None) -> tuple[bytes, int]:
+    """/redact 의 차례가 오면 선택 영역을 가리고 메타데이터 없는 JPEG 를 만든다."""
     with _Timed("decode", live) as st:
         img = _open(data)
         st.units = pl.megapixels(img)
@@ -771,17 +766,7 @@ def _redact_turn(data: bytes, boxes: str, style: str, cfg, live: str | None) -> 
     with _Timed("export", live, mp):
         out = redact.export(masked)
 
-    # 원본 전체를 다시 분석하지 않는다. 검증에 필요한 건 '원본에 위치정보가
-    # 있었는가' 뿐이고, 그건 EXIF 만 읽으면 된다. OCR 은 결과 파일에 한 번만.
-    had_gps = bool(metadata.check_exif(img))
-    trace: list = []
-    engine = backend()
-    check = redact.verify(
-        wanted, out, lambda im: pl.analyze(im, backend=engine, judge=cfg, llm_trace=trace if cfg else None,
-                                           on_stage=_on_stage(engine, live)), had_gps=had_gps
-    )
-    check["_trace"] = trace
-    return out, check
+    return out, len(wanted)
 
 
 if __name__ == "__main__":

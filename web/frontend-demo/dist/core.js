@@ -39,7 +39,7 @@
     }
     return {provider,providers};
   }
-  // 서버 /analyze·/redact 의 judge 필드. 규칙 기반이면 보내지 않는다.
+  // 서버 /analyze 의 judge 필드. 규칙 기반이면 보내지 않는다.
   function judgeField(settings) {
     const s=devSettings(settings);
     if(s.provider==='rules')return undefined;

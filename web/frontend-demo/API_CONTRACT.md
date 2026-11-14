@@ -64,7 +64,7 @@ multipart: `image`(원본 파일), `ticket`(번호표, 선택), `judge`(판단 �
 - `report.llm_trace`(LLM 판단일 때만): 서버가 공급자와 주고받은 요청·응답 기록 배열
   `{kind, provider, model, method, url, headers, request, ok, status, elapsed_ms, response, error?}`.
   `headers` 의 키는 끝 4글자만 남깁니다(`Bearer …abcd`). 보낸 OCR 원문이 들어 있어 화면은 **개발자 콘솔(F12)에만**
-  찍고 저장하지 않습니다. 실패(502) 응답 본문, `/llm/models`, `/redact`(재검사) 응답에도 같은 `llm_trace` 가 붙습니다.
+  찍고 저장하지 않습니다. 실패(502) 응답 본문, `/llm/models` 응답에도 같은 `llm_trace` 가 붙습니다.
 - `report.judge`: 글자 판단에 쓴 방법. 규칙이면 `규칙 기반`, LLM 이면 `공급자 · 모델`(예: `Claude · claude-haiku-5-5`).
   `report.judge_provider`: `rules` 또는 위 provider. LLM 이 낸 항목은 `detail.judge == "llm"` 이고,
   `detail.basis` 가 근거 종류입니다: `label`(옆 라벨, `basis_box` 에 라벨 상자) · `document`(`document_hint` 에 문서 종류) ·
@@ -116,15 +116,13 @@ multipart: `image`, `boxes`(JSON 배열), `style`(`blur` | `solid`). 대기열�
 
 ## POST /redact
 
-multipart: `image`, `boxes`, `style`, `ticket`(선택), `judge`(선택, 분석 때와 같은 값). 대기열을 거칩니다. 결과 재검사도 `judge` 의 판단 방법을 씁니다.
+multipart: `image`, `boxes`, `style`, `ticket`(선택). 대기열을 거친 뒤 가림과 JPEG 변환을 마치면 반환합니다.
 
 ```json
-{"file": "<base64 JPEG, 원본 크기, 메타데이터 없음>", "bytes": 81234,
- "verification": {"selected_count": 4, "leaked_count": 0, "remaining_count": 1,
-   "had_gps": true, "gps_removed": true, "leaked": [], "remaining": [ … ], "passed": true}}
+{"file": "<base64 JPEG, 원본 크기, 메타데이터 없음>", "bytes": 81234, "selected_count": 4}
 ```
 
-`passed` 는 '선택한 영역마다 다시 탐지되는 것이 없고 위치정보가 남지 않음'입니다.
+`selected_count`는 이미지 범위에 맞게 좌표를 제한한 뒤 실제로 적용한 영역 수입니다.
 
 ## GET /queue · POST /queue/cancel
 
