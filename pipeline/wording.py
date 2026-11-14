@@ -167,6 +167,11 @@ def document_unconfirmed(doc: str | None = None) -> str:
     )
 
 
+def card_number_unread() -> str:
+    """결제 카드는 찾았는데 번호를 못 읽은 경우. 양각이거나 카드와 같은 색인 번호는 OCR 이 못 읽어도 사람은 읽는다."""
+    return assert_safe("결제 카드로 추정되는 영역에서 카드번호를 읽지 못했습니다. 번호가 보이면 카드째 가리는 것을 권합니다")
+
+
 def face_photo_region() -> str:
     return assert_safe("카드나 서류에 인쇄된 증명사진으로 보이는 영역이 있음")
 
@@ -256,6 +261,6 @@ def all_templates() -> list[str]:
         out += [region_only(doc), document_unconfirmed(doc), combined(doc, ["휴대전화번호", "도로명주소"])]
     for kind in ("url", "vcard", "wifi", "tel", "text", "unknown"):
         out.append(qr_decoded(kind))
-    out += [qr_undecoded(), face_photo_region(), face_region(), plate_region(), qr_contains(["휴대전화번호"]), barcode_decoded(),
+    out += [qr_undecoded(), card_number_unread(), face_photo_region(), face_region(), plate_region(), qr_contains(["휴대전화번호"]), barcode_decoded(),
             gps_present(37.5, 127.0), NO_FINDINGS, llm_http_failed(500)]
     return out
