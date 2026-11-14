@@ -6,7 +6,7 @@
     python run_backend.py --check                          점검만
 
 - 화면(/)은 내주지 않는다(PL_SERVE_FRONT=0). '/' 는 서비스 이름만, '/health' 는 살아 있는지.
-- --token 을 주면 같은 비밀값을 가진 요청(게이트웨이)만 받는다. 엔진을 인터넷에 열지 않는다.
+- --token 을 주면 같은 비밀값을 가진 요청만 받는다. 생략하면 경고를 띄우고 연결을 받는다.
 - 환경 점검은 run.py 와 같다(OCR·글꼴·모델).
 - 포트가 쓰는 중이면 1 씩 올려 빈 포트로 연다. 바뀌면 게이트웨이의 --backend 주소도 그 번호로 준다.
 """
@@ -48,6 +48,8 @@ def main(argv=None) -> int:
                PL_GATEWAY_TOKEN=args.token)
     if args.token:
         print("\n게이트웨이 전용 엔진: X-PL-Token 이 맞는 요청만 받습니다.")
+    else:
+        print("\n[경고] 엔진 토큰이 설정되지 않았습니다. 엔진 주소에 접근할 수 있는 요청을 모두 받습니다. 인터넷에 열지 마세요.")
     print(f"\n엔진 API: http://{args.host}:{args.port}   (화면 없음)")
     if args.cors:
         print(f"허용하는 화면 주소: {args.cors}")

@@ -7,7 +7,7 @@
     사용자 ──▶ 게이트웨이(화면 + 대기열, PORT=8000) ──▶ 엔진 서버(이 PC 안, PL_ENGINE_PORT=8001)
 
 - 여러 PC 로 나눌 때와 같은 구조다. 엔진을 더 붙이려면 run_gateway.py --backend 를 여러 번 쓴다(README).
-- 엔진은 이 PC 안(127.0.0.1)에서만 열고, 실행할 때마다 새로 만든 비밀값으로 게이트웨이만 받는다.
+- 엔진은 이 PC 안(127.0.0.1)에서만 연다. PL_GATEWAY_TOKEN 을 설정하면 같은 토큰을 가진 요청만 받는다.
 - HOST=0.0.0.0 이면 게이트웨이만 다른 기기에 열린다.
 - 포트가 쓰는 중이면 1 씩 올려 빈 포트로 연다(PORT 부터, 엔진은 그 다음 번호부터). 바뀌면 콘솔에 알린다.
 
@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import os
-import secrets
 import socket
 import subprocess
 import sys
@@ -239,7 +238,8 @@ def pick_port(want: int, host: str, what: str, *, avoid=()) -> int:
 def wait_engine(proc: subprocess.Popen, url: str, token: str, timeout: float = 180.0) -> bool:
     """엔진 서버가 /health 에 답할 때까지 기다린다. 엔진 프로세스가 먼저 끝나면 False."""
     end = time.monotonic() + timeout
-    req = urllib.request.Request(url + "/health", headers={"X-PL-Token": token})
+    headers = {"X-PL-Token": token} if token else {}
+    req = urllib.request.Request(url + "/health", headers=headers)
     while time.monotonic() < end:
         if proc.poll() is not None:
             return False
@@ -289,9 +289,7 @@ def main() -> int:
         print(exc)
         return 1
 
-    # 엔진 비밀값. PL_GATEWAY_TOKEN 을 정해 두면 다른 PC 의 엔진(run_backend.py --token 같은 값)도 화면에서 더할 수 있다.
-    # 없으면 이번 실행에만 쓰는 값을 만든다(어디에도 저장·출력하지 않는다. 이때는 이 PC 의 엔진만 붙는다)
-    token = os.environ.get("PL_GATEWAY_TOKEN") or secrets.token_urlsafe(24)
+    token = os.environ.get("PL_GATEWAY_TOKEN", "")
     engine_url = f"http://127.0.0.1:{engine_port}"
     print(f"\n엔진 서버를 띄우는 중... ({engine_url}, 이 PC 안에서만)")
     engine = start_engine(engine_port, token)
