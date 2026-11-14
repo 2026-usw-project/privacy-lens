@@ -78,11 +78,10 @@ class Job:
 
 def plan(kind: str, *, ocr_key: str, judge_key: str, megapixels: Optional[float], detector: bool) -> list[Stage]:
     """요청 종류별 단계 계획. 재판독(reread)은 YOLO 가 문서를 찾아야 생기므로 계획에 넣지 않고 시작할 때 끼운다."""
+    if kind == "redact":
+        return [Stage("decode", megapixels), Stage("mask", megapixels), Stage("export", megapixels)]
     analysis = [Stage(ocr_key, megapixels)] + ([Stage("detect", megapixels)] if detector else []) \
         + [Stage(judge_key), Stage("codes", megapixels)]
-    if kind == "redact":
-        head = [Stage("decode", megapixels), Stage("mask", megapixels), Stage("export", megapixels)]
-        return head + analysis
     return [Stage("decode", megapixels)] + analysis
 
 

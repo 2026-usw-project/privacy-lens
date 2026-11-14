@@ -1,6 +1,6 @@
 'use strict';
 (() => {
-  // 화면 동작. 분석·판정·가림·검증은 전부 Privacy Lens 서버가 한다(api.js).
+  // 화면 동작. 분석·판정·가림은 전부 Privacy Lens 서버가 한다(api.js).
   // 이 파일은 사진 표시, 결과 목록, 영역 편집, 대기열 표시만 맡는다.
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -11,7 +11,7 @@
   const Core=PrivacyLensCore, Api=PrivacyLensAPI, api=Api.client();
   const state = { source:null, file:null, phase:'empty', rawOcr:null, rawOcrNote:'', showRawOcr:false, rawFocused:null, regions:[], focused:null, editing:null, history:[], mode:'original', style:'blur', compare:50, drawing:false,
     sample:false, sampleKey:null, width:0, height:0, name:'', bytes:0, serverImage:false, dev:Core.devSettings(null), analyzedJudge:'', analysisStatus:'idle', groups:[], gps:[], issues:[],
-    backend:'', elapsedMs:0, zoom:1, loadToken:0, exportToken:0, exportUrl:null, nextId:1, toastTimer:null,
+    backend:'', elapsedMs:0, zoom:1, loadToken:0, exportToken:0, nextId:1, toastTimer:null,
     requestController:null, requestSerial:0, saving:false, saveError:'', ticket:null, previewState:'none', previewSeq:0 };
   try { const saved=localStorage.getItem('pl.maskStyle'); if(Core.STYLES.includes(saved)) state.style=saved; } catch(_) {}
   // 판단 모델 창 설정(판단 방법·모델·API 키)은 이 브라우저에만 둔다. 서버는 요청마다 받아 쓰고 저장하지 않는다.
@@ -72,7 +72,7 @@
   }
   // 영역이 바뀌면 가림 미리보기를 다시 받아야 한다.
   function invalidate() {
-    state.previewState='stale'; state.exportToken++;
+    state.previewState='stale';releaseExport();
     if (state.source && state.phase === 'review') setStep(2);
     if (state.mode !== 'original') schedulePreview();
   }
@@ -83,10 +83,8 @@
   }
   function releaseExport() {
     state.exportToken++;
-    if (state.exportUrl) URL.revokeObjectURL(state.exportUrl);
-    state.exportUrl = null;
     downloadBlob = null;
-    $('#exportPreview').removeAttribute('src');
+    $('#shareButton').classList.add('hidden');
   }
   function reset() {
     cancelRequests();state.zoom=1;state.analysisStatus='idle';state.issues=[];state.groups=[];state.gps=[];state.backend='';
@@ -655,7 +653,7 @@
     try {
       const file=await uploadFile();
       if(serial!==state.requestSerial)return;
-      const data=await api.redact(file,boxes,state.style,{ticket,judge:Core.judgeField(state.dev),signal:state.requestController.signal});
+      const data=await api.redact(file,boxes,state.style,{ticket,signal:state.requestController.signal});
       if(token!==state.exportToken||serial!==state.requestSerial)return;
       const bytes=Uint8Array.from(atob(data.file),c=>c.charCodeAt(0));
       const blob=new Blob([bytes],{type:'image/jpeg'});
@@ -663,11 +661,13 @@
       const check=await loadImage(candidateUrl);
       if(check.naturalWidth!==state.width||check.naturalHeight!==state.height)throw new Error('저장된 사진의 크기가 원본과 달라요. 다시 시도해 주세요.');
       if(token!==state.exportToken||serial!==state.requestSerial)return;
-      if(state.exportUrl)URL.revokeObjectURL(state.exportUrl);
-      downloadBlob=blob;state.exportUrl=candidateUrl;candidateUrl=null;$('#exportPreview').src=state.exportUrl;
-      showVerdict(data.verification,boxes.length);
+      clearTimeout(previewTimer);state.previewSeq++;
+      protectedContext.clearRect(0,0,state.width,state.height);
+      protectedContext.drawImage(check,0,0,state.width,state.height);
+      state.previewState='ready';
+      downloadBlob=blob;
+      download();
       $('#shareButton').classList.toggle('hidden',!canShareFile());
-      showDialog('exportDialog');
     } catch(error) {
       if(serial===state.requestSerial && error.name!=='AbortError' && error.status!==409) {state.saveError=error.message||'저장하지 못했어요. 다시 시도해 주세요.';notify(state.saveError,true);}
     } finally {
@@ -675,21 +675,6 @@
       if(serial===state.requestSerial){stopLive();state.saving=false;state.requestController=null;state.ticket=null;$('#saveState').classList.toggle('hidden',!state.saveError);$('#saveStateText').textContent=state.saveError;$('#cancelExport').classList.toggle('hidden',!!state.saveError);syncPanels();pollSoon();}
     }
   }
-  // 서버가 결과 파일을 실제로 다시 읽어 검사한 결과. 통과 기준은 '선택한 영역마다 다시
-  // 탐지되는 것이 없고 위치정보가 남지 않음'이다.
-  function showVerdict(v,selected) {
-    $('#exportOrigin').textContent='Privacy Lens 서버 처리 · 결과 파일을 다시 검사함';
-    $('#exportRegionCount').textContent=selected?selected+'개 영역 · '+(state.style==='solid'?'검은색':'흐리게'):'가린 영역 없음';
-    $('#exportMetadata').textContent=v.had_gps?(v.gps_removed?'위치정보 제거됨':'위치정보 남아 있음'):'원본 메타데이터 제외';
-    const warning=$('#exportWarning');warning.dataset.state=v.passed?'pass':'fail';
-    const rest=v.remaining_count?' 선택하지 않은 곳에 검토할 항목이 '+v.remaining_count+'건 남아 있어요.':'';
-    const lines=[];
-    if(v.passed) lines.push((selected?'가린 '+selected+'곳을 다시 검사했고 남은 내용이 없어요.':'메타데이터를 지웠어요.')+(v.had_gps?' 위치정보도 제거했어요.':'')+rest+' 공유 전에 사진 전체를 한 번 더 확인해 주세요.');
-    else if(!v.gps_removed) lines.push('결과 파일에서 위치정보가 다시 탐지됐어요. 이 파일은 올리지 마세요.');
-    else {lines.push('가린 영역 근처에서 '+v.leaked_count+'건이 다시 탐지됐어요. 영역을 더 넓게 지정해 보세요.');(v.leaked||[]).slice(0,5).forEach(f=>lines.push('· '+String(f.message||'')));}
-    warning.replaceChildren(...lines.map(t=>{const p=document.createElement('p');p.textContent=t;return p;}));
-  }
-
   function download() {
     if(!downloadBlob)return;
     const url=URL.createObjectURL(downloadBlob);
@@ -697,7 +682,7 @@
     const base=state.name.replace(/\.[^/.]+$/,'').replace(/[<>:"/\\|?*\x00-\x1F]/g,'_').slice(0,90) || 'photo';
     a.href=url;a.download=base+'-privacy-lens.jpg';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),30000);
-    closeDialog($('#exportDialog'));setStep(3);state.mode='protected';renderImage();if(state.previewState!=='ready')schedulePreview();
+    setStep(3);state.mode='protected';renderImage();
     notify('다운로드를 요청했어요. 브라우저의 다운로드 목록을 확인하세요.');
   }
 
@@ -713,7 +698,6 @@
     if(!canShareFile())return;
     try {
       await navigator.share({files:[exportFile()],title:'Privacy Lens'});
-      closeDialog($('#exportDialog'));setStep(3);state.mode='protected';renderImage();if(state.previewState!=='ready')schedulePreview();
       notify('가린 사진을 공유했어요.');
     } catch(error) {
       if(error.name!=='AbortError')notify('공유하지 못했어요. 다운로드로 저장해 주세요.',true);
@@ -758,7 +742,7 @@
   }
   async function beginAnalysis() {
     if(!state.source||state.saving)return;
-    cancelRequests();
+    cancelRequests();releaseExport();
     Object.assign(state,{rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,issues:[],groups:[],gps:[],mode:'original',phase:'scanning',analysisStatus:'running',drawing:false,previewState:'none'});
     syncDrawing();render();
     $('#scanningPanel').classList.add('server-analysis');
@@ -852,7 +836,6 @@
   $$('[data-close]').forEach(button=>button.addEventListener('click',()=>closeDialog(button.closest('dialog'))));
   $$('dialog').forEach(dialog=>{
     dialog.addEventListener('click',event=>{if(event.target===dialog){const box=dialog.getBoundingClientRect();if(event.clientX<box.left || event.clientX>box.right || event.clientY<box.top || event.clientY>box.bottom)closeDialog(dialog);}});
-    dialog.addEventListener('close',()=>{if(dialog.id==='exportDialog')releaseExport();});
   });
   $('#workspaceNav').addEventListener('click',()=>{$('#workspace').scrollIntoView({behavior:'smooth',block:'start'});});
   $('#changePhoto').addEventListener('click',()=>{reset();notify('새 사진이나 샘플을 선택해 주세요.');});
@@ -995,7 +978,6 @@
   });
   document.addEventListener('keydown',event=>{if(event.key==='Escape' && state.drawing){state.drawing=false;gesture=null;syncDrawing();}});
   $('#saveButton').addEventListener('click',prepareExport);
-  $('#downloadButton').addEventListener('click',download);
   $('#shareButton').addEventListener('click',share);
   // 서버가 실제로 찾는 항목(pipeline/kr_patterns.py, metadata.py)
   const targets=[['id','이름','받는분·성명 같은 라벨 바로 뒤'],['box','연락처','휴대전화 · 유선 · 이메일. 대표번호는 참고로'],['pin','주소','도로명주소 · 동·호수'],['lock','주민등록번호','체크섬 · 2020년 이후 형식'],['file','카드번호','Luhn 검증'],['box','운송장번호','운송장 라벨 옆 긴 숫자'],['file','차량번호','실제 번호판 글자만'],['grid','QR · 바코드','안의 내용까지 검사, 링크는 열지 않음'],['pin','위치정보','사진 파일의 GPS 좌표']];

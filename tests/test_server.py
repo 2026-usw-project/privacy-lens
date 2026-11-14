@@ -204,8 +204,7 @@ def test_redact_gps_only_and_rotation(client):
     out = Image.open(io.BytesIO(base64.b64decode(body["file"])))
     assert out.size == (200, 300)
     assert not out.getexif()
-    v = body["verification"]
-    assert v["had_gps"] and v["gps_removed"]
+    assert body["selected_count"] == 0
 
 
 def test_queue_endpoints(client):
@@ -266,7 +265,7 @@ def test_redact_clamps_boxes_outside_image(client):
     r = client.post("/redact", files={"image": ("a.png", png())},
                     data={"boxes": json.dumps(boxes)})
     assert r.status_code == 200
-    assert r.json()["verification"]["selected_count"] == 1
+    assert r.json()["selected_count"] == 1
 
 
 def test_redact_accepts_outline(client):
@@ -361,8 +360,7 @@ def test_concurrent_requests_wait_and_recover(monkeypatch):
         backend.close()
 
 
-@pytest.mark.parametrize("path", ["/analyze", "/redact"])
-def test_ocr_failure_returns_no_result(client, monkeypatch, path):
+def test_ocr_failure_blocks_analysis_but_allows_save(client, monkeypatch):
     from pipeline.worker import OcrUnavailable
 
     class FailedEngine:
@@ -372,10 +370,23 @@ def test_ocr_failure_returns_no_result(client, monkeypatch, path):
             raise OcrUnavailable()
 
     monkeypatch.setattr(server, "_backend", FailedEngine())
-    response = client.post(path, files={"image": ("a.png", png())})
+    image = png()
+    response = client.post("/analyze", files={"image": ("a.png", image)})
     assert response.status_code == 503
     assert set(response.json()) == {"detail"}
     assert server.QUEUE.status()["running"] == 0
+
+    import base64
+    boxes = [{"x": 10, "y": 10, "w": 100, "h": 40}]
+    saved = client.post("/redact", files={"image": ("a.png", image)},
+                        data={"boxes": json.dumps(boxes), "style": "solid"})
+    assert saved.status_code == 200
+    body = saved.json()
+    assert set(body) == {"file", "bytes", "selected_count"}
+    assert body["selected_count"] == 1
+    with Image.open(io.BytesIO(base64.b64decode(body["file"]))) as out:
+        assert max(out.getpixel((60, 30))) < 60
+        assert min(out.getpixel((220, 160))) > 200
 
 
 def test_lifespan_releases_worker(monkeypatch):
@@ -403,10 +414,6 @@ def test_invalid_gps_does_not_break_json(client, monkeypatch, value):
     gps = next(f for f in response.json()["report"]["findings"] if f["kind"] == "gps")
     assert gps["certainty"] == "region"
     assert gps["detail"] == {}
-    response = client.post("/redact", files={"image": ("a.png", png())})
-    assert response.status_code == 200
-    assert response.json()["verification"]["had_gps"] is True
-    assert response.json()["verification"]["gps_removed"] is True
 
 
 def test_zero_denominator_gps_is_reported(client, monkeypatch):

@@ -75,13 +75,13 @@ await test('analyze posts original file and ticket, no judge for rules',async()=
     assert.equal(o.body.get('mode'),null);assert.equal(o.body.get('judge'),null);return json({report,preview:'',preview_scale:1});});
   assert.equal((await api.analyze(file,{judge:C.judgeField(C.devSettings(null)),ticket:'t-12345678'})).report.width,400);
 });
-await test('analyze and redact carry the developer-mode judge',async()=>{
+await test('only analyze carries the developer-mode judge',async()=>{
   const dev=C.devSettings({provider:'gemini',providers:{gemini:{apiKey:'test-key-not-real'}}});
   const judge=C.judgeField(dev);
   assert.deepEqual(JSON.parse(judge),{provider:'gemini',model:'gemini-flash-latest',api_key:'test-key-not-real',base_url:''});
-  const seen=[];const api=A.client('',async(url,o)=>{seen.push([url,o.body.get('judge')]);return json({report,file:'',verification:{passed:true}});});
+  const seen=[];const api=A.client('',async(url,o)=>{seen.push([url,o.body.get('judge')]);return json({report});});
   await api.analyze(file,{judge});await api.redact(file,[],'blur',{judge});
-  assert.deepEqual(seen,[['/analyze',judge],['/redact',judge]]);
+  assert.deepEqual(seen,[['/analyze',judge],['/redact',null]]);
 });
 await test('preview posts boxes and style',async()=>{
   const boxes=[{x:1,y:2,w:3,h:4}];
@@ -89,8 +89,8 @@ await test('preview posts boxes and style',async()=>{
   assert.equal((await api.preview(file,boxes,'solid')).style,'solid');
 });
 await test('redact posts boxes, style and ticket',async()=>{
-  const api=A.client('',async(url,o)=>{assert.equal(url,'/redact');assert.equal(o.body.get('ticket'),'abc-12345');assert.equal(o.body.get('style'),'blur');return json({file:'',verification:{passed:true}});});
-  assert.equal((await api.redact(file,[],'blur',{ticket:'abc-12345'})).verification.passed,true);
+  const api=A.client('',async(url,o)=>{assert.equal(url,'/redact');assert.equal(o.body.get('ticket'),'abc-12345');assert.equal(o.body.get('style'),'blur');assert.deepEqual(JSON.parse(o.body.get('boxes')),[]);return json({file:'jpeg',bytes:3,selected_count:0});});
+  assert.equal((await api.redact(file,[],'blur',{ticket:'abc-12345'})).file,'jpeg');
 });
 await test('queue badge shows engine count only behind the gateway',()=>{
   const one=C.queueBadge({engine_ready:true,running:0,waiting:0});
