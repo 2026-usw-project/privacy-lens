@@ -87,8 +87,8 @@ python -m pip install paddleocr
 `nvidia-smi`로 GPU와 드라이버를 확인하세요. 이 예시는 글자 인식에 PaddlePaddle CUDA 11.8 빌드, YOLO와 ONNX에 CUDA 12 계열을 사용합니다. Linux에서 PaddlePaddle과 PyTorch의 CUDA 12.6 빌드를 같은 환경에 설치하면 NCCL 요구 버전이 충돌할 수 있어, 이 예시에서는 두 프레임워크의 CUDA 빌드를 구분했습니다. 드라이버는 CUDA 12.6을 지원해야 합니다. [PaddlePaddle GPU 배포 목록](https://www.paddlepaddle.org.cn/packages/stable/cu118/paddlepaddle-gpu/) · [PyTorch 설치 안내](https://pytorch.org/get-started/previous-versions/#v271) · [ONNX Runtime CUDA 안내](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)
 
 ```bash
-python3.12 -m venv .venv-gpu
-source .venv-gpu/bin/activate
+python3.12 -m venv .venv
+source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu126
 python -m pip install -r requirements.txt
@@ -119,20 +119,20 @@ py -3.12 -m venv .venv
 아래는 **CUDA 12.6 빌드** 예시입니다. 먼저 `nvidia-smi`로 GPU와 드라이버를 확인하고, PaddlePaddle과 ONNX Runtime이 요구하는 CUDA·cuDNN 9 라이브러리를 준비합니다. 배포 파일과 요구 조건은 [PaddlePaddle GPU 배포 목록](https://www.paddlepaddle.org.cn/packages/stable/cu126/paddlepaddle-gpu/), [PyTorch 설치 안내](https://pytorch.org/get-started/previous-versions/#v271), [ONNX Runtime CUDA 안내](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)를 참고하세요.
 
 ```powershell
-py -3.12 -m venv .venv-gpu
-.\.venv-gpu\Scripts\python.exe -m pip install --upgrade pip
-.\.venv-gpu\Scripts\python.exe -m pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu126
-.\.venv-gpu\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv-gpu\Scripts\python.exe -m pip install paddlepaddle-gpu==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
-.\.venv-gpu\Scripts\python.exe -m pip install paddleocr
-.\.venv-gpu\Scripts\python.exe -m pip uninstall -y onnxruntime
-.\.venv-gpu\Scripts\python.exe -m pip install onnxruntime-gpu==1.20.1
-.\.venv-gpu\Scripts\python.exe -m pip check
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu126
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install paddlepaddle-gpu==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+.\.venv\Scripts\python.exe -m pip install paddleocr
+.\.venv\Scripts\python.exe -m pip uninstall -y onnxruntime
+.\.venv\Scripts\python.exe -m pip install onnxruntime-gpu==1.20.1
+.\.venv\Scripts\python.exe -m pip check
 ```
 
 #### GPU 사용 확인 (Linux·Windows 공통)
 
-아래 명령의 `python`은 Linux에서는 활성화한 가상환경의 Python을, Windows에서는 `.\.venv-gpu\Scripts\python.exe`를 뜻합니다. GPU 환경에서는 PaddleOCR이 `paddlepaddle-gpu`를, `.pt` YOLO 모델은 CUDA용 PyTorch를, `.onnx` 모델은 `onnxruntime-gpu`를 사용합니다.
+아래 명령의 `python`은 Linux에서는 활성화한 가상환경의 Python을, Windows에서는 `.\.venv\Scripts\python.exe`를 뜻합니다. GPU 환경에서는 PaddleOCR이 `paddlepaddle-gpu`를, `.pt` YOLO 모델은 CUDA용 PyTorch를, `.onnx` 모델은 `onnxruntime-gpu`를 사용합니다.
 
 ```powershell
 python -c "import paddle; paddle.utils.run_check(); print(paddle.device.get_device())"
@@ -149,7 +149,7 @@ python -m pipeline.objects download
 python run.py
 ```
 
-Windows에서는 위 두 명령의 `python`을 설치한 환경에 따라 `.\.venv\Scripts\python.exe` 또는 `.\.venv-gpu\Scripts\python.exe`로 바꿉니다.
+Windows에서는 위 두 명령의 `python`을 `.\.venv\Scripts\python.exe`로 바꿉니다.
 
 실행 후 [http://127.0.0.1:8000](http://127.0.0.1:8000)에 접속합니다.
 
