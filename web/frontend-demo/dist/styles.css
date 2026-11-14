@@ -250,7 +250,9 @@ main{padding:8px 24px 16px}
     linear-gradient(var(--hud),var(--hud)) 100% 100%/var(--c) 2px no-repeat,
     linear-gradient(var(--hud),var(--hud)) 100% 100%/2px var(--c) no-repeat,
     var(--hud-fill);
-  pointer-events:auto;cursor:grab;touch-action:none;transition:background-color .12s,box-shadow .16s,border-color .16s}
+  pointer-events:auto;cursor:pointer;touch-action:pan-x pan-y;transition:background-color .12s,box-shadow .16s,border-color .16s}
+/* 잠금: 고른 영역만 끌 수 있다. 고르지 않은 영역 위에서는 휴대폰 화면이 그대로 스크롤된다. */
+.region-box.focused{cursor:grab;touch-action:none}
 .region-box:hover,.region-box.focused{--hud-fill:color-mix(in srgb,var(--accent) 16%,transparent)}
 /* 고른 순간에만 테두리가 또렷해진다. 가만히 있을 때 움직이는 것은 없다. */
 .region-box.focused{--c:13px;border-color:color-mix(in srgb,var(--hud) 70%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--hud) 28%,transparent);z-index:2}
@@ -265,7 +267,8 @@ main{padding:8px 24px 16px}
 .region-box.unselected>span{background:var(--tag-dim)}
 /* 크기 조절 손잡이는 마우스를 올렸거나 고른 박스에서만 보인다. 사진 위가 손잡이로 어수선해지지 않게. */
 .region-box .resize-handle{position:absolute;right:-6px;bottom:-6px;width:12px;height:12px;border:2px solid var(--primary);border-radius:3px;background:#fff;cursor:nwse-resize;pointer-events:auto;opacity:0;transition:opacity .12s}
-.region-box:hover .resize-handle,.region-box.focused .resize-handle{opacity:1}
+.region-box .resize-handle{pointer-events:none}
+.region-box.focused .resize-handle{opacity:1;pointer-events:auto}
 .region-box .resize-handle:before{content:"";position:absolute;inset:-9px}
 .draw-preview{position:absolute;border:2px solid var(--primary);border-radius:3px;background:color-mix(in srgb,var(--primary) 14%,transparent);pointer-events:none}
 .scan-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;background:color-mix(in srgb,var(--surface) 22%,transparent)}

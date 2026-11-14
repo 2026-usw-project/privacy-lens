@@ -324,8 +324,9 @@
       box.className='region-box'+(!r.enabled?' unselected':'')+(state.focused===r.id?' focused':'')+(r.severity?' sev-'+r.severity:'')+(r.certainty&&r.certainty!=='read'?' cert-'+r.certainty:'')+(r.poly?' poly':'');
       box.dataset.id=r.id;
       box.setAttribute('aria-pressed',String(state.focused===r.id));
-      box.setAttribute('aria-label',r.label+' 영역. 방향키로 이동, Alt와 방향키로 크기 조절');
-      box.title=r.label+' · 끌어서 이동, 모서리를 끌어 크기 조절';
+      // 영역은 평소에 잠겨 있다(스크롤하다 실수로 움직이지 않게). 한 번 눌러 고른 영역만 옮기고 크기를 바꿀 수 있다.
+      box.setAttribute('aria-label',r.label+' 영역. '+(state.focused===r.id?'방향키로 이동, Alt와 방향키로 크기 조절':'Enter 로 고르면 옮기거나 크기를 바꿀 수 있어요'));
+      box.title=r.label+(state.focused===r.id?' · 끌어서 이동, 모서리를 끌어 크기 조절':' · 눌러서 고르면 옮기거나 크기를 바꿀 수 있어요');
       box.style.left=(r.x*100)+'%';box.style.top=(r.y*100)+'%';box.style.width=(r.w*100)+'%';box.style.height=(r.h*100)+'%';
       if(r.poly) {
         // 기울어진 글자는 실제 외곽선을 그린다. 가릴 때도 이 모양을 쓴다.
@@ -427,7 +428,7 @@
     renderList();
   }
 
-  function render() { renderImage();renderBoxes();renderReview();renderRawOcr();syncPanels(); }
+  function render() { renderImage();renderBoxes();renderReview();renderRawOcr();syncPanels();if(!gesture)syncDrawing(); }
 
   // 원문은 읽기 전용이며 가림 선택·편집 이력과 분리한다.
   function renderRawOcr() {
@@ -467,7 +468,7 @@
       state.showRawOcr=false;renderRawOcr();
       state.mode='original';renderImage();
       $('#toolHint').textContent='사진을 드래그해서 가릴 부분을 선택하세요.';
-    } else $('#toolHint').textContent='놓친 곳은 직접 추가할 수 있어요.';
+    } else $('#toolHint').textContent=state.focused?'고른 영역을 끌어 옮기거나 모서리로 크기를 바꿔요. 빈 곳을 누르면 다시 잠겨요.':'영역을 누르면 옮기거나 크기를 바꿀 수 있어요. 놓친 곳은 직접 추가해요.';
   }
   function point(event) { return Core.screenPoint(event.clientX,event.clientY,$('#canvasWrap').getBoundingClientRect()); }
 
@@ -761,7 +762,7 @@
       Object.assign(state,{rawOcr:result.rawOcr,rawOcrNote:result.rawOcrNote,regions:result.regions,groups:result.groups,gps:result.gps,backend:result.backend,elapsedMs:result.elapsedMs,
         judgeShown:result.judgeProvider==='rules'?'문맥·결합':result.judge,
         issues:result.partial?['일부 영역은 글자가 흐려 내용을 확인하지 못했어요. 점선 영역을 확대해서 직접 확인해 주세요.']:[],
-        analysisStatus:result.regions.length?(result.partial?'partial':'completed'):'empty',phase:'review',focused:result.regions[0]?.id||null});
+        analysisStatus:result.regions.length?(result.partial?'partial':'completed'):'empty',phase:'review',focused:null});   // 처음에는 모든 영역이 잠겨 있다
       invalidate();render();setStep(2);
       notify(result.regions.length?result.regions.length+'개 항목을 찾았어요. '+(state.regions.filter(r=>r.enabled).length?'가림 권장 '+state.regions.filter(r=>r.enabled).length+'개는 미리 골라 뒀어요.':'가릴 항목을 골라 주세요.'):'탐지된 항목이 없어요. 사진을 직접 확인해 주세요.');
     } catch(error) {if(serial===state.requestSerial && error.name!=='AbortError' && error.status!==409)analysisFailure(error.message);}
@@ -954,22 +955,31 @@
     if(!state.source || state.phase!=='review' || state.mode!=='original' || event.button!==0)return;
     const wrap=$('#canvasWrap'),p=point(event);
     if(state.drawing) {event.preventDefault();gesture={type:'draw',start:p,pointerId:event.pointerId};wrap.setPointerCapture(event.pointerId);return;}
-    const box=event.target.closest('.region-box');if(!box)return;
-    event.preventDefault();
+    const box=event.target.closest('.region-box');
+    // 빈 곳을 누르면 고른 영역을 풀어 다시 잠근다
+    if(!box){if(state.focused){state.focused=null;render();}return;}
     const region=state.regions.find(r=>r.id===box.dataset.id);if(!region)return;
-    state.focused=region.id;renderReview();
-    $$('.region-box').forEach(el=>el.classList.toggle('focused',el.dataset.id===region.id));
+    // 고르지 않은 영역은 잠겨 있다. 누르기(click)로 고르기만 하고, 끌어도 움직이지 않는다(휴대폰에서는 화면이 스크롤된다).
+    if(state.focused!==region.id)return;
+    event.preventDefault();
     gesture={type:event.target.dataset.resize?'resize':'move',id:region.id,start:p,original:clone(region),changed:false,pointerId:event.pointerId};
     wrap.setPointerCapture(event.pointerId);
   });
   $('#canvasWrap').addEventListener('pointermove',moveGesture);
   $('#canvasWrap').addEventListener('pointerup',event=>endGesture(event));
   $('#canvasWrap').addEventListener('pointercancel',event=>endGesture(event,true));
+  $('#regionLayer').addEventListener('click',event=>{
+    const box=event.target.closest('.region-box');if(!box || state.drawing || state.focused===box.dataset.id)return;
+    focusRegion(box.dataset.id,'photo');
+    $$('.region-box').find(el=>el.dataset.id===box.dataset.id)?.focus({preventScroll:true});
+  });
   $('#regionLayer').addEventListener('keydown',event=>{
     const box=event.target.closest('.region-box');if(!box)return;
     const r=state.regions.find(r=>r.id===box.dataset.id);if(!r)return;
     if(event.key==='Enter' || event.key===' '){event.preventDefault();focusRegion(r.id,'photo');return;}
+    if(event.key==='Escape' && state.focused===r.id){state.focused=null;render();return;}
     if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;
+    if(state.focused!==r.id)return;   // 잠긴 영역은 방향키로도 움직이지 않는다
     event.preventDefault();pushHistory();
     const amount = event.shiftKey ? .001 : .01;
     if(event.altKey){if(event.key==='ArrowLeft')r.w-=amount;if(event.key==='ArrowRight')r.w+=amount;if(event.key==='ArrowUp')r.h-=amount;if(event.key==='ArrowDown')r.h+=amount;r.w=clamp(r.w,.008,1-r.x);r.h=clamp(r.h,.008,1-r.y);r.poly=null;}
