@@ -126,6 +126,14 @@ await test('engine admin sends the key only in a header',async()=>{
   assert.ok(seen.every(x=>x.o.headers['X-PL-Admin']==='k-1'&&!x.url.includes('k-1')));
   assert.deepEqual(JSON.parse(seen[1].o.body),{url:'http://192.168.0.21:8000'});
 });
+await test('engine order sends every url in the new order, key only in a header',async()=>{
+  let seen=null;
+  const api=A.client('',async(url,o)=>{seen={url,o};return json({engines:[],total:0,alive:0,busy:0});});
+  await api.orderEngines('k-2',['http://b:8000','http://a:8000']);
+  assert.equal(seen.url,'/admin/engines/order');assert.equal(seen.o.method,'POST');
+  assert.equal(seen.o.headers['X-PL-Admin'],'k-2');
+  assert.deepEqual(JSON.parse(seen.o.body),{urls:['http://b:8000','http://a:8000']});
+});
 await test('queue asks with ticket',async()=>{
   const api=A.client('',async(url,o)=>{assert.equal(url,'/queue?ticket=a%20b');assert.equal(o.method,'GET');return json({running:0,waiting:0});});
   await api.queue('a b');

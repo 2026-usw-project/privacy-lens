@@ -13,6 +13,8 @@
 - **엔진 목록 관리**: 화면의 '엔진 N대'를 누르면 엔진을 더하고 뺄 수 있다(/admin/engines). 관리 키(PL_ADMIN_KEY,
   X-PL-Admin 헤더)가 맞을 때만 된다. 누구나 엔진을 빼거나(서비스 중단) 자기 서버를 넣으면(사진이 그리로 감) 안 되기 때문이다.
   목록 변경은 메모리에만 남고, 게이트웨이를 다시 켜면 실행 옵션(--backend)의 목록으로 돌아간다.
+- **엔진 순서 = 우선순위**: 비어 있는 엔진 가운데 목록 맨 위에 가까운 엔진이 먼저 맡는다(OCR 준비 중인 엔진은 준비된 엔진 뒤).
+  화면에서 끌어 순서를 바꾼다(/admin/engines/order).
 - **무상태 원칙은 그대로다.** 기다리는 사진은 메모리에만 있고, 디스크·로그에 남기지 않는다. 결과도 돌려주면 버린다
   (같은 번호표 재시도를 위해 끝난 뒤 30초만 메모리에 둔다).
 """
@@ -217,6 +219,18 @@ class Gateway:
                  " (처리 중인 1건은 끝까지 받습니다)" if b.busy else "")
         return b
 
+    def reorder_backends(self, raws: list[str]) -> None:
+        """목록 순서를 바꾼다. 지금 목록과 같은 엔진들을 빠짐없이 한 번씩 줘야 한다."""
+        urls = [backend_url(u) for u in raws]
+        now = {b.url: b for b in self.backends}
+        if len(urls) != len(set(urls)):
+            raise GatewayError(400, "같은 엔진이 두 번 들어 있습니다.")
+        if set(urls) != set(now):
+            raise GatewayError(409, "그사이 엔진 목록이 바뀌었습니다. 목록을 다시 불러온 뒤 순서를 정해 주세요.")
+        self.backends[:] = [now[u] for u in urls]
+        log.info("관리: 엔진 순서를 바꿨습니다 — %s", " > ".join(urls))
+        self.wake.set()
+
     async def check_all(self) -> None:
         await asyncio.gather(*(self.check(b) for b in list(self.backends)))
 
@@ -411,6 +425,26 @@ def create_app(backends: list[str], *, token: str = "", serve_front: bool = True
         except GatewayError as exc:
             return error(exc.status, exc.detail)
         return {"added": b.info(), **engine_list()}
+
+    @app.post("/admin/engines/order")
+    async def admin_order(request: Request):
+        if (denied := admin_error(request)) is not None:
+            return denied
+        try:
+            body = await request.json()
+        except ValueError:
+            return error(400, "요청 형식이 올바르지 않습니다.")
+        urls = body.get("urls") if isinstance(body, dict) else None
+        if not isinstance(urls, list) or not all(isinstance(u, str) and len(u) <= 300 for u in urls) \
+                or len(urls) > MAX_BACKENDS:
+            return error(400, "엔진 주소 목록(urls)이 필요합니다.")
+        try:
+            gw.reorder_backends(urls)
+        except ValueError as exc:
+            return error(400, str(exc))
+        except GatewayError as exc:
+            return error(exc.status, exc.detail)
+        return engine_list()
 
     @app.post("/admin/engines/remove")
     async def admin_remove(request: Request):

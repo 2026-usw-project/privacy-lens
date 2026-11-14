@@ -658,18 +658,71 @@
   function setAdminKey(value) { state.adminKey=value; }
   function engineMessage(text,error=false) { const el=$('#engineStatus');el.textContent=text||'';el.classList.toggle('error',!!error); }
   function showEngineKey(show) { $('#engineKeyForm').classList.toggle('hidden',!show);$('#engineManage').classList.toggle('hidden',show); }
+  // 목록 순서 = 우선순위. 손잡이를 끌거나(마우스·터치, 포인터 이벤트) 손잡이에서 ↑↓ 로 옮기면 게이트웨이에 새 순서를 보낸다.
+  let engineDrag=null;
+  const engineOrder=()=>$$('#engineList li[data-url]').map(li=>li.dataset.url);
+  function engineRanks() {
+    $$('#engineList li[data-url]').forEach((li,i)=>{li.querySelector('small').textContent=(i+1)+'순위 · '+li.dataset.label;});
+  }
+  async function saveEngineOrder(before,focusUrl) {
+    const after=engineOrder();
+    if(after.join('\n')===before.join('\n'))return;
+    try{
+      const data=await api.orderEngines(adminKey(),after);renderEngines(data);
+      engineMessage('순서를 바꿨어요. 맨 위 서버부터 먼저 맡아요.');
+      if(focusUrl)$$('#engineList li[data-url]').find(li=>li.dataset.url===focusUrl)?.querySelector('.grip')?.focus();
+    } catch(error){engineFailed(error);loadEngines(true);}
+  }
+  function engineHandle(li,url) {
+    const grip=document.createElement('button');
+    grip.type='button';grip.className='grip';grip.innerHTML='<svg><use href="#i-grip"/></svg>';
+    grip.setAttribute('aria-label',url+' 순서 바꾸기(↑·↓)');grip.title='끌어서 순서 바꾸기';
+    // 줄을 DOM 에서 옮기면 손잡이의 포인터 붙잡기(setPointerCapture)가 풀려 pointerup 을 놓친다.
+    // 그래서 끄는 동안의 움직임·놓기는 window 에서 받는다.
+    const move=event=>{
+      if(engineDrag?.li!==li)return;
+      const list=$('#engineList'),others=[...list.children].filter(x=>x!==li&&x.dataset.url);
+      const target=others.find(o=>{const r=o.getBoundingClientRect();return event.clientY<r.top+r.height/2;});
+      if(target){if(li.nextElementSibling!==target)list.insertBefore(li,target);}
+      else if(list.lastElementChild!==li)list.append(li);
+      engineRanks();
+    };
+    const end=()=>{
+      window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',end);window.removeEventListener('pointercancel',end);
+      if(engineDrag?.li!==li)return;
+      const before=engineDrag.before;engineDrag=null;li.classList.remove('dragging');saveEngineOrder(before);
+    };
+    grip.addEventListener('pointerdown',event=>{
+      if(event.button!==0||engineDrag)return;
+      event.preventDefault();
+      engineDrag={li,before:engineOrder()};li.classList.add('dragging');
+      window.addEventListener('pointermove',move);window.addEventListener('pointerup',end);window.addEventListener('pointercancel',end);
+    });
+    grip.addEventListener('keydown',event=>{
+      if(event.key!=='ArrowUp'&&event.key!=='ArrowDown')return;
+      event.preventDefault();
+      const before=engineOrder(),sib=event.key==='ArrowUp'?li.previousElementSibling:li.nextElementSibling;
+      if(!sib)return;
+      if(event.key==='ArrowUp')li.parentNode.insertBefore(li,sib);else li.parentNode.insertBefore(sib,li);
+      engineRanks();grip.focus();saveEngineOrder(before,url);
+    });
+    return grip;
+  }
   function renderEngines(data) {
+    if(engineDrag)return; // 끄는 동안은 3초마다 오는 새 목록으로 덮지 않는다
     const list=$('#engineList'),engines=Array.isArray(data?.engines)?data.engines:[];
     if(!engines.length){const li=document.createElement('li');li.className='empty';li.textContent='엔진이 없어요. 아래에서 추가해 주세요.';list.replaceChildren(li);return;}
     list.replaceChildren(...engines.map(e=>{
       const row=Core.engineRow(e),li=document.createElement('li'),dot=document.createElement('i'),text=document.createElement('div'),
         url=document.createElement('code'),label=document.createElement('small'),remove=document.createElement('button');
-      li.className=row.tone;url.textContent=row.url;label.textContent=row.label;text.append(url,label);
+      li.className=row.tone;li.dataset.url=row.url;li.dataset.label=row.label;
+      url.textContent=row.url;text.append(url,label);
       remove.type='button';remove.className='icon-button';remove.innerHTML='<svg><use href="#i-close"/></svg>';
       remove.setAttribute('aria-label',row.url+' 목록에서 빼기');remove.title='목록에서 빼고 연결 끊기';
       remove.addEventListener('click',()=>removeEngine(row.url));
-      li.append(dot,text,remove);return li;
+      li.append(engineHandle(li,row.url),dot,text,remove);return li;
     }));
+    engineRanks();
   }
   function engineFailed(error) {
     if(error?.status===403){

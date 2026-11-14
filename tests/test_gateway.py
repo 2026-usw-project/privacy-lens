@@ -537,3 +537,33 @@ def test_engine_logs_disconnect_after_silence(engine_with_token):
     finally:
         server.log.removeHandler(handler)
     assert any("gw-pc(testclient) 연결이 끊겼습니다" in r.getMessage() for r in records)
+
+
+def test_admin_order_sets_priority():
+    """맨 위 엔진이 먼저 맡는다. 순서를 바꾸면 다음 요청부터 새 맨 위가 맡는다."""
+    async def body(client, gw, engines, router):
+        for e in engines.values():
+            e.gate.set()
+        assert (await post(client, T[0])).json()["engine"] == "e1"
+        r = await client.post("/admin/engines/order", json={"urls": ["http://e2:8000/", "http://e1:8000"]}, headers=H)
+        assert r.status_code == 200 and [e["url"] for e in r.json()["engines"]] == ["http://e2:8000", "http://e1:8000"]
+        assert (await post(client, T[1])).json()["engine"] == "e2"
+        r = await client.get("/admin/engines", headers=H)
+        assert [e["url"] for e in r.json()["engines"]] == ["http://e2:8000", "http://e1:8000"]
+
+    run_with_gateway(["e1", "e2"], body, admin_key=ADMIN)
+
+
+def test_admin_order_refuses_bad_lists():
+    async def body(client, gw, engines, router):
+        order = lambda urls, h=H: client.post("/admin/engines/order", json={"urls": urls}, headers=h)
+        assert (await order(["http://e1:8000"], {"X-PL-Admin": "wrong"})).status_code == 403
+        assert (await order(["http://e1:8000"])).status_code == 409                          # 하나 빠짐
+        assert (await order(["http://e1:8000", "http://e2:8000", "http://e3:8000"])).status_code == 409  # 없는 엔진
+        assert (await order(["http://e1:8000", "http://e1:8000"])).status_code == 400          # 두 번
+        assert (await order(["ftp://e1", "http://e2:8000"])).status_code == 400               # 주소 형식
+        r = await client.post("/admin/engines/order", json={"urls": "http://e1:8000"}, headers=H)
+        assert r.status_code == 400
+        assert [b.url for b in gw.backends] == ["http://e1:8000", "http://e2:8000"]           # 그대로
+
+    run_with_gateway(["e1", "e2"], body, admin_key=ADMIN)

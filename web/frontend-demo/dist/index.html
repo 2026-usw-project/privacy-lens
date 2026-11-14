@@ -48,7 +48,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 11a9 9 0 1 1 2 7M3 4v7h7"/></symbol>
 <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.4v2.2M12 19.4v2.2M4.2 12H2M22 12h-2.2M6.5 6.5 4.9 4.9M19.1 19.1l-1.6-1.6M17.5 6.5l1.6-1.6M4.9 19.1l1.6-1.6"/></symbol><symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.3A8.6 8.6 0 0 1 9.7 3.5a8.6 8.6 0 1 0 10.8 10.8Z"/></symbol>
 <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5-12-7.5Z"/></symbol>
-<symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5m8-10 5 5-5 5"/></symbol><symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5m8-10 5 5-5 5"/></symbol><symbol id="i-grip" viewBox="0 0 24 24"><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"/></symbol><symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></symbol>
 </svg>
 
 <aside class="sidebar">
@@ -242,7 +242,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <p class="dialog-intro">게이트웨이가 사진을 나눠 보내는 엔진 서버 목록이에요.</p>
 <form class="dev-form" id="engineKeyForm"><div class="dev-field"><label for="engineKey">관리 키</label><div class="dev-key"><input id="engineKey" type="password" autocomplete="off" spellcheck="false" maxlength="200" required><button type="submit" class="text-button">확인</button></div><p class="fine-print">보거나 바꾸려면 관리 키가 필요해요. 게이트웨이를 켠 콘솔에 나와요.</p></div></form>
 <div class="dev-form hidden" id="engineManage">
-  <ul class="engine-list" id="engineList" aria-label="엔진 서버 목록"></ul>
+  <ul class="engine-list" id="engineList" aria-label="엔진 서버 목록(위에 있을수록 먼저 맡음)"></ul>
+  <p class="fine-print">위에 있는 서버부터 먼저 사진을 맡아요. 왼쪽 손잡이를 끌거나, 손잡이를 고른 뒤 ↑·↓ 키로 순서를 바꿔요.</p>
   <form class="dev-field" id="engineAddForm"><label for="engineUrl">엔진 서버 추가</label><div class="dev-key"><input id="engineUrl" type="url" placeholder="http://192.168.0.21:8000" autocomplete="off" spellcheck="false" maxlength="300" required><button type="submit" class="text-button" id="engineAdd">추가</button></div>
   <p class="fine-print">엔진 PC 에서 <code>python run_backend.py --host 0.0.0.0 --token &lt;비밀값&gt;</code> 으로 띄운 주소를 넣어요. 비밀값은 게이트웨이와 같아야 해요(<code>PL_GATEWAY_TOKEN</code>). 바꾼 목록은 게이트웨이를 다시 켜면 처음 목록으로 돌아가요.</p></form>
 </div>
