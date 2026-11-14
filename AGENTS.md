@@ -46,7 +46,7 @@ Privacy Lens — 사진을 SNS·중고거래에 올리기 전에 배경의 개�
 pip install -r requirements.txt
 python run.py                              # 환경 점검 → 게이트웨이(화면 + 대기열, 8000) + 엔진 서버 1개(이 PC 안, 8001)
 python run_backend.py --host 0.0.0.0 --token <비밀값>          # 엔진 서버만(1 서버 1 엔진, 화면 없음)
-python run_gateway.py --backend http://<엔진>:8000 --token <비밀값>   # 게이트웨이만: 화면 + 하나의 대기열 + 엔진 분산(8080). 화면의 '엔진 N대'로 엔진 추가·제거(관리 키 PL_ADMIN_KEY)
+python run_gateway.py --backend http://<엔진>:8000 --token <비밀값>   # 게이트웨이만: 화면 + 하나의 대기열 + 엔진 분산(8000). 화면의 '엔진 N대'로 엔진 추가·제거(관리 키 PL_ADMIN_KEY)
 cd web/frontend-demo && node scripts/build.mjs --api https://<게이트웨이>   # 정적 배포 폴더 site/ (게이트웨이는 --no-front --cors <화면 주소>)
 python run_gateway.py ... --ssl-cert cert.pem --ssl-key key.pem       # 게이트웨이 https 직접. 도메인이 있으면 caddy run --config deploy/Caddyfile
 python -m pytest tests                     # 백엔드 테스트 (OCR 불필요)
