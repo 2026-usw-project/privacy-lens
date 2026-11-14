@@ -152,10 +152,19 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         <div id="welcomePanel" class="pane-body">
           <h2 class="pane-heading">이런 곳을 살펴봐요</h2>
           <p class="pane-sub">사진의 주인공 말고, 그 뒤에 놓인 것들이요.</p>
-          <ul class="watch-list">
-            <li><svg><use href="#i-box"/></svg><div><strong>택배 송장</strong><p>집 주소와 연락처가 한 장에 모여 있어요.</p></div></li>
-            <li><svg><use href="#i-id"/></svg><div><strong>책상 위 학생증</strong><p>이름, 학교, 학번이 함께 보여요.</p></div></li>
-            <li><svg><use href="#i-monitor"/></svg><div><strong>켜져 있는 화면</strong><p>메신저·메일의 작은 글자도 읽혀요.</p></div></li>
+          <figure class="demo" id="heroDemo">
+            <div class="demo-stage">
+              <canvas id="demoPhoto" width="664" height="374" role="img" aria-label="샘플 사진에서 개인정보가 찍힌 곳을 찾아 가리는 예시"></canvas>
+              <canvas id="demoBlur" class="demo-blur" width="664" height="374" aria-hidden="true"></canvas>
+              <span class="demo-scan" aria-hidden="true"></span>
+              <span class="demo-box" id="demoBox" aria-hidden="true"><b id="demoTag"></b></span>
+            </div>
+            <figcaption>예시 장면이에요. 실제 결과는 사진마다 달라요.</figcaption>
+          </figure>
+          <ul class="watch-list" id="watchList">
+            <li><button data-demo="0" aria-pressed="false"><svg><use href="#i-box"/></svg><span><strong>택배 송장</strong><small>집 주소와 연락처가 한 장에 모여 있어요.</small></span></button></li>
+            <li><button data-demo="1" aria-pressed="false"><svg><use href="#i-id"/></svg><span><strong>탁자 위 신분증</strong><small>이름과 주소가 카드 한 장에 보여요.</small></span></button></li>
+            <li><button data-demo="2" aria-pressed="false"><svg><use href="#i-monitor"/></svg><span><strong>켜져 있는 화면</strong><small>메신저·메일의 작은 글자도 읽혀요.</small></span></button></li>
           </ul>
           <button class="row-link" data-dialog="targetsDialog">탐지 항목 9가지 보기<svg><use href="#i-arrow"/></svg></button>
         </div>
