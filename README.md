@@ -62,9 +62,11 @@ git clone https://github.com/2026-usw-project/privacy-lens.git
 cd privacy-lens
 ```
 
-운영체제와 실행 장치에 맞는 설치 절 하나를 골라 새 가상환경에 설치합니다. 아래 명령은 **Python 3.12, x86-64** 환경을 기준으로 합니다.
+아래 명령은 **Python 3.12, x86-64** 환경을 기준으로 합니다. ① 가상환경을 만들어 켜고, ② 실행 장치(CPU·NVIDIA GPU)에 맞는 설치 블록 하나를 실행한 뒤, ③ 모델을 받고 실행합니다. 가상환경을 켜면 그다음 명령은 Linux·Windows 모두 같습니다.
 
-#### Linux CPU
+#### ① 가상환경 만들기·켜기
+
+**Linux**
 
 ```bash
 python3.12 -m venv .venv
@@ -72,7 +74,27 @@ source .venv/bin/activate
 python --version
 ```
 
-리눅스 x86-64에서 YOLO도 CPU용으로 설치하려면 아래와 같이 PyTorch CPU 패키지를 먼저 설치합니다. 다른 플랫폼은 [PyTorch 설치 안내](https://pytorch.org/get-started/locally/)에서 CPU용 명령을 확인하세요.
+Ubuntu·Debian에서 `ensurepip is not available` 오류가 나면 `sudo apt install python3.12-venv`로 venv 모듈을 설치한 뒤 다시 만듭니다.
+
+**Windows (PowerShell)**
+
+먼저 `python --version`이 3.10~3.13인지 확인합니다. 다른 버전이면 [python.org](https://www.python.org/downloads/)에서 3.12를 설치합니다.
+
+```powershell
+python --version
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+- `스크립트를 실행할 수 없으므로…`(running scripts is disabled) 오류가 나면 `Set-ExecutionPolicy -Scope Process Bypass`를 실행한 뒤 다시 켭니다. 지금 연 창에만 적용되고 시스템 설정은 바뀌지 않습니다.
+- cmd에서는 `.venv\Scripts\activate.bat`, Git Bash에서는 `source .venv/Scripts/activate`로 켭니다.
+- 켜지면 입력줄 앞에 `(.venv)`가 붙습니다. 새 창을 열면 다시 켭니다.
+
+#### ② 패키지 설치 — 실행 장치에 맞는 블록 하나
+
+**CPU (Linux·Windows)**
+
+YOLO용 PyTorch를 CPU 빌드로 먼저 설치합니다. 먼저 설치하지 않으면 `requirements.txt`가 기본 PyTorch를 설치하며, Linux에서는 GPU 빌드(수 GB)가 설치됩니다. 다른 플랫폼은 [PyTorch 설치 안내](https://pytorch.org/get-started/locally/)에서 CPU용 명령을 확인하세요.
 
 ```bash
 python -m pip install --upgrade pip
@@ -82,59 +104,43 @@ python -m pip install paddlepaddle==3.2.2 -i https://www.paddlepaddle.org.cn/pac
 python -m pip install paddleocr
 ```
 
-#### Linux NVIDIA GPU
+**Linux NVIDIA GPU**
 
 `nvidia-smi`로 GPU와 드라이버를 확인하세요. 이 예시는 글자 인식에 PaddlePaddle CUDA 11.8 빌드, YOLO와 ONNX에 CUDA 12 계열을 사용합니다. Linux에서 PaddlePaddle과 PyTorch의 CUDA 12.6 빌드를 같은 환경에 설치하면 NCCL 요구 버전이 충돌할 수 있어, 이 예시에서는 두 프레임워크의 CUDA 빌드를 구분했습니다. 드라이버는 CUDA 12.6을 지원해야 합니다. [PaddlePaddle GPU 배포 목록](https://www.paddlepaddle.org.cn/packages/stable/cu118/paddlepaddle-gpu/) · [PyTorch 설치 안내](https://pytorch.org/get-started/previous-versions/#v271) · [ONNX Runtime CUDA 안내](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)
 
 ```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu126
 python -m pip install -r requirements.txt
 python -m pip install paddlepaddle-gpu==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
 python -m pip install paddleocr
 python -m pip uninstall -y onnxruntime
-python -m pip install onnxruntime-gpu==1.20.1
+python -m pip install onnxruntime-gpu==1.20.2
 python -m pip check
 ```
 
-Linux GPU 조합은 패키지 요구 사항을 확인한 설치 예시입니다. 적용할 PC에서 아래 확인 명령을 실행하고, 가상 샘플을 분석해 PaddleOCR과 YOLO가 한 프로세스에서 함께 동작하는지 확인하세요.
-
-#### Windows CPU
-
-PowerShell에서 `python --version`으로 Python 3.12인지 확인한 뒤 실행합니다. 가상환경의 Python을 직접 호출하므로 활성화 스크립트 실행 권한 설정이 필요 없습니다.
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m pip install paddlepaddle==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
-.\.venv\Scripts\python.exe -m pip install paddleocr
-```
-
-#### Windows NVIDIA GPU
+**Windows NVIDIA GPU**
 
 아래는 **CUDA 12.6 빌드** 예시입니다. 먼저 `nvidia-smi`로 GPU와 드라이버를 확인하고, PaddlePaddle과 ONNX Runtime이 요구하는 CUDA·cuDNN 9 라이브러리를 준비합니다. 배포 파일과 요구 조건은 [PaddlePaddle GPU 배포 목록](https://www.paddlepaddle.org.cn/packages/stable/cu126/paddlepaddle-gpu/), [PyTorch 설치 안내](https://pytorch.org/get-started/previous-versions/#v271), [ONNX Runtime CUDA 안내](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)를 참고하세요.
 
 ```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu126
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m pip install paddlepaddle-gpu==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
-.\.venv\Scripts\python.exe -m pip install paddleocr
-.\.venv\Scripts\python.exe -m pip uninstall -y onnxruntime
-.\.venv\Scripts\python.exe -m pip install onnxruntime-gpu==1.20.1
-.\.venv\Scripts\python.exe -m pip check
+python -m pip install --upgrade pip
+python -m pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu126
+python -m pip install -r requirements.txt
+python -m pip install paddlepaddle-gpu==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+python -m pip install paddleocr
+python -m pip uninstall -y onnxruntime
+python -m pip install onnxruntime-gpu==1.20.2
+python -m pip check
 ```
 
-#### GPU 사용 확인 (Linux·Windows 공통)
+GPU 조합은 각 배포 목록에 파일이 있는지와 명령 문법을 확인한 설치 예시입니다. 적용할 PC에서 아래 확인 명령을 실행하고, 가상 샘플을 분석해 PaddleOCR과 YOLO가 한 프로세스에서 함께 동작하는지 확인하세요. `onnxruntime-gpu`는 `onnxruntime`과 함께 설치하면 충돌하므로 둘 중 하나만 둡니다.
 
-아래 명령의 `python`은 Linux에서는 활성화한 가상환경의 Python을, Windows에서는 `.\.venv\Scripts\python.exe`를 뜻합니다. GPU 환경에서는 PaddleOCR이 `paddlepaddle-gpu`를, `.pt` YOLO 모델은 CUDA용 PyTorch를, `.onnx` 모델은 `onnxruntime-gpu`를 사용합니다.
+**GPU 사용 확인**
 
-```powershell
+GPU 환경에서는 PaddleOCR이 `paddlepaddle-gpu`를, `.pt` YOLO 모델은 CUDA용 PyTorch를, `.onnx` 모델은 `onnxruntime-gpu`를 사용합니다.
+
+```bash
 python -c "import paddle; paddle.utils.run_check(); print(paddle.device.get_device())"
 python -c "import torch; print(torch.cuda.is_available())"
 python -c "import torch, onnxruntime as ort; s = ort.InferenceSession('models/daily.onnx', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']); print(s.get_providers()); assert 'CUDAExecutionProvider' in s.get_providers()"
@@ -142,19 +148,18 @@ python -c "import torch, onnxruntime as ort; s = ort.InferenceSession('models/da
 
 마지막 확인 명령은 아래 [모델 받기](#모델-받기적용-선택) 안내에 따라 `models/daily.onnx`를 받은 뒤 실행합니다. `get_available_providers()`에 CUDA가 표시되는 경우에도 모델 세션에서 초기화에 실패할 수 있습니다.
 
-#### 모델 받기 및 실행 (공통)
+#### ③ 모델 받기 및 실행
 
 ```bash
 python -m pipeline.objects download
 python run.py
 ```
 
-Windows에서는 위 두 명령의 `python`을 `.\.venv\Scripts\python.exe`로 바꿉니다.
-
 실행 후 [http://127.0.0.1:8000](http://127.0.0.1:8000)에 접속합니다.
 
 - `run.py`는 필요한 패키지, 한글 폰트와 OCR 환경을 점검한 뒤 **게이트웨이**(화면 + 대기열, 8000)와 **엔진 서버 1개**(이 PC 안, 8001)를 함께 띄웁니다. 구조는 아래 [실행 구조](#실행-구조-게이트웨이와-엔진-서버)와 같습니다.
 - 누락된 항목이 있으면 설치 방법을 안내합니다. **포트가 쓰는 중이면 1 씩 올려 빈 포트로 엽니다**(8000 이 쓰는 중이면 8001, 엔진은 그 다음 번호). 바뀌면 콘솔에 알리니, 터널 등이 예전 포트를 가리키면 함께 바꿉니다. 시작 번호는 `PORT`(화면·API), `PL_ENGINE_PORT`(엔진)로 정합니다. `HOST=0.0.0.0`이면 같은 네트워크의 다른 기기에서 게이트웨이로 접속할 수 있습니다(엔진은 이 PC 안에서만 열립니다).
+- 환경변수를 주는 문법은 셸마다 다릅니다. 이 문서의 `이름=값 명령`은 bash 문법이고, PowerShell에서는 `$env:이름 = "값"; 명령`, cmd에서는 `set 이름=값` 뒤에 명령을 실행합니다.
 - 초기 준비 시간은 모델 다운로드 여부와 실행 환경에 따라 달라집니다. 화면 상단의 `OCR 엔진 준비 중` 표시가 `엔진 1대 · 대기열 비어 있음`으로 바뀌면 분석을 시작할 수 있습니다.
 - 화면의 샘플 3종(생성형 AI로 만든 가상 일상 장면: 헤드폰 뒤 택배 송장, 카페 탁자 위 신분증, 책상 위 모니터 화면·처방전)으로 분석 결과를 확인할 수 있습니다.
 - HEIC 사진은 `pillow-heif`가 설치된 환경에서 지원합니다.
@@ -190,16 +195,16 @@ python run.py --check
 
 ### 화면에서 엔진 더하고 빼기
 
-화면 오른쪽 위의 `엔진 N대 · …`(밑줄)를 누르면 엔진 목록이 열립니다. 엔진 주소를 넣어 **추가**하고, 줄 끝의 **X** 를 누르면 목록에서 빼고 연결을 끊습니다(처리 중이던 1건은 끝까지 받습니다).
+화면 오른쪽 위의 `엔진 N대 · …` 칩이나 왼쪽 메뉴의 **분석 엔진**을 누르면 엔진 목록이 열립니다. 엔진 주소를 넣어 **추가**하고, 줄 끝의 **X** 를 누르면 목록에서 빼고 연결을 끊습니다(처리 중이던 1건은 끝까지 받습니다).
 
 - **관리 키가 있어야 합니다.** 누구나 엔진을 빼거나(서비스 중단) 자기 서버를 넣을 수(사진이 그리로 감) 있으면 안 되기 때문입니다. 게이트웨이를 켜면 콘솔에 `엔진 관리 키(이번 실행에만): …`가 나옵니다. 매번 같은 키를 쓰려면 `PL_ADMIN_KEY`(또는 `run_gateway.py --admin-key`)를 정합니다. 화면은 키를 저장하지 않으므로 새로 고치면 다시 입력합니다.
 - 토큰 없이 시작한 게이트웨이에는 토큰 없이 시작한 엔진을 추가할 수 있습니다. 토큰을 설정한다면 게이트웨이와 엔진에 같은 값을 사용합니다.
 
 ```bash
-# 게이트웨이 PC
-HOST=0.0.0.0 python run.py
+# 게이트웨이 PC (PowerShell: $env:HOST = "0.0.0.0"; $env:PL_GATEWAY_TOKEN = "<비밀값>"; python run.py)
+HOST=0.0.0.0 PL_GATEWAY_TOKEN=<비밀값> python run.py
 # 엔진을 더할 PC — 화면에서 http://<이 PC IP>:8000 을 추가
-python run_backend.py --host 0.0.0.0
+python run_backend.py --host 0.0.0.0 --token <비밀값>
 ```
 
 - 화면에서 바꾼 목록은 메모리에만 있습니다. 게이트웨이를 다시 켜면 실행 옵션(`--backend`, `run.py`는 이 PC 의 엔진 1개)으로 돌아갑니다.
@@ -211,13 +216,13 @@ python run_backend.py --host 0.0.0.0
 엔진 PC마다 실행합니다.
 
 ```bash
-python run_backend.py --host 0.0.0.0
+python run_backend.py --host 0.0.0.0 --token <비밀값>
 ```
 
 게이트웨이 PC 에서(엔진 주소를 `--backend` 로 여러 번):
 
 ```bash
-python run_gateway.py --host 0.0.0.0 --backend http://192.168.0.21:8000 --backend http://192.168.0.22:8000
+python run_gateway.py --host 0.0.0.0 --backend http://192.168.0.21:8000 --backend http://192.168.0.22:8000 --token <비밀값>
 ```
 
 사용자는 게이트웨이 주소(`http://<게이트웨이 IP>:8000`)로 접속합니다. 화면과 API 가 같은 주소라 CORS 설정이 필요 없습니다. 토큰 없이 연결할 때는 엔진을 신뢰할 수 있는 내부망이나 VPN 안에 둡니다. 인증을 켜려면 양쪽에 같은 `--token` 또는 `PL_GATEWAY_TOKEN`을 설정합니다.
@@ -318,9 +323,10 @@ PL_OCR=tesseract python run.py
 | 모델 | 받을 곳 | 저장소에 둘 곳 | 서버가 쓰는 방법 |
 |---|---|---|---|
 | 얼굴·증명사진(YuNet) | OpenCV 공식 저장소 | `models/face_detection_yunet_2023mar.onnx` | 아래 `download` 명령이 받고 SHA-256 을 확인합니다 |
+| 증명사진 전용(YOLO) | 드라이브 `objects/face_photo_vNNN/best.onnx` | `models/face_photo.onnx` | 있으면 YuNet 보다 먼저 사용(`PL_FACE_PHOTO_MODEL` 로 경로 지정, `off` 로 끔) |
 | 번호판 | 드라이브 `objects/plate_vNNN/best.onnx` (2026-11-03 추천: **v003**) | `models/plate.onnx` | 있으면 자동 사용(`PL_PLATE_MODEL` 로 경로 지정, `off` 로 끔) |
 | 문서·카드 검출(YOLO) | 드라이브 `models/vNNN/` 의 `best.pt` 와 `metrics.json` | `models/vNNN/best.pt`, `models/vNNN/metrics.json` | 가장 큰 번호 폴더를 자동 사용(`PL_YOLO_WEIGHTS` 로 고정, `PL_YOLO=off` 로 끔) |
-| 일상 사진 9종(YOLO) | 드라이브 `objects/daily_v002/best.onnx` | `models/daily.onnx` | 있으면 문서 모델과 함께 사용(`PL_DAILY_MODEL`로 경로 지정 가능) |
+| 일상 사진 9종(YOLO) | 드라이브 `objects/daily_v002/best.onnx` | `models/daily.onnx` | 있으면 문서 모델과 함께 사용(`PL_DAILY_MODEL`로 경로 지정, `off` 로 끔) |
 
 1. 위의 [설치 및 실행](#설치-및-실행)에서 운영체제와 실행 장치에 맞는 절을 따라 검출 패키지를 설치합니다.
 
@@ -336,7 +342,14 @@ PL_OCR=tesseract python run.py
    models/plate.onnx
    ```
 
-4. 드라이브에서 문서 검출 모델 폴더(예: `models/v005/`)의 `best.pt` 와 `metrics.json` 을 같은 이름의 폴더에 둡니다.
+4. (선택) 드라이브에서 증명사진 모델 `objects/face_photo_vNNN/best.onnx` 와 일상 사진 모델 `objects/daily_v002/best.onnx` 를 받아 각각 이름을 바꿔 둡니다.
+
+   ```
+   models/face_photo.onnx
+   models/daily.onnx
+   ```
+
+5. 드라이브에서 문서 검출 모델 폴더(예: `models/v005/`)의 `best.pt` 와 `metrics.json` 을 같은 이름의 폴더에 둡니다.
    `metrics.json` 에는 학습 입력 크기(`imgsz`)가 들어 있어 서버가 그대로 씁니다.
 
    ```
@@ -344,7 +357,7 @@ PL_OCR=tesseract python run.py
    models/v005/metrics.json
    ```
 
-5. 확인합니다. `얼굴 검출 YuNet (card)`, `번호판 검출 …plate.onnx` 가 `[OK]` 로 나오면 됩니다.
+6. 확인합니다. `얼굴 검출 YuNet (card)`, `번호판 검출 …plate.onnx` 가 `[OK]` 로 나오면 됩니다(증명사진·일상 사진 모델을 두었다면 그 줄도).
    문서 검출 모델은 분석 화면 하단에 `YOLO v005·yolo11 (CPU)` 처럼 보입니다.
 
    ```bash
@@ -453,9 +466,13 @@ PaddleOCR로 합성 송장 6장을 0°·15°·30°·45°·60°·90°·180°·270
 
 ```text
 privacy-lens/
-├── server.py             FastAPI 서버 · API · 웹 화면 제공
-├── jobqueue.py           OCR 대기열 · 순서 · 취소 · 요청 한도
-├── run.py                환경 점검 및 서버 실행
+├── run.py                환경 점검 → 게이트웨이 + 엔진 서버 1개 실행
+├── gateway.py            게이트웨이: 화면 제공 · 대기열 하나 · 엔진 분산 · 상태 확인 · 엔진 관리
+├── run_gateway.py        게이트웨이만 실행
+├── server.py             엔진 서버(FastAPI): 분석 · 가림 API
+├── run_backend.py        엔진 서버만 실행
+├── jobqueue.py           엔진 안의 OCR 대기열 · 순서 · 취소 · 요청 한도
+├── progress.py · timing.py  단계별 진행 상황(SSE) · 걸린 시간 기록과 남은 시간 추정
 ├── pipeline/             OCR · 패턴 · 문맥 판정 · 가림 처리
 ├── web/frontend-demo/
 │   ├── dist/             화면 편집 원본 (HTML · CSS · JavaScript)
@@ -464,6 +481,8 @@ privacy-lens/
 ├── eval/                 비교·회전 실험 · 판단 평가 · 실사 실패 원인 · 정답 입력 도구
 ├── samples/              가상 정보 기반 합성 샘플 · 촬영용 소품
 ├── vision/               YOLO 문서 검출 학습 도구(선택)
+├── deploy/               게이트웨이 앞 https(Caddy) 예시
+├── models/               내려받은 모델(git 이 무시)
 ├── .github/              CI · PR·이슈 양식
 ├── tests/                백엔드 회귀 테스트
 └── docs/                 설계 · 개발 기록 · 역할 · 결정 사항
@@ -495,6 +514,8 @@ python -m eval.failures strip <폴더>          # 위치정보 지우기
 python -m eval.failures init <폴더>           # 정답 틀 + 정답입력도구.html
 python -m eval.failures run <폴더> --note "…" # ① 못 찾음 ② 잘못 읽음 ③ 판단 실패, 평가기록.csv 누적
 ```
+
+> 아래 `PL_OCR=paddleocr python …` 처럼 환경변수를 앞에 붙인 명령은 bash 문법입니다. PowerShell에서는 `$env:PL_OCR = "paddleocr"; python …` 로 실행합니다.
 
 **안정성 점검** — 이상한 입력(CMYK·16비트·HEIC·화소 폭탄·깨진 파일), 연속 30장, 동시 요청, 가림 한 바퀴를 실제 서버 코드로 돌립니다. CI 는 `--quick`(가짜 OCR).
 
@@ -558,8 +579,12 @@ python -m eval.rotation
 | `POST` | `/analyze` | 사진 분석 |
 | `POST` | `/redact/preview` | 가림 처리 미리보기 |
 | `POST` | `/redact` | 가림 처리 · 메타데이터 제거 · JPEG 반환 |
-| `GET` | `/queue` | 대기열 상태 조회 |
+| `GET` | `/queue` | 대기열 상태 조회(게이트웨이 뒤면 엔진 수 포함) |
 | `POST` | `/queue/cancel` | 대기 요청 취소 |
+| `GET` | `/progress` | 번호표별 진행 상황(SSE) |
+| `GET` | `/health` | 살아 있는지 · 엔진 준비 여부 |
+| `POST` | `/llm/models` | 판단 모델 창의 공급자 모델 목록 |
+| `GET` · `POST` | `/admin/engines`, `/admin/engines/remove` | 게이트웨이 엔진 목록 보기·추가·제거(관리 키 필요) |
 
 요청 필드와 응답 형식은 [API 계약 문서](web/frontend-demo/API_CONTRACT.md)에 정리되어 있습니다.
 
@@ -586,6 +611,7 @@ python -m eval.rotation
 | 누운 사진·작은 증명사진 | 증명사진은 가상 신분증 사진(MIDV-2020)에서 바로 선 사진의 18~24% 를 놓칩니다. 누운 사진은 돌려 찾기(`PL_FACE_ROTATE`·`PL_PLATE_ROTATE`, 기본 켬)로 찾지만 검출 시간이 약 3배이고 오탐이 늘어납니다. |
 | 한국 번호판 | 한국 주차장 실사 207장(공개 데이터) 기준 재현율 0.78 입니다. 팀이 찍은 실사로는 아직 재지 않았습니다. |
 | 탐지되지 않은 영역 | 사용자가 직접 지정하지 않으면 저장한 사본에도 남을 수 있습니다. |
+| 저장 후 재검사 없음 | 2026-11-14 부터 저장한 파일을 서버가 다시 검사하지 않습니다(가림·메타데이터 제거 후 바로 내려받기). 가린 곳 근처에 글자가 남았는지는 미리보기로 직접 확인합니다. |
 
 전체 한계와 개선 과제는 [개발 노트](docs/DEVELOPMENT.md#알려진-한계)에 기록되어 있습니다.
 
