@@ -353,7 +353,6 @@ def test_launcher_rejects_bad_backend_url():
     assert run_gateway._url("http://192.168.0.21:8000/") == "http://192.168.0.21:8000"
     with pytest.raises(SystemExit):
         run_gateway._url("192.168.0.21:8000")
-    assert run_gateway.main(["--port", "0"]) == 2                          # 엔진 주소 없음
 
 
 # ------------------------------------------------------------------ 엔진 목록 관리(관리 키)
@@ -400,6 +399,26 @@ def test_admin_add_engine_then_it_takes_work():
         assert {r.json()["engine"] for r in await asyncio.gather(*tasks)} == {"e1", "e2"}
 
     run_with_gateway(["e1"], body, spare=["e2"], admin_key=ADMIN)
+
+
+def test_gateway_starts_empty_and_accepts_first_engine():
+    async def body(client, gw, engines, router):
+        status = (await client.get("/queue")).json()
+        assert status["engines"] == {"total": 0, "alive": 0, "busy": 0}
+        assert status["manage"] is True
+        for path in ("/analyze", "/redact", "/redact/preview"):
+            response = await post(client, T[0], path=path)
+            assert response.status_code == 503
+            assert "분석 엔진을 추가한 뒤" in response.json()["detail"]
+        assert not gw.jobs
+
+        response = await client.post("/admin/engines", json={"url": "http://e1:8000"}, headers=H)
+        assert response.status_code == 200 and response.json()["alive"] == 1
+        engines["e1"].gate.set()
+        response = await post(client, T[0])
+        assert response.status_code == 200 and response.json()["engine"] == "e1"
+
+    run_with_gateway([], body, spare=["e1"], admin_key=ADMIN)
 
 
 def test_admin_add_shows_down_and_rejected_engines():

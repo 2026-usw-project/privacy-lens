@@ -43,6 +43,7 @@ FRONT = Path(__file__).resolve().parent / "web" / "frontend-demo"
 TICKET = re.compile(r"^[A-Za-z0-9-]{8,64}$")
 MAX_BYTES = 25 * 1024 * 1024
 TOKEN_HEADER = "X-PL-Token"
+NO_ENGINES = "등록된 분석 엔진이 없습니다. 분석 엔진을 추가한 뒤 다시 시도해 주세요."
 GATEWAY_HEADER = "X-PL-Gateway"   # 엔진 로그에 '어느 게이트웨이가 연결했는지' 보이게(이름만, 비밀 아님)
 ADMIN_HEADER = "X-PL-Admin"
 MAX_BACKENDS = 32
@@ -115,8 +116,6 @@ class Job:
 class Gateway:
     def __init__(self, backends: list[str], *, token: str = "", max_waiting: int = 24,
                  transport: httpx.AsyncBaseTransport | None = None):
-        if not backends:
-            raise ValueError("엔진 서버 주소가 하나도 없습니다(--backend).")
         self.backends = [Backend(backend_url(u)) for u in backends]
         self.token = token
         self.max_waiting = max_waiting
@@ -254,6 +253,8 @@ class Gateway:
             if old.fingerprint != job.fingerprint or old.path != job.path:
                 raise GatewayError(400, "이미 대기열에 있는 번호표입니다.")
             return old
+        if not self.backends:
+            raise GatewayError(503, NO_ENGINES)
         if len(self.queue) >= self.max_waiting:
             raise GatewayError(503, "지금 기다리는 요청이 많습니다. 잠시 후 다시 시도해 주세요.", retry=True)
         job.future = asyncio.get_running_loop().create_future()
@@ -468,6 +469,8 @@ def create_app(backends: list[str], *, token: str = "", serve_front: bool = True
 
     # ---------------- 줄 서지 않는 요청: 살아 있는 엔진에 번갈아
     async def passthrough(request: Request, path: str):
+        if not gw.backends:
+            return error(503, NO_ENGINES)
         b = gw.any_backend()
         if b is None:
             return error(503, "사용할 수 있는 분석 서버가 없습니다. 잠시 후 다시 시도해 주세요.", True)
