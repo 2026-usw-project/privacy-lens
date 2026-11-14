@@ -75,6 +75,7 @@ python --version
 ```
 
 Ubuntu·Debian에서 `ensurepip is not available` 오류가 나면 `sudo apt install python3.12-venv`로 venv 모듈을 설치한 뒤 다시 만듭니다.
+새로 설치한 Ubuntu에는 한글 폰트가 없어 `run.py`가 `[실패] 한글 폰트`로 멈춥니다. `sudo apt install fonts-nanum`으로 설치합니다.
 
 **Windows (PowerShell)**
 
@@ -106,18 +107,22 @@ python -m pip install paddleocr
 
 **Linux NVIDIA GPU**
 
-`nvidia-smi`로 GPU와 드라이버를 확인하세요. 이 예시는 글자 인식에 PaddlePaddle CUDA 11.8 빌드, YOLO와 ONNX에 CUDA 12 계열을 사용합니다. Linux에서 PaddlePaddle과 PyTorch의 CUDA 12.6 빌드를 같은 환경에 설치하면 NCCL 요구 버전이 충돌할 수 있어, 이 예시에서는 두 프레임워크의 CUDA 빌드를 구분했습니다. 드라이버는 CUDA 12.6을 지원해야 합니다. [PaddlePaddle GPU 배포 목록](https://www.paddlepaddle.org.cn/packages/stable/cu118/paddlepaddle-gpu/) · [PyTorch 설치 안내](https://pytorch.org/get-started/previous-versions/#v271) · [ONNX Runtime CUDA 안내](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)
+Linux에서는 **글자 인식(PaddleOCR)만 GPU**로 돌리고, YOLO는 PyTorch **CPU 빌드**로 돌립니다. 분석 시간의 대부분은 글자 인식이고, YOLO는 CPU에서도 한 장에 0.1초대입니다.
+
+- **PyTorch까지 GPU 빌드를 쓰지 않는 이유**: Linux의 Paddle과 PyTorch GPU 빌드는 둘 다 pip의 `nvidia-*` 패키지를 쓰는데, 서로 다른 cuDNN·NCCL 버전을 정확히 고정합니다(예: Paddle cu126 은 NCCL 2.25.1, torch 2.7.1 cu126 은 2.26.2). 맞는 조합이 없습니다.
+- **CUDA 빌드를 섞어도 안 됩니다**: Paddle cu118(`nvidia-nccl-cu11`)과 PyTorch cu126(`nvidia-nccl-cu12`)은 같은 파일 `nvidia/nccl/lib/libnccl.so.2`를 덮어써서, PyTorch import 가 `undefined symbol: ncclCommInitRankScalable`로 실패했습니다(`pip check`는 통과).
 
 ```bash
 python -m pip install --upgrade pip
-python -m pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu126
+python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 python -m pip install -r requirements.txt
-python -m pip install paddlepaddle-gpu==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
+python -m pip install paddlepaddle-gpu==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cu129/
 python -m pip install paddleocr
-python -m pip uninstall -y onnxruntime
-python -m pip install onnxruntime-gpu==1.20.2
 python -m pip check
 ```
+
+- `cu129`는 드라이버가 CUDA 12.9 이상을 지원해야 합니다(`nvidia-smi` 오른쪽 위 `CUDA Version`). RTX 50 시리즈(Blackwell)는 cu129가 필요합니다. 드라이버가 더 오래됐다면 주소의 `cu129`를 `cu126`으로 바꿉니다(이 조합은 실제로 돌려 보지 않았습니다).
+- [PaddlePaddle GPU 배포 목록](https://www.paddlepaddle.org.cn/packages/stable/cu129/paddlepaddle-gpu/)
 
 **Windows NVIDIA GPU**
 
@@ -134,11 +139,22 @@ python -m pip install onnxruntime-gpu==1.20.2
 python -m pip check
 ```
 
-GPU 조합은 각 배포 목록에 파일이 있는지와 명령 문법을 확인한 설치 예시입니다. 적용할 PC에서 아래 확인 명령을 실행하고, 가상 샘플을 분석해 PaddleOCR과 YOLO가 한 프로세스에서 함께 동작하는지 확인하세요. `onnxruntime-gpu`는 `onnxruntime`과 함께 설치하면 충돌하므로 둘 중 하나만 둡니다.
+Windows에서는 PaddleOCR·YOLO·ONNX 모두 GPU를 씁니다. `onnxruntime-gpu`는 `onnxruntime`과 함께 설치하면 충돌하므로 둘 중 하나만 둡니다.
+
+> **확인한 환경(2026-11-14)** — 새 가상환경에서 위 명령 그대로 설치한 뒤 `run.py`로 가상 샘플을 분석했습니다.
+> Linux GPU: Ubuntu 24.04 · RTX 5090 · 드라이버 580(CUDA 13.0) · `cu129`, 글자 인식 GPU + YOLO CPU, 두 번째 분석 0.9초.
+> Windows GPU: Windows 11 · RTX 3070 Laptop · `cu126`, 글자 인식·YOLO·ONNX 모두 GPU, 두 번째 분석 3.0초.
+> Linux CPU(16코어) 약 3초, Windows CPU 설치도 같은 방식으로 확인했습니다. 다른 GPU·드라이버에서는 아래 확인 명령으로 먼저 점검하세요.
 
 **GPU 사용 확인**
 
-GPU 환경에서는 PaddleOCR이 `paddlepaddle-gpu`를, `.pt` YOLO 모델은 CUDA용 PyTorch를, `.onnx` 모델은 `onnxruntime-gpu`를 사용합니다.
+Linux(글자 인식만 GPU):
+
+```bash
+python -c "import paddle; paddle.utils.run_check(); print(paddle.device.get_device())"
+```
+
+Windows(글자 인식·YOLO·ONNX 모두 GPU):
 
 ```bash
 python -c "import paddle; paddle.utils.run_check(); print(paddle.device.get_device())"
@@ -146,7 +162,7 @@ python -c "import torch; print(torch.cuda.is_available())"
 python -c "import torch, onnxruntime as ort; s = ort.InferenceSession('models/daily.onnx', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']); print(s.get_providers()); assert 'CUDAExecutionProvider' in s.get_providers()"
 ```
 
-마지막 확인 명령은 아래 [모델 받기](#모델-받기적용-선택) 안내에 따라 `models/daily.onnx`를 받은 뒤 실행합니다. `get_available_providers()`에 CUDA가 표시되는 경우에도 모델 세션에서 초기화에 실패할 수 있습니다.
+`gpu:0`·`True`·`CUDAExecutionProvider`가 나오면 됩니다. 마지막 명령은 아래 [모델 받기](#모델-받기적용-선택) 안내에 따라 `models/daily.onnx`를 받은 뒤 실행합니다. 마지막으로 `python run.py --check`가 `[OK]`로 끝나는지 확인합니다(PaddleOCR과 YOLO를 한 프로세스에서 함께 불러옵니다).
 
 #### ③ 모델 받기 및 실행
 
