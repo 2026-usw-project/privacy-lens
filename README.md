@@ -77,6 +77,7 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python -m pip install paddlepaddle==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
 python -m pip install paddleocr
+python -m pipeline.objects download
 python run.py
 ```
 
@@ -250,11 +251,7 @@ PL_OCR=tesseract python run.py
 | 번호판 | 드라이브 `objects/plate_vNNN/best.onnx` (2026-11-03 추천: **v003**) | `models/plate.onnx` | 있으면 자동 사용(`PL_PLATE_MODEL` 로 경로 지정, `off` 로 끔) |
 | 문서·카드 검출(YOLO) | 드라이브 `models/vNNN/` 의 `best.pt` 와 `metrics.json` | `models/vNNN/best.pt`, `models/vNNN/metrics.json` | 가장 큰 번호 폴더를 자동 사용(`PL_YOLO_WEIGHTS` 로 고정, `PL_YOLO=off` 로 끔) |
 
-1. 검출 패키지(ultralytics·onnx·onnxruntime)를 설치합니다. GPU 로 돌리려면 `onnxruntime` 대신 `onnxruntime-gpu` 를 설치합니다(둘 중 하나만).
-
-   ```bash
-   python -m pip install -r vision/requirements.txt
-   ```
+1. `python -m pip install -r requirements.txt`로 검출 패키지(ultralytics·onnx·onnxruntime)도 함께 설치합니다. ONNX 추론을 GPU로 돌리려면 CPU용 `onnxruntime`을 제거한 뒤 `onnxruntime-gpu`를 설치합니다.
 
 2. 얼굴 모델을 받습니다.
 
@@ -462,7 +459,7 @@ python -m eval.rotation
 | `PL_PADDLE_TEXTLINE` | `auto` | 글자 줄 방향 판별. `auto`는 판별 없이 읽고 결과가 이상할 때만 판별을 켜고 다시 읽습니다. `on`(모든 줄 판별, 똑바른 줄을 거꾸로 읽는 일이 있음)·`off`(90°·180° 사진을 못 읽음). [개발 노트](docs/DEVELOPMENT.md#글자-줄-방향-판별-2026-11-04-pl_paddle_textline) |
 | `PL_PADDLE_REC` | 언어별 기본 모델 | 한국어 기본 조합은 `korean_PP-OCRv5_mobile_rec`입니다. |
 | `PL_TESSERACT` | 자동 탐색 | Tesseract 실행 파일 경로 |
-| `PL_YOLO_WEIGHTS` | `models`에서 자동 탐색 | 직접 지정한 경로가 우선입니다. 미설정이면 프로젝트 루트 `models` 안의 `v숫자` 폴더 중 숫자가 가장 큰 폴더의 `best.pt`를 사용합니다(`v10` > `v9`). 버전 폴더가 없으면 `models/best.pt`를 사용하며, 선택한 파일이 없으면 OCR만 실행합니다. `pip install -r vision/requirements.txt` 필요. 학습은 [vision/README.md](vision/README.md) |
+| `PL_YOLO_WEIGHTS` | `models`에서 자동 탐색 | 직접 지정한 경로가 우선입니다. 미설정이면 프로젝트 루트 `models` 안의 `v숫자` 폴더 중 숫자가 가장 큰 폴더의 `best.pt`를 사용합니다(`v10` > `v9`). 버전 폴더가 없으면 `models/best.pt`를 사용하며, 선택한 파일이 없으면 OCR만 실행합니다. 학습은 [vision/README.md](vision/README.md) |
 | `PL_YOLO` | `on` | `off`로 지정하면 모델 파일이 있어도 문서 검출을 끕니다. 모델 선택은 서버 재시작 시 적용됩니다. |
 | `PL_YOLO_CONF` | `0.35` | 문서 검출 기준값 |
 | `PL_UNLABELED_NAMES` | `context` | 라벨 없는 이름 판단. `off`(라벨 뒤 이름만) · `context`(연락처·주소 옆, 명찰·학생증 단서, 호칭이 있을 때) · `all`(단서 없는 이름 후보도 검토 권장, 오탐 증가). [D-12](docs/DECISIONS.md#d-12-가림-기준표-확정) |

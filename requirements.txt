@@ -5,6 +5,12 @@ pytesseract>=0.3.10
 # iPhone HEIC 사진. 없으면 JPEG/PNG 만 받는다
 pillow-heif>=0.16
 
+# YOLO·ONNX 검출 패키지
+-r vision/requirements.txt
+
+# 패키지 설치 후 얼굴 검출 모델 받기(저장소 루트에서 실행)
+#   python -m pipeline.objects download
+
 # 서버
 fastapi>=0.110
 uvicorn>=0.27
