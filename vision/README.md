@@ -41,6 +41,8 @@
 3. 일상 사진 9종(D-19): 드라이브 `objects/daily_v002/best.onnx`(2026-11-08, 공개 데이터 검증 mAP50 0.824, 아래 '학습 결과')를
    `models/daily.onnx` 로 둔다. 문서 모델(`models/v<N>/best.pt`)이 있으면 둘을 함께 돌리고 같은 클래스가 겹치면 확신도 높은 쪽만 남긴다.
    다른 경로면 `PL_DAILY_MODEL=<경로>`, 끄려면 `PL_DAILY_MODEL=off`. 입력 크기는 학습과 같은 640(`PL_DAILY_IMGSZ`).
+   작게 찍힌 물건용 조각 검출(PLAN 16): `PL_DAILY_TILES=2` 면 긴 변 1280px 이상 사진을 20% 겹친 2×2 조각으로 한 번 더 본다(기본 꺼짐, 팀 실사로 효과를 잰 뒤 켠다).
+   비교: `PL_OCR=paddleocr python -m eval.detector <폴더> --weights models/daily.onnx --imgsz 640 [--tiles 2]`.
 4. `python run.py --check` 에 `얼굴 검출 YuNet (card)`, `번호판 검출 …plate.onnx` 가 보이면 된다.
 
 #### 첫 측정 (2026-11-02, Colab T4, Open Images 검증 300장 = 번호판 403개)
