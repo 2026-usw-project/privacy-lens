@@ -12,7 +12,7 @@
   const state = { source:null, file:null, phase:'empty', rawOcr:null, rawOcrNote:'', showRawOcr:false, rawFocused:null, regions:[], focused:null, editing:null, history:[], mode:'original', style:'blur', compare:50, drawing:false,
     sample:false, sampleKey:null, width:0, height:0, name:'', bytes:0, serverImage:false, dev:Core.devSettings(null), analyzedJudge:'', analysisStatus:'idle', groups:[], gps:[], issues:[],
     backend:'', elapsedMs:0, zoom:1, loadToken:0, exportToken:0, nextId:1, toastTimer:null,
-    requestController:null, requestSerial:0, saving:false, saveError:'', ticket:null, previewState:'none', previewSeq:0 };
+    requestController:null, requestSerial:0, saving:false, saved:false, groupsOpen:false, saveError:'', ticket:null, previewState:'none', previewSeq:0 };
   try { const saved=localStorage.getItem('pl.maskStyle'); if(Core.STYLES.includes(saved)) state.style=saved; } catch(_) {}
   // 판단 모델 창 설정(판단 방법·모델·API 키)은 이 브라우저에만 둔다. 서버는 요청마다 받아 쓰고 저장하지 않는다.
   try { state.dev=Core.devSettings(JSON.parse(localStorage.getItem('pl.devMode')||'null')); } catch(_) {}
@@ -82,9 +82,23 @@
     if (state.history.length > 35) state.history.shift();
     $('#undoButton').disabled = false;
   }
+  // 저장 뒤 완료 화면. 가림 선택이나 사진이 바뀌면(releaseExport) 목록 화면으로 돌아간다.
+  function renderDone() {
+    const on=!!state.saved&&!!downloadBlob;
+    $('#reviewPanel').classList.toggle('saved',on);$('#doneCard').classList.toggle('hidden',!on);
+    if(!on)return;
+    const covered=state.regions.filter(r=>r.enabled).length,left=state.regions.length-covered;
+    $('#doneSummary').textContent=(covered?covered+'곳을 가리고 촬영 정보를 뺐어요.':'촬영 정보를 빼고 저장했어요.')+(left?' 가리지 않고 둔 곳이 '+left+'곳 있어요.':'');
+    $('#doneFile').textContent=exportFile().name+' · 브라우저의 다운로드 목록에서 확인하세요.';
+    const thumb=$('#doneThumb');thumb.height=Math.round(thumb.width*Math.min(1.1,Math.max(.45,state.height/state.width)));
+    const k=Math.min(thumb.width/state.width,thumb.height/state.height),w=state.width*k,h=state.height*k;
+    const ctx=thumb.getContext('2d');ctx.clearRect(0,0,thumb.width,thumb.height);
+    ctx.drawImage(protectedCanvas,0,0,state.width,state.height,(thumb.width-w)/2,(thumb.height-h)/2,w,h);
+  }
   function releaseExport() {
     state.exportToken++;
     downloadBlob = null;
+    if(state.saved){state.saved=false;renderDone();}
     $('#shareButton').classList.add('hidden');
   }
   function reset() {
@@ -427,7 +441,7 @@
       return '<div class="region-item'+(focused?' selected-detail':'')+(detail?' editing':'')+'" data-region="'+escapeHTML(r.id)+'" style="--i:'+Math.min(index,8)+'">'+
         '<div class="region-item-top"><input type="checkbox" data-action="toggle" '+(r.enabled?'checked ':'')+'aria-label="'+title+' 가리기"><button class="region-item-name" data-action="focus" aria-pressed="'+focused+'"><span class="row-number">'+String(index+1).padStart(2,'0')+'</span>'+title+'</button>'+cert+severityTag(r)+'</div>'+
         // 작게 찍혀 사진에서 잘 안 보이는 것을 바로 알아보게, 그 자리를 잘라 크게 보여 준다(D-21)
-        '<div class="region-item-body"><canvas class="region-thumb" data-action="focus" data-thumb="'+escapeHTML(r.id)+'" width="144" height="108" aria-hidden="true"></canvas><p class="region-item-description">'+escapeHTML(r.reason)+'</p></div><div class="region-item-meta">'+(r.text?'<code>'+escapeHTML(r.text)+'</code>':'<span></span>')+'<span class="region-actions"><button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'수정')+'</button><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span></div>'+
+        '<div class="region-item-body"><canvas class="region-thumb" data-action="focus" data-thumb="'+escapeHTML(r.id)+'" width="240" height="136" aria-hidden="true"></canvas><p class="region-item-description">'+escapeHTML(r.reason)+'</p></div><div class="region-item-meta">'+(r.text?'<code>'+escapeHTML(r.text)+'</code>':'<span></span>')+'<span class="region-actions"><button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'수정')+'</button><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span></div>'+
         (detail?'<div class="region-detail"><label class="type-label">개인정보 유형<select data-region-type="true" aria-label="'+title+' 개인정보 유형">'+Object.entries(Core.TYPES).map(([key,label])=>'<option value="'+key+'" '+(r.type===key?'selected':'')+'>'+label+'</option>').join('')+'</select></label><div class="coordinate-title">원본 좌표 <span>'+state.width+' × '+state.height+' px'+(r.poly?' · 기울어진 외곽선':'')+'</span></div><div class="coordinate-editor" aria-label="원본 픽셀 좌표">'+[['x','왼쪽',px.x],['y','위쪽',px.y],['w','너비',px.width],['h','높이',px.height]].map(([key,label,value])=>'<label>'+label+'<input type="number" min="'+(['w','h'].includes(key)?1:0)+'" max="'+(['x','w'].includes(key)?state.width:state.height)+'" step="1" value="'+value+'" data-coordinate="'+key+'" aria-label="'+title+' '+label+' 픽셀">px</label>').join('')+'</div></div>':'')+'</div>';
     }).join('');
     drawThumbs(list);
@@ -444,9 +458,14 @@
     const kx=state.source.width/state.width,ky=state.source.height/state.height;
     $$('canvas[data-thumb]',list).forEach(canvas=>{
       const r=state.regions.find(item=>item.id===canvas.dataset.thumb);if(!r)return;
-      const p=Core.toPixels(r,state.width,state.height),pad=Math.min(p.width,p.height)*0.6+8,padX=pad,padY=pad;
-      const x0=Math.max(0,p.x-padX),y0=Math.max(0,p.y-padY),x1=Math.min(state.width,p.x+p.width+padX),y1=Math.min(state.height,p.y+p.height+padY);
-      const ctx=canvas.getContext('2d'),cw=canvas.width,ch=canvas.height,scale=Math.min(cw/(x1-x0),ch/(y1-y0));
+      const p=Core.toPixels(r,state.width,state.height),pad=Math.min(p.width,p.height)*0.6+8;
+      const ctx=canvas.getContext('2d'),cw=canvas.width,ch=canvas.height;
+      // 영역 둘레를 조금 넓힌 뒤, 칸 비율에 맞게 더 넓혀 빈 띠 없이 채운다. 사진 밖으로 나가면 안쪽으로 민다.
+      let w=p.width+pad*2,h=p.height+pad*2;
+      if(w/h<cw/ch)w=h*cw/ch;else h=w*ch/cw;
+      w=Math.min(w,state.width);h=Math.min(h,state.height);
+      const x0=Math.min(Math.max(0,p.x+p.width/2-w/2),state.width-w),y0=Math.min(Math.max(0,p.y+p.height/2-h/2),state.height-h),x1=x0+w,y1=y0+h;
+      const scale=Math.min(cw/(x1-x0),ch/(y1-y0));
       const dw=(x1-x0)*scale,dh=(y1-y0)*scale,dx=(cw-dw)/2,dy=(ch-dh)/2;
       ctx.clearRect(0,0,cw,ch);
       ctx.drawImage(state.source,x0*kx,y0*ky,(x1-x0)*kx,(y1-y0)*ky,dx,dy,dw,dh);
@@ -465,15 +484,21 @@
     $('#reviewSubtitle').textContent=state.analysisStatus==='manual'?'직접 추가한 곳만 가려져요. 사진 전체를 한 번 더 확인해 주세요.':(serious?'가림 권장·검토 권장이 '+serious+'건 있어요. 가림 권장은 미리 골라 뒀어요. 검토 권장도 확인해 주세요.':'가릴 만한 항목은 못 찾았어요. 참고 항목과 사진 전체를 한 번 더 확인해 주세요.');
     $('#riskSummary').classList.toggle('safe',count>0&&selected===count);
     $('#riskSummaryText').textContent=count===0?'탐지 결과가 없어도 개인정보가 없다는 뜻은 아니에요.':selected===count?selected+'개 영역을 가리도록 선택했어요.':selected?(count-selected)+'개 영역은 가리지 않아요.':'아직 가릴 영역을 고르지 않았어요.';
-    $('#selectAll').textContent=count>0&&selected===count?'모두 해제':'모두 선택';$('#selectAll').disabled=count===0||state.saving;
+    $('#selectAll').textContent=count>0&&selected===count?'모두 해제':'모두 선택';$('#selectAll').disabled=count===0||state.saving;$('#selectAll').classList.toggle('hidden',count===0);
     $('#saveLabel').textContent=selected?'선택한 '+selected+'곳 가리고 저장':'메타데이터만 지우고 저장';
     $('#undoButton').disabled=!state.history.length||state.phase!=='review';
     $$('.style-options button').forEach(button=>{const on=button.dataset.style===state.style;button.classList.toggle('selected',on);button.setAttribute('aria-pressed',String(on));});
     $('#styleHint').textContent=state.style==='solid'?'선택한 영역을 검은색으로 완전히 덮어요.':'흐린 유리처럼 덮어요. 글자 위에 블러를 거는 게 아니라 주변 색으로 먼저 지운 뒤 흐리게 해서, 원래 글자를 되살릴 수 없어요.';
     $('.metadata-box p').textContent=metadataText();$('.metadata-box p').title=metadataText();
     $('.metadata-box').classList.toggle('found',!state.sample&&state.gps.length>0);  // 위치정보가 있으면 줄이지 않고 다 보여 준다
-    const notices=state.groups.map(g=>'함께 노출됨 · '+g).concat(state.issues);
-    $('#partialNotice').classList.toggle('hidden',!notices.length);$('#partialNotice').replaceChildren(...notices.map(text=>{const p=document.createElement('p');p.textContent=text;return p;}));
+    const para=text=>{const p=document.createElement('p');p.textContent=text;return p;},nodes=state.issues.map(para);
+    if(state.groups.length) {
+      const fold=document.createElement('details'),summary=document.createElement('summary');
+      summary.textContent='서로 연결될 수 있는 정보가 함께 보이는 곳 '+state.groups.length+'곳';
+      fold.open=state.groupsOpen;fold.addEventListener('toggle',()=>{state.groupsOpen=fold.open;});
+      fold.append(summary,...state.groups.map(g=>para('함께 노출됨 · '+g)));nodes.unshift(fold);
+    }
+    $('#partialNotice').classList.toggle('hidden',!nodes.length);$('#partialNotice').replaceChildren(...nodes);
     renderList();
   }
 
@@ -737,7 +762,7 @@
     a.href=url;a.download=base+'-privacy-lens.jpg';document.body.append(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),30000);
     setStep(3);state.mode='protected';renderImage();
-    notify('다운로드를 요청했어요. 브라우저의 다운로드 목록을 확인하세요.');
+    state.saved=true;renderDone();$('#reviewPanel').scrollTop=0;
   }
 
   function exportFile() {
@@ -898,6 +923,8 @@
   });
   $('#workspaceNav').addEventListener('click',()=>{$('#workspace').scrollIntoView({behavior:'smooth',block:'start'});});
   $('#changePhoto').addEventListener('click',()=>{reset();notify('새 사진이나 샘플을 선택해 주세요.');});
+  $('#doneNew').addEventListener('click',()=>$('#changePhoto').click());
+  $('#doneBack').addEventListener('click',()=>{state.saved=false;renderDone();setStep(2);state.mode='original';renderImage();});
   $('#fileInput').addEventListener('change',event=>loadFile(event.target.files[0]));
   // 사진 찍기. 휴대폰(손가락 입력)은 카메라 앱을 바로 연다(capture, 원본 화질).
   // PC 는 capture 를 무시하고 파일 창을 열기 때문에, 웹캠을 화면 안에서 켜서 찍는다(getUserMedia).

@@ -752,3 +752,27 @@ dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
 .region-list.reveal .region-item{animation:rise .5s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0) * 70ms)}
 .region-layer.reveal .region-box{animation:box-in .45s var(--spring) both;animation-delay:calc(150ms + var(--i,0) * 70ms)}
 @keyframes box-in{from{opacity:0;transform:scale(1.3)}to{opacity:1;transform:none}}
+
+/* ── 마무리 다듬기(2026-11-14) ──────────────────────────────────────────
+   1) 저장 뒤 완료 화면  2) '함께 노출됨' 안내를 한 줄로 접기  3) 항목 미리보기 키우기 */
+.done-card{display:grid;justify-items:start;gap:10px;padding:28px 24px 24px;animation:rise .45s cubic-bezier(.16,1,.3,1)}
+.done-mark{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:var(--ok);color:#fff;animation:done-pop .5s var(--spring) both}
+.done-mark svg{width:22px;height:22px;stroke-width:2.6}
+.done-card h2{font-size:24px;font-weight:800;letter-spacing:-.035em;line-height:1.35}
+.done-summary{font-size:15px;line-height:1.65;color:var(--ink-2)}
+#doneThumb{width:100%;height:auto;margin-top:6px;border-radius:14px;background:var(--surface-2);box-shadow:0 0 0 1px var(--line)}
+.done-card .pane-actions{width:100%;margin-top:8px}
+@keyframes done-pop{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:none}}
+.review.saved>.review-head,.review.saved>.review-sub,.review.saved>.partial-notice,.review.saved>.list-head,.review.saved>.region-list,.review.saved>.raw-ocr-panel,
+.review.saved .redaction-settings,.review.saved .metadata-box,.review.saved #saveButton{display:none}
+.review.saved .review-foot:has(#shareButton.hidden){display:none}
+
+.partial-notice details>summary{display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:700;cursor:pointer;list-style:none}
+.partial-notice details>summary::-webkit-details-marker{display:none}
+.partial-notice details>summary:after{content:"자세히";flex-shrink:0;font-weight:600;text-decoration:underline;text-underline-offset:3px}
+.partial-notice details[open]>summary:after{content:"접기"}
+.partial-notice details[open]>summary{margin-bottom:6px}
+.partial-notice details+p{margin-top:8px}
+
+.region-thumb{width:120px;height:68px;border-radius:8px}
+.done-card .pane-actions{display:grid;gap:10px}
