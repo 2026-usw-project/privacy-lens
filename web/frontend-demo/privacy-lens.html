@@ -688,6 +688,48 @@ dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
 .camera-status:empty{display:none}
 #cameraDialog .export-actions{margin-top:14px}
 
+/* ── 결과 화면 정리(2026-11-14) ─────────────────────────────────────────
+   1) 개발자용(영역 데이터·OCR 원문·사진 크기·엔진 이름)은 '개발자 도구' 메뉴 하나로 모은다.
+   2) 저장 영역을 낮춰 항목 목록이 더 많이 보이게 한다.
+   3) 토스트는 위에서 내려와 사진 아래 도구 줄과 저장 버튼을 가리지 않는다. */
+.dev-menu{position:relative}
+.dev-menu>summary{list-style:none;cursor:pointer;user-select:none}
+.dev-menu>summary::-webkit-details-marker{display:none}
+.dev-menu[open]>summary{color:var(--ink)}
+.dev-menu-body{position:absolute;left:0;bottom:calc(100% + 10px);z-index:20;display:grid;gap:10px;width:260px;padding:14px 16px;border-radius:14px;background:var(--surface);box-shadow:0 0 0 1px var(--line),0 12px 32px #00000026;animation:rise .22s cubic-bezier(.16,1,.3,1)}
+.dev-menu-body .text-button{justify-content:flex-start}
+.dev-menu-body .raw-ocr-control{padding:10px 0 0;border-top:1px solid var(--line)}
+.dev-menu-body .raw-ocr-control label{font-size:13px}
+.dev-info{display:flex;flex-wrap:wrap;gap:2px 12px;padding-top:10px;border-top:1px solid var(--line)}
+.raw-ocr-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:12px;font-size:14px}
+.editor-tools{min-height:52px;padding:10px 20px 12px}
+
+.review-foot{gap:10px;padding:12px 24px 18px}
+.redaction-settings{gap:0}
+.style-options>button{height:38px;border-radius:10px;font-size:13px}
+/* 가림 방식 설명은 화면에서 빼고 읽어 주는 도구에만 남긴다 */
+#styleHint{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.metadata-box{align-items:center;gap:8px;padding:9px 12px;border-radius:10px}
+.metadata-box svg{width:16px;height:16px;flex-shrink:0}
+.metadata-box>div{display:flex;align-items:baseline;gap:8px;overflow:hidden}
+.metadata-box strong{white-space:nowrap}
+.metadata-box p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.4}
+.metadata-box.found{align-items:flex-start;background:var(--warn-bg)}
+.metadata-box.found svg{color:var(--warn);margin-top:2px}
+.metadata-box.found>div{display:grid;gap:2px}
+.metadata-box.found p{white-space:normal;color:var(--warn)}
+.button.big#saveButton{min-height:50px;padding-top:11px;padding-bottom:11px;border-radius:14px}
+
+.toast{top:calc(var(--topbar) + 14px);bottom:auto;transform:translate(-50%,-14px)}
+.toast.visible{transform:translate(-50%,0)}
+/* 넓은 화면에서는 사진 칸 가운데 위. 파일 이름과 '사진 바꾸기' 사이 빈 자리에 놓인다. */
+@media(min-width:1021px){.toast{left:calc(var(--sidebar) + (100% - var(--sidebar) - var(--side)) / 2);max-width:min(420px,calc(100% - var(--sidebar) - var(--side) - 300px))}}
+@media(max-width:580px){
+  .toast{top:12px;bottom:auto}
+  .dev-menu-body{left:auto;right:0;width:min(260px,calc(100vw - 48px))}
+  .review-foot{padding-left:20px;padding-right:20px}
+}
+
 </style>
 
 
@@ -814,9 +856,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           <div class="editor-tools">
             <button class="button ghost small" id="addRegion"><svg><use href="#i-plus"/></svg>영역 추가</button>
             <button class="text-button" id="undoButton" disabled><svg><use href="#i-reset"/></svg>되돌리기</button>
-            <button class="text-button" id="payloadButton"><svg><use href="#i-code"/></svg>영역 데이터</button>
+            <details class="dev-menu" id="devMenu"><summary class="text-button"><svg><use href="#i-code"/></svg>개발자 도구</summary>
+              <div class="dev-menu-body" role="group" aria-label="개발자 도구">
+                <button class="text-button" id="payloadButton"><svg><use href="#i-code"/></svg>영역 데이터 보기</button>
+                <div class="raw-ocr-control"><label for="rawOcrToggle">OCR 원문 보기 <input id="rawOcrToggle" type="checkbox" role="switch" aria-controls="rawOcrPanel"></label></div>
+                <p class="dev-info"><span class="mono-label" id="imageDimensions"></span><span class="mono-label" id="sourceBadge">분석 전</span></p>
+              </div>
+            </details>
             <span class="tool-hint" id="toolHint">가릴 부분을 직접 추가할 수 있어요.</span>
-            <span class="image-meta"><span class="mono-label" id="canvasCaption">ORIGINAL</span><span class="mono-label" id="imageDimensions"></span><span class="mono-label" id="sourceBadge">분석 전</span><span class="mono-label net"><svg><use href="#i-lock"/></svg><span id="networkLabel">서버 처리 · 저장 안 함</span></span></span>
+            <span class="image-meta"><span class="mono-label" id="canvasCaption">ORIGINAL</span><span class="mono-label net"><svg><use href="#i-lock"/></svg><span id="networkLabel">서버 처리 · 저장 안 함</span></span></span>
           </div>
         </div>
         <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" hidden>
@@ -867,8 +915,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
           <p class="review-sub" id="reviewSubtitle"></p>
           <div class="partial-notice hidden" id="partialNotice" role="status"></div>
           <div class="list-head"><span class="risk-summary" id="riskSummary"><svg><use href="#i-shield"/></svg><span id="riskSummaryText"></span></span><span class="list-head-right"><span class="mono-label">가림 <strong id="selectedCount">0</strong></span><button class="text-button" id="selectAll">모두 선택</button></span></div>
-          <div class="raw-ocr-control"><label for="rawOcrToggle">Raw OCR <input id="rawOcrToggle" type="checkbox" role="switch" aria-controls="rawOcrPanel"></label></div>
           <section id="rawOcrPanel" class="raw-ocr-panel hidden" aria-label="OCR 원문">
+            <div class="raw-ocr-head"><strong>OCR 원문 보기</strong><button class="text-button" id="rawOcrClose">항목 목록으로</button></div>
             <p id="rawOcrNote"></p><p id="rawOcrCount" role="status"></p>
             <ol id="rawOcrList" class="raw-ocr-list"></ol>
           </section>
@@ -919,7 +967,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <div class="dialog-callout warn hidden" id="judgeWarning"><svg><use href="#i-info"/></svg><p>사진에서 읽은 글자(OCR 원문)가 선택한 회사 서버로 전송돼요. 실제 개인정보가 담긴 사진에는 쓰지 마세요.</p></div>
 <div class="export-actions"><button class="button ghost" id="judgeClearKeys">저장된 키 모두 지우기</button><button class="button primary" data-close>완료</button></div></dialog>
 
-<div class="toast" id="toast" role="status" aria-live="polite"><svg><use href="#i-check"/></svg><span id="toastText"></span></div>
+<div class="toast" id="toast" role="status" aria-live="polite"><svg><use id="toastIcon" href="#i-check"/></svg><span id="toastText"></span></div>
 <script>
 'use strict';
 (() => {
@@ -1371,6 +1419,7 @@ window.PL_SAMPLE_PHOTOS={
     clearTimeout(state.toastTimer);
     $('#toastText').textContent = message;
     $('#toast').classList.toggle('error', error);
+    $('#toastIcon').setAttribute('href', error ? '#i-info' : '#i-check');
     $('#toast').classList.add('visible');
     state.toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 4300);
   }
@@ -1702,7 +1751,7 @@ window.PL_SAMPLE_PHOTOS={
       return '<div class="region-item'+(focused?' selected-detail':'')+(detail?' editing':'')+'" data-region="'+escapeHTML(r.id)+'">'+
         '<div class="region-item-top"><input type="checkbox" data-action="toggle" '+(r.enabled?'checked ':'')+'aria-label="'+title+' 가리기"><button class="region-item-name" data-action="focus" aria-pressed="'+focused+'"><span class="row-number">'+String(index+1).padStart(2,'0')+'</span>'+title+'</button>'+cert+severityTag(r)+'</div>'+
         // 작게 찍혀 사진에서 잘 안 보이는 것을 바로 알아보게, 그 자리를 잘라 크게 보여 준다(D-21)
-        '<div class="region-item-body"><canvas class="region-thumb" data-action="focus" data-thumb="'+escapeHTML(r.id)+'" width="144" height="108" aria-hidden="true"></canvas><p class="region-item-description">'+escapeHTML(r.reason)+'</p></div><div class="region-item-meta">'+(r.text?'<code>'+escapeHTML(r.text)+'</code>':'<span></span>')+'<span class="region-actions"><button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'유형 · 좌표 수정')+'</button><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span></div>'+
+        '<div class="region-item-body"><canvas class="region-thumb" data-action="focus" data-thumb="'+escapeHTML(r.id)+'" width="144" height="108" aria-hidden="true"></canvas><p class="region-item-description">'+escapeHTML(r.reason)+'</p></div><div class="region-item-meta">'+(r.text?'<code>'+escapeHTML(r.text)+'</code>':'<span></span>')+'<span class="region-actions"><button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'수정')+'</button><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span></div>'+
         (detail?'<div class="region-detail"><label class="type-label">개인정보 유형<select data-region-type="true" aria-label="'+title+' 개인정보 유형">'+Object.entries(Core.TYPES).map(([key,label])=>'<option value="'+key+'" '+(r.type===key?'selected':'')+'>'+label+'</option>').join('')+'</select></label><div class="coordinate-title">원본 좌표 <span>'+state.width+' × '+state.height+' px'+(r.poly?' · 기울어진 외곽선':'')+'</span></div><div class="coordinate-editor" aria-label="원본 픽셀 좌표">'+[['x','왼쪽',px.x],['y','위쪽',px.y],['w','너비',px.width],['h','높이',px.height]].map(([key,label,value])=>'<label>'+label+'<input type="number" min="'+(['w','h'].includes(key)?1:0)+'" max="'+(['x','w'].includes(key)?state.width:state.height)+'" step="1" value="'+value+'" data-coordinate="'+key+'" aria-label="'+title+' '+label+' 픽셀">px</label>').join('')+'</div></div>':'')+'</div>';
     }).join('');
     drawThumbs(list);
@@ -1745,7 +1794,8 @@ window.PL_SAMPLE_PHOTOS={
     $('#undoButton').disabled=!state.history.length||state.phase!=='review';
     $$('.style-options button').forEach(button=>{const on=button.dataset.style===state.style;button.classList.toggle('selected',on);button.setAttribute('aria-pressed',String(on));});
     $('#styleHint').textContent=state.style==='solid'?'선택한 영역을 검은색으로 완전히 덮어요.':'흐린 유리처럼 덮어요. 글자 위에 블러를 거는 게 아니라 주변 색으로 먼저 지운 뒤 흐리게 해서, 원래 글자를 되살릴 수 없어요.';
-    $('.metadata-box p').textContent=metadataText();
+    $('.metadata-box p').textContent=metadataText();$('.metadata-box p').title=metadataText();
+    $('.metadata-box').classList.toggle('found',!state.sample&&state.gps.length>0);  // 위치정보가 있으면 줄이지 않고 다 보여 준다
     const notices=state.groups.map(g=>'함께 노출됨 · '+g).concat(state.issues);
     $('#partialNotice').classList.toggle('hidden',!notices.length);$('#partialNotice').replaceChildren(...notices.map(text=>{const p=document.createElement('p');p.textContent=text;return p;}));
     renderList();
@@ -2246,6 +2296,10 @@ window.PL_SAMPLE_PHOTOS={
   $$('[data-sample]').forEach(button=>button.addEventListener('click',()=>loadSample(button.dataset.sample)));
   $('#cancelScan').addEventListener('click',()=>{cancelRequests();state.phase='ready';state.analysisStatus='idle';render();notify('분석 요청을 취소했어요. 다시 시작할 수 있어요.');});
   $$('[data-view]').forEach(button=>button.addEventListener('click',()=>{state.mode=button.dataset.view;state.drawing=false;syncDrawing();renderImage();if(state.mode!=='original'&&state.previewState!=='ready'&&state.previewState!=='loading')schedulePreview();}));
+  // 개발자 도구 메뉴: 바깥을 누르거나 Esc 로 닫는다. OCR 원문은 패널에서도 끌 수 있다.
+  document.addEventListener('click',event=>{const menu=$('#devMenu');if(menu.open&&!menu.contains(event.target))menu.open=false;});
+  $('#devMenu').addEventListener('keydown',event=>{if(event.key==='Escape'){$('#devMenu').open=false;$('#devMenu summary').focus();}});
+  $('#rawOcrClose').addEventListener('click',()=>{const toggle=$('#rawOcrToggle');toggle.checked=false;toggle.dispatchEvent(new Event('change'));});
   $('#rawOcrToggle').addEventListener('change',event=>{
     state.showRawOcr=event.target.checked;
     if(state.showRawOcr){state.mode='original';state.drawing=false;syncDrawing();}

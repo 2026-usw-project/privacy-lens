@@ -47,6 +47,7 @@
     clearTimeout(state.toastTimer);
     $('#toastText').textContent = message;
     $('#toast').classList.toggle('error', error);
+    $('#toastIcon').setAttribute('href', error ? '#i-info' : '#i-check');
     $('#toast').classList.add('visible');
     state.toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 4300);
   }
@@ -378,7 +379,7 @@
       return '<div class="region-item'+(focused?' selected-detail':'')+(detail?' editing':'')+'" data-region="'+escapeHTML(r.id)+'">'+
         '<div class="region-item-top"><input type="checkbox" data-action="toggle" '+(r.enabled?'checked ':'')+'aria-label="'+title+' 가리기"><button class="region-item-name" data-action="focus" aria-pressed="'+focused+'"><span class="row-number">'+String(index+1).padStart(2,'0')+'</span>'+title+'</button>'+cert+severityTag(r)+'</div>'+
         // 작게 찍혀 사진에서 잘 안 보이는 것을 바로 알아보게, 그 자리를 잘라 크게 보여 준다(D-21)
-        '<div class="region-item-body"><canvas class="region-thumb" data-action="focus" data-thumb="'+escapeHTML(r.id)+'" width="144" height="108" aria-hidden="true"></canvas><p class="region-item-description">'+escapeHTML(r.reason)+'</p></div><div class="region-item-meta">'+(r.text?'<code>'+escapeHTML(r.text)+'</code>':'<span></span>')+'<span class="region-actions"><button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'유형 · 좌표 수정')+'</button><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span></div>'+
+        '<div class="region-item-body"><canvas class="region-thumb" data-action="focus" data-thumb="'+escapeHTML(r.id)+'" width="144" height="108" aria-hidden="true"></canvas><p class="region-item-description">'+escapeHTML(r.reason)+'</p></div><div class="region-item-meta">'+(r.text?'<code>'+escapeHTML(r.text)+'</code>':'<span></span>')+'<span class="region-actions"><button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'수정')+'</button><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span></div>'+
         (detail?'<div class="region-detail"><label class="type-label">개인정보 유형<select data-region-type="true" aria-label="'+title+' 개인정보 유형">'+Object.entries(Core.TYPES).map(([key,label])=>'<option value="'+key+'" '+(r.type===key?'selected':'')+'>'+label+'</option>').join('')+'</select></label><div class="coordinate-title">원본 좌표 <span>'+state.width+' × '+state.height+' px'+(r.poly?' · 기울어진 외곽선':'')+'</span></div><div class="coordinate-editor" aria-label="원본 픽셀 좌표">'+[['x','왼쪽',px.x],['y','위쪽',px.y],['w','너비',px.width],['h','높이',px.height]].map(([key,label,value])=>'<label>'+label+'<input type="number" min="'+(['w','h'].includes(key)?1:0)+'" max="'+(['x','w'].includes(key)?state.width:state.height)+'" step="1" value="'+value+'" data-coordinate="'+key+'" aria-label="'+title+' '+label+' 픽셀">px</label>').join('')+'</div></div>':'')+'</div>';
     }).join('');
     drawThumbs(list);
@@ -421,7 +422,8 @@
     $('#undoButton').disabled=!state.history.length||state.phase!=='review';
     $$('.style-options button').forEach(button=>{const on=button.dataset.style===state.style;button.classList.toggle('selected',on);button.setAttribute('aria-pressed',String(on));});
     $('#styleHint').textContent=state.style==='solid'?'선택한 영역을 검은색으로 완전히 덮어요.':'흐린 유리처럼 덮어요. 글자 위에 블러를 거는 게 아니라 주변 색으로 먼저 지운 뒤 흐리게 해서, 원래 글자를 되살릴 수 없어요.';
-    $('.metadata-box p').textContent=metadataText();
+    $('.metadata-box p').textContent=metadataText();$('.metadata-box p').title=metadataText();
+    $('.metadata-box').classList.toggle('found',!state.sample&&state.gps.length>0);  // 위치정보가 있으면 줄이지 않고 다 보여 준다
     const notices=state.groups.map(g=>'함께 노출됨 · '+g).concat(state.issues);
     $('#partialNotice').classList.toggle('hidden',!notices.length);$('#partialNotice').replaceChildren(...notices.map(text=>{const p=document.createElement('p');p.textContent=text;return p;}));
     renderList();
@@ -922,6 +924,10 @@
   $$('[data-sample]').forEach(button=>button.addEventListener('click',()=>loadSample(button.dataset.sample)));
   $('#cancelScan').addEventListener('click',()=>{cancelRequests();state.phase='ready';state.analysisStatus='idle';render();notify('분석 요청을 취소했어요. 다시 시작할 수 있어요.');});
   $$('[data-view]').forEach(button=>button.addEventListener('click',()=>{state.mode=button.dataset.view;state.drawing=false;syncDrawing();renderImage();if(state.mode!=='original'&&state.previewState!=='ready'&&state.previewState!=='loading')schedulePreview();}));
+  // 개발자 도구 메뉴: 바깥을 누르거나 Esc 로 닫는다. OCR 원문은 패널에서도 끌 수 있다.
+  document.addEventListener('click',event=>{const menu=$('#devMenu');if(menu.open&&!menu.contains(event.target))menu.open=false;});
+  $('#devMenu').addEventListener('keydown',event=>{if(event.key==='Escape'){$('#devMenu').open=false;$('#devMenu summary').focus();}});
+  $('#rawOcrClose').addEventListener('click',()=>{const toggle=$('#rawOcrToggle');toggle.checked=false;toggle.dispatchEvent(new Event('change'));});
   $('#rawOcrToggle').addEventListener('change',event=>{
     state.showRawOcr=event.target.checked;
     if(state.showRawOcr){state.mode='original';state.drawing=false;syncDrawing();}
