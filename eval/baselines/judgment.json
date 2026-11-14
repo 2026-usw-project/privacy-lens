@@ -29,8 +29,8 @@
    28
   ],
   "cover|카드번호": [
-   28,
-   28
+   84,
+   84
   ],
   "cover|학번": [
    14,
@@ -53,8 +53,8 @@
    14
   ],
   "none|숫자 묶음": [
-   14,
-   14
+   42,
+   42
   ],
   "none|와이파이 이름": [
    14,
@@ -99,14 +99,14 @@
  },
  "false_cover": 0,
  "summary": {
-  "items": 714,
-  "cover_total": 462,
+  "items": 798,
+  "cover_total": 518,
   "cover_hit": 100.0,
   "cover_weak": 0.0,
   "cover_miss": 0.0,
   "review_total": 56,
   "review_ok": 100.0,
-  "none_total": 196,
+  "none_total": 224,
   "false_cover": 0.0,
   "false_review": 0.0
  }

@@ -480,51 +480,151 @@ def _id_context(index: int, spans: list[TextSpan]) -> str | None:
     return None
 
 
+# ------------------------------------------------------------------ 카드번호
+# 정규식(RE_CARD)은 '한 조각에 숫자 16자리가 온전히, Luhn 까지 맞게' 읽힌 경우만 잡는다.
+# 실물 카드에서는 그렇지 않은 경우가 더 많다(엠보싱·간격·세로 배치·한 자리 오독).
+
+_LOOKALIKE = str.maketrans({"O": "0", "o": "0", "D": "0", "Q": "0", "I": "1", "l": "1", "|": "1",
+                            "S": "5", "s": "5", "B": "8", "Z": "2"})
+_C = r"[0-9OoDQIl|SsBZ]"
+_RE_CARD16 = re.compile(rf"(?<![0-9A-Za-z])(?:{_C}{{4}}[-\s.]?){{3}}{_C}{{4}}(?![0-9A-Za-z])")
+_RE_CARD15 = re.compile(rf"(?<![0-9A-Za-z]){_C}{{4}}[-\s.]{_C}{{6}}[-\s.]{_C}{{5}}(?![0-9A-Za-z])")
+_RE_EXPIRY = re.compile(r"(?<!\d)(?:0[1-9]|1[0-2])\s?/\s?\d{2}(?!\d)")
+# 카드 앞·뒷면에만 있는 낱말. 영수증에도 나오는 '카드'·'카드번호'·'카드승인'은 넣지 않는다.
+_CARD_FACE_WORDS = ["VALIDTHRU", "GOODTHRU", "VALID", "THRU", "EXPIRES", "VISA", "MASTERCARD", "MASTER",
+                    "AMEX", "AMERICANEXPRESS", "JCB", "UNIONPAY", "CVC", "CVV", "DEBIT", "CREDIT", "CHECK",
+                    "체크카드", "신용카드", "유효기간"]
+CARD_FACE_RADIUS_EM = 16.0   # 카드 한 장은 번호 글자 높이의 20배쯤 된다. 일반 문맥 반경(6)으로는 모서리의 로고에 닿지 않는다
+
+
+def _to_digits(text: str) -> str | None:
+    """숫자와 숫자를 닮은 글자뿐이면 숫자열로. 진짜 숫자가 3/4 에 못 미치면(SOLD, BOSS) 숫자로 보지 않는다."""
+    flat = re.sub(r"[\s\-.]", "", text)
+    mapped = flat.translate(_LOOKALIKE)
+    if not flat or not mapped.isdigit() or sum(ch.isdigit() for ch in flat) < len(flat) * 0.75:
+        return None
+    return mapped
+
+
 def _digit_group(text: str) -> str | None:
-    """'6060', '4581 2484' 처럼 4자리 묶음만 있는 조각이면 숫자만, 아니면 None."""
-    flat = re.sub(r"[\s\-]", "", kp.normalize(text))
-    return flat if flat.isdigit() and len(flat) % 4 == 0 and len(flat) < 16 else None
+    """'6060', '4581 2484', '9O8B' 처럼 4자리 묶음만 있는 조각이면 숫자만, 아니면 None."""
+    d = _to_digits(kp.normalize(text))
+    return d if d and len(d) % 4 == 0 and len(d) < 16 else None
 
 
-def find_split_cards(spans: list[TextSpan], findings: list[Finding]) -> list[Finding]:
-    """같은 줄에 4자리씩 따로 읽힌 숫자를 이어 16자리가 되고 Luhn 이 맞으면 카드번호.
-
-    카드 번호는 엠보싱·간격 때문에 OCR 이 묶음마다 따로 읽는 일이 잦다(실물 학생증 겸 체크카드).
-    한 조각에 다 들어온 번호는 정규식(RE_CARD)이 이미 잡는다.
-    """
-    groups = {i: d for i, s in enumerate(spans) if (d := _digit_group(s.text))}
-    if len(groups) < 2:
-        return []
+def _card_face_word(indices: list[int], spans: list[TextSpan]) -> str | None:
+    """번호 근처(카드 한 장 범위)에 카드 앞·뒷면 낱말이나 유효기간(MM/YY)이 있는가."""
     lay = layout(spans)
+    near = set()
+    for i in indices:
+        radius = max(lay.thickness(i), 12) * CARD_FACE_RADIUS_EM
+        near.update(j for j in range(len(spans)) if lay.distance(i, j) <= radius)
+    for j in sorted(near):
+        text = kp.normalize(spans[j].text)
+        flat = kp.label_key(text).upper()
+        word = next((w for w in _CARD_FACE_WORDS if w in flat), None)
+        if word:
+            return word
+        if j not in indices and _RE_EXPIRY.search(text):
+            return "유효기간"
+    return None
+
+
+def _below(lay, upper: int, lower: int) -> bool:
+    """lower 가 upper 바로 아랫줄에 줄 머리를 맞춰 붙어 있는가(세로형 카드의 번호 줄)."""
+    me, ot = lay.pair(lower, upper)
+    h = min(ot.thick, me.thick)
+    gap = me.c0 - ot.c1
+    return ot.mid_c < me.mid_c - 0.5 * h and abs(ot.a0 - me.a0) <= 1.5 * h and -0.35 * h <= gap <= 1.5 * h
+
+
+def find_cards(spans: list[TextSpan], findings: list[Finding]) -> list[Finding]:
+    """정규식이 놓치는 카드번호(docs/MASKING_CRITERIA.md '카드번호').
+
+    1. 같은 줄에 4자리씩 따로 읽힌 16자리(Luhn 통과)                      → 가림 권장
+    2. 세로형 카드처럼 여러 줄로 쌓인 16자리(Luhn 통과 + 카드 앞면 단서)   → 가림 권장
+    3. 15자리 4-6-5 (Luhn 통과)                                          → 가림 권장
+    4. 숫자 몇 개가 닮은 글자로 읽힌 번호(0→O 등, 바꿔서 Luhn 통과)       → 가림 권장
+    5. 한 자리쯤 잘못 읽혀 Luhn 이 안 맞는 번호 + 카드 앞면 단서          → 가림 권장(일부만 읽음)
+
+    단서 없이 Luhn 도 안 맞는 4자리 묶음(주문표·시간표)은 잡지 않는다. 세로로 쌓인 숫자는 Luhn 이
+    우연히 맞을 수 있어(10번에 1번) 단서가 있을 때만 잡는다.
+    """
+    lay = layout(spans)
+    carded = {f.span_index for f in findings if f.kind == "card"}
+    out: list[Finding] = []
+    used: set[int] = set()
+
+    def emit(indices: list[int], digits: str, shown: str, stacked: bool) -> None:
+        if carded & set(indices) or used & set(indices):
+            return
+        luhn = kp.valid_luhn(digits)
+        face = None if (luhn and not stacked) else _card_face_word(indices, spans)
+        if not (luhn and not stacked) and not face:
+            return
+        parts = [spans[k] for k in indices]
+        order = [Certainty.REGION_ONLY, Certainty.PARTIAL, Certainty.READ]
+        certainty = min((_certainty_from_ocr(s.ocr_confidence) for s in parts), key=order.index)
+        if not luhn and certainty is Certainty.READ:
+            certainty = Certainty.PARTIAL        # 어느 자리인지는 몰라도 잘못 읽은 자리가 있다
+        x0, y0 = min(s.box.x for s in parts), min(s.box.y for s in parts)
+        x1, y1 = max(s.box.x + s.box.w for s in parts), max(s.box.y + s.box.h for s in parts)
+        box = Box(x0, y0, x1 - x0, y1 - y0) if len(parts) > 1 else parts[0].box
+        used.update(indices)
+        if certainty is Certainty.REGION_ONLY:
+            f = _region_only("card", parts[0], indices[0])
+            f.box = box
+            out.append(f)
+            return
+        out.append(Finding(kind="card", box=box, certainty=certainty, severity=Severity.COVER,
+                           message=wording.found("card", near=face), evidence_text=shown,
+                           context_words=[face] if face else [], span_index=indices[0],
+                           detail={"span_indices": indices, "parts": len(indices), "luhn": luhn}))
+
+    # 한 조각 안에 번호가 통째로 있는 경우(닮은 글자, 15자리, Luhn 불일치)
+    for i, s in enumerate(spans):
+        text = kp.normalize(s.text)
+        for m in list(_RE_CARD16.finditer(text)) + list(_RE_CARD15.finditer(text)):
+            d = _to_digits(m.group(0))
+            if d:
+                emit([i], d, m.group(0), False)
+
+    # 여러 조각으로 나뉜 경우: 같은 줄로 잇고(가로 묶음), 묶음을 아래로 쌓는다
+    groups = {i: d for i, s in enumerate(spans) if i not in used and (d := _digit_group(s.text))}
     prev = {}
     for i in groups:
         left = next((j for j in lay.left_neighbors(i)[:1] if j in groups), None)
         if left is not None:
             prev[i] = left
     nxt = {j: i for i, j in prev.items()}
-    carded = {f.span_index for f in findings if f.kind == "card"}
-    out = []
+    rows: list[list[int]] = []
     for head in (i for i in groups if i not in prev):
         chain = [head]
         while chain[-1] in nxt and len(chain) < 4:
             chain.append(nxt[chain[-1]])
-        digits = "".join(groups[k] for k in chain)
-        if len(chain) < 2 or len(digits) != 16 or not kp.valid_luhn(digits) or carded & set(chain):
-            continue
-        parts = [spans[k] for k in chain]
-        certainty = min((_certainty_from_ocr(s.ocr_confidence) for s in parts),
-                        key=lambda c: [Certainty.REGION_ONLY, Certainty.PARTIAL, Certainty.READ].index(c))
-        x0, y0 = min(s.box.x for s in parts), min(s.box.y for s in parts)
-        x1, y1 = max(s.box.x + s.box.w for s in parts), max(s.box.y + s.box.h for s in parts)
-        box = Box(x0, y0, x1 - x0, y1 - y0)
-        if certainty is Certainty.REGION_ONLY:
-            f = _region_only("card", parts[0], chain[0])
-            f.box = box
-            out.append(f)
-            continue
-        out.append(Finding(kind="card", box=box, certainty=certainty, severity=Severity.COVER,
-                           message=wording.found("card"), evidence_text=" ".join(groups[k] for k in chain),
-                           span_index=chain[0], detail={"span_indices": chain, "parts": len(chain)}))
+        rows.append(chain)
+
+    def digits_of(chain: list[int]) -> str:
+        return "".join(groups[k] for k in chain)
+
+    def shown_of(chain: list[int]) -> str:
+        return " ".join(re.sub(r"\s+", " ", kp.normalize(spans[k].text)).strip() for k in chain)
+
+    for row in rows:
+        if len(row) >= 2 and len(digits_of(row)) == 16:
+            emit(row, digits_of(row), shown_of(row), False)
+    for top in rows:
+        stack, total = [top], len(digits_of(top))
+        while total < 16:
+            under = next((r for r in rows if r is not stack[-1] and r not in stack
+                          and _below(lay, stack[-1][0], r[0])), None)
+            if under is None:
+                break
+            stack.append(under)
+            total += len(digits_of(under))
+        if len(stack) >= 2 and total == 16:
+            flat = [k for r in stack for k in r]
+            emit(flat, digits_of(flat), shown_of(flat), True)
     return out
 
 
@@ -740,7 +840,7 @@ def evaluate(
         findings.extend(find_names(spans))
         findings.extend(find_secrets(spans))
         findings.extend(find_id_numbers(spans))
-        findings.extend(find_split_cards(spans, findings))
+        findings.extend(find_cards(spans, findings))
         findings.extend(find_unlabeled_names(spans, findings, unlabeled_names))
         _promote_phones_next_to_names(spans, findings)
 
