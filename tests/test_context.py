@@ -255,7 +255,7 @@ def test_card_stacked_in_rows_and_lookalike_letters_and_15_digits():
     assert _cards([["재고 수량"], ["9176"], ["1325"], ["5828"], ["3917"]]) == []
     # 닮은 글자: 9176 l325 S828 3917
     got = _cards([["9176 l325 S828 3917"]])
-    assert len(got) == 1 and got[0].evidence_text == "9176 l325 S828 3917"
+    assert len(got) == 1 and got[0].detail["luhn"] and "S828" in got[0].evidence_text   # 읽힌 그대로 보여 준다
     # 15자리 4-6-5
     assert kp.valid_luhn("949849412757399")
     assert len(_cards([["9498 494127 57399"]])) == 1
