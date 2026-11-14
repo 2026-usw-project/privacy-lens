@@ -376,6 +376,18 @@ def region_findings(dets: list[Detection], spans: list[TextSpan],
                 and _center_in(f.box, det.box) and f.kind not in ("qr", "barcode")
                 for f in findings
             )
+            # 결제 카드: 번호가 양각(튀어나오거나 파인 글자)이거나 카드와 같은 색이면 OCR 은 못 읽어도
+            # 사람 눈에는 보인다. 이름·유효기간만 읽고 번호를 못 찾았으면 카드째 가림 권장으로 알린다.
+            if det.name == "card":
+                number_found = any(f.kind == "card" and f.box is not None and _center_in(f.box, det.box)
+                                   for f in findings)
+                if not number_found:
+                    out.append(Finding(
+                        kind="document", box=det.box, certainty=Certainty.PARTIAL,
+                        severity=Severity.COVER, message=wording.card_number_unread(),
+                        detail={**detail, "reason": "card_number_unread"},
+                    ))
+                continue
             if det.name in ALWAYS_PERSONAL and not found_pii:
                 out.append(Finding(
                     kind="document", box=det.box, certainty=Certainty.PARTIAL,

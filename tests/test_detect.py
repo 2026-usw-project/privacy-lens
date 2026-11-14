@@ -359,3 +359,20 @@ def test_tiled_detector_adds_small_objects_and_drops_cut_ones():
 def test_tiled_detector_skips_small_photos():
     det = detect.TiledDetector(_FakeDet("d", []), grid=2, min_side=1280)
     assert det.tiles(1000, 750) == []
+
+
+def test_card_with_unread_number_is_covered_as_a_whole():
+    """양각·같은 색 번호: 카드 물건은 찾고 이름·유효기간은 읽었지만 번호는 못 읽은 경우."""
+    card = Detection("card", Box(100, 100, 600, 380), 0.8)
+    spans = [TextSpan("NURI CARD", Box(130, 120, 200, 30), 0.95),
+             TextSpan("VALID THRU 08/28", Box(130, 380, 260, 26), 0.95),
+             TextSpan("KIM MINJUN", Box(130, 420, 220, 28), 0.95)]
+    name = Finding(kind="name", box=spans[2].box, certainty=Certainty.READ, severity=Severity.REVIEW,
+                   message="이름으로 보이는 문자열이 인식됨", span_index=2)
+    out = detect.region_findings([card], spans, [name])
+    assert len(out) == 1 and out[0].severity is Severity.COVER and out[0].box == card.box
+    assert out[0].detail["reason"] == "card_number_unread" and "카드번호" in out[0].message
+    # 번호를 읽어 카드번호 항목이 이미 있으면 카드째 영역은 더하지 않는다
+    number = Finding(kind="card", box=Box(130, 300, 420, 34), certainty=Certainty.READ, severity=Severity.COVER,
+                     message="카드번호 형식의 숫자가 인식됨", span_index=0)
+    assert detect.region_findings([card], spans, [name, number]) == []
