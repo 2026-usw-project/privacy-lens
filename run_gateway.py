@@ -8,6 +8,7 @@
 - 화면은 게이트웨이 주소(기본 http://127.0.0.1:8080)에서 나온다. API 도 같은 주소라 CORS 가 필요 없다.
 - 화면을 정적 호스팅에 따로 올리면 --no-front 로 API 만 띄우고 --cors 에 화면 주소를 준다.
 - 엔진 서버 목록은 --backend 를 여러 번, 또는 PL_BACKENDS=주소,주소. 비밀값은 --token 또는 PL_GATEWAY_TOKEN(선택).
+- 주소를 생략하면 경고와 함께 게이트웨이만 열고, 실행 후 관리 화면에서 엔진을 추가할 수 있다.
 - 게이트웨이는 OCR·모델이 필요 없다(fastapi·uvicorn·httpx 만).
 - 엔진 목록 관리(화면의 '엔진 N대'): 관리 키가 있어야 한다. --admin-key 또는 PL_ADMIN_KEY, 없으면 켤 때마다 새로 만들어 콘솔에 보여 준다.
 - 포트(--port, 기본 8080)가 쓰는 중이면 1 씩 올려 빈 포트로 연다.
@@ -19,7 +20,6 @@ from __future__ import annotations
 import argparse
 import os
 import secrets
-import sys
 import urllib.parse
 
 
@@ -62,8 +62,7 @@ def main(argv=None) -> int:
 
     backends = [_url(u) for u in (args.backend or os.environ.get("PL_BACKENDS", "").split(",")) if u.strip()]
     if not backends:
-        print("엔진 서버 주소가 필요합니다:  --backend http://127.0.0.1:8000", file=sys.stderr)
-        return 2
+        print("[경고] 등록된 엔진 없이 시작합니다. 사진을 처리하려면 화면의 '분석 엔진'에서 서버 주소를 추가하세요.")
     if not args.token:
         print("[경고] 엔진 토큰 없이 연결합니다. 토큰을 쓰지 않는 엔진은 신뢰할 수 있는 내부망에서만 사용하세요.")
 
