@@ -1,6 +1,6 @@
 # 게이트웨이 앞의 https (Caddy). 도메인이 이 PC 를 가리키고 80·443 포트가 열려 있으면 인증서를 알아서 받는다.
 #
-#   1) python run_gateway.py --backend http://<엔진>:8000 --token <비밀값>          # 127.0.0.1:8080 (밖에 열지 않는다)
+#   1) python run_gateway.py --backend http://<엔진>:8000 --token <비밀값>          # 127.0.0.1:8000 (밖에 열지 않는다)
 #      화면을 정적 배포했으면 --no-front --cors https://<화면 주소> 를 더한다
 #   2) caddy run --config deploy/Caddyfile                                           # gw.example.org 를 실제 도메인으로
 #
@@ -11,7 +11,7 @@ gw.example.org {
 	request_body {
 		max_size 26MB
 	}
-	reverse_proxy 127.0.0.1:8080 {
+	reverse_proxy 127.0.0.1:8000 {
 		# 진행 상황(SSE)을 모아 두지 않고 바로 보낸다
 		flush_interval -1
 		# 분석은 줄을 서면 몇 분 걸릴 수 있다

@@ -107,7 +107,7 @@ python run.py --check
 | 스크립트 | 하는 일 | 주요 옵션 |
 |---|---|---|
 | `run.py` | 환경 점검 → 엔진 서버 1개(이 PC 안) + 게이트웨이를 함께 실행. 공유 토큰은 선택 사항입니다. | `--check` `--samples`, 환경변수 `HOST` `PORT`(8000) `PL_ENGINE_PORT`(8001) `PL_GATEWAY_TOKEN` `PL_ADMIN_KEY` |
-| `run_gateway.py` | 게이트웨이만. 화면을 내주고, 대기열 하나로 엔진들에 나눠 보냅니다. OCR·모델이 필요 없습니다. | `--backend`(여러 번) `--token` `--admin-key` `--host` `--port`(8080) `--no-front` `--cors` `--ssl-cert` `--ssl-key` `--queue-max` |
+| `run_gateway.py` | 게이트웨이만. 화면을 내주고, 대기열 하나로 엔진들에 나눠 보냅니다. OCR·모델이 필요 없습니다. | `--backend`(여러 번) `--token` `--admin-key` `--host` `--port`(8000) `--no-front` `--cors` `--ssl-cert` `--ssl-key` `--queue-max` |
 | `run_backend.py` | 엔진 서버만(화면 없음). 환경 점검은 `run.py`와 같습니다. | `--host` `--port`(8000) `--token` `--cors` `--check` |
 
 - **대기열은 게이트웨이에 하나**입니다. 들어온 순서대로, 비어 있는 엔진이 생길 때 한 건씩 보냅니다. 아직 차례가 안 된 요청은 게이트웨이가 '앞에 N건 · 약 N초'를 직접 알려 줍니다.
@@ -149,7 +149,9 @@ python run_backend.py --host 0.0.0.0
 python run_gateway.py --host 0.0.0.0 --backend http://192.168.0.21:8000 --backend http://192.168.0.22:8000
 ```
 
-사용자는 게이트웨이 주소(`http://<게이트웨이 IP>:8080`)로 접속합니다. 화면과 API 가 같은 주소라 CORS 설정이 필요 없습니다. 토큰 없이 연결할 때는 엔진을 신뢰할 수 있는 내부망이나 VPN 안에 둡니다. 인증을 켜려면 양쪽에 같은 `--token` 또는 `PL_GATEWAY_TOKEN`을 설정합니다.
+사용자는 게이트웨이 주소(`http://<게이트웨이 IP>:8000`)로 접속합니다. 화면과 API 가 같은 주소라 CORS 설정이 필요 없습니다. 토큰 없이 연결할 때는 엔진을 신뢰할 수 있는 내부망이나 VPN 안에 둡니다. 인증을 켜려면 양쪽에 같은 `--token` 또는 `PL_GATEWAY_TOKEN`을 설정합니다.
+
+같은 PC에서 따로 실행할 때는 엔진에 `python run_backend.py --port 8001`을 주고, 게이트웨이는 `python run_gateway.py --backend http://127.0.0.1:8001`로 실행합니다. 8000번 포트가 사용 중이면 콘솔에 표시된 실제 포트로 접속합니다.
 
 ### 화면을 정적 배포로 올리기
 
@@ -176,7 +178,7 @@ python run_gateway.py --host 0.0.0.0 --no-front --cors https://<화면 주소> -
 |---|---|---|
 | **A. Caddy 앞단** (`deploy/Caddyfile`) | 도메인이 있고 80·443 포트를 열 수 있을 때. 인증서를 자동으로 받고 갱신합니다. | 이 PC 에서 암호가 풀립니다(중간 업체 없음). |
 | **B. 게이트웨이가 직접** (`--ssl-cert`, `--ssl-key`) | 인증서 파일이 있을 때. 교내망 시연은 `mkcert` 로 만든 인증서를 쓰고, 접속할 기기에 mkcert 루트 인증서를 설치합니다. | 이 PC 에서 암호가 풀립니다. |
-| **C. Cloudflare Tunnel** (`cloudflared tunnel --url http://127.0.0.1:8080`) | 도메인·포트 개방 없이 바로 https 주소(`*.trycloudflare.com`)가 필요할 때. | **Cloudflare 에서 암호가 풀립니다.** 가상 사진 시연에만 씁니다. |
+| **C. Cloudflare Tunnel** (`cloudflared tunnel --url http://127.0.0.1:8000`) | 도메인·포트 개방 없이 바로 https 주소(`*.trycloudflare.com`)가 필요할 때. | **Cloudflare 에서 암호가 풀립니다.** 가상 사진 시연에만 씁니다. |
 
 ```bash
 # A. 게이트웨이는 이 PC 안에서만, Caddy 가 https 로 받아 넘긴다 (Caddyfile 의 도메인을 바꾼 뒤)
