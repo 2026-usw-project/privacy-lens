@@ -194,6 +194,14 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
         </div>
 
         <div id="reviewPanel" class="review hidden">
+          <div class="done-card hidden" id="doneCard" role="status">
+            <span class="done-mark"><svg><use href="#i-check"/></svg></span>
+            <h2>가린 사진을 저장했어요</h2>
+            <p class="done-summary" id="doneSummary"></p>
+            <canvas id="doneThumb" width="664" height="374" aria-hidden="true"></canvas>
+            <p class="fine-print" id="doneFile"></p>
+            <div class="pane-actions"><button class="button primary full" id="doneNew">다른 사진 검사하기</button><button class="button ghost full" id="doneBack">항목 다시 고르기</button></div>
+          </div>
           <div class="review-head">
             <div class="review-title"><h2 id="resultTitle">확인이 필요한 정보</h2><span class="mono-tag live" id="reviewKicker">문맥·결합</span></div>
             <span class="result-count mono" id="resultCount">0</span>
