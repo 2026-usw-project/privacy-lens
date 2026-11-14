@@ -223,7 +223,7 @@ main{padding:8px 24px 16px}
 .zoom-controls output{min-width:48px;text-align:center;font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ink)}
 #zoomFit{font-size:13px;white-space:nowrap}
 /* 사진과 목록의 스크롤 끝에서는 바깥 페이지로 스크롤을 이어 준다. */
-.canvas-stage{display:block;height:clamp(340px,calc(100dvh - 268px - var(--guide)),1100px);overflow:auto;margin:0 16px;padding:16px;border-radius:16px;background:var(--stage);scrollbar-color:var(--stage-line) transparent}
+.canvas-stage{display:block;height:clamp(340px,calc(100dvh - 268px - var(--guide)),1100px);overflow:auto;touch-action:pan-x pan-y;margin:0 16px;padding:16px;border-radius:16px;background:var(--stage);scrollbar-color:var(--stage-line) transparent}
 /* 상태 문구가 아랫줄로 내려간 만큼(약 28px) 사진 판을 줄여 페이지가 넘치지 않게 한다.
    좁은 화면(820px 이하)의 사진 판 높이는 아래 미디어 쿼리가 정한다. */
 @container editor (max-width:720px){
@@ -231,7 +231,8 @@ main{padding:8px 24px 16px}
   .canvas-stage{height:clamp(320px,calc(100dvh - 296px - var(--guide)),1100px)}
 }
 .canvas-sizer{display:flex;align-items:center;justify-content:center;position:relative}
-.canvas-wrap{position:relative;flex:0 0 auto;line-height:0;user-select:none;isolation:isolate;box-shadow:var(--photo-shadow);touch-action:pan-x pan-y}
+.canvas-wrap{position:relative;flex:0 0 auto;line-height:0;user-select:none;isolation:isolate;box-shadow:var(--photo-shadow);touch-action:pan-x pan-y;cursor:grab}
+.canvas-wrap.panning,.canvas-wrap.panning .region-box{cursor:grabbing}
 .canvas-wrap canvas{display:block;width:100%;height:100%;touch-action:pan-x pan-y}
 .canvas-wrap.drawing,.canvas-wrap.drawing canvas{cursor:crosshair;touch-action:none}
 .canvas-wrap.drawing .region-layer{pointer-events:none}
@@ -250,7 +251,7 @@ main{padding:8px 24px 16px}
     linear-gradient(var(--hud),var(--hud)) 100% 100%/var(--c) 2px no-repeat,
     linear-gradient(var(--hud),var(--hud)) 100% 100%/2px var(--c) no-repeat,
     var(--hud-fill);
-  pointer-events:auto;cursor:grab;touch-action:none;transition:background-color .12s,box-shadow .16s,border-color .16s}
+  pointer-events:auto;cursor:move;touch-action:none;transition:background-color .12s,box-shadow .16s,border-color .16s}
 .region-box:hover,.region-box.focused{--hud-fill:color-mix(in srgb,var(--accent) 16%,transparent)}
 /* 고른 순간에만 테두리가 또렷해진다. 가만히 있을 때 움직이는 것은 없다. */
 .region-box.focused{--c:13px;border-color:color-mix(in srgb,var(--hud) 70%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--hud) 28%,transparent);z-index:2}

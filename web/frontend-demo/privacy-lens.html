@@ -233,7 +233,7 @@ main{padding:8px 24px 16px}
 .zoom-controls output{min-width:48px;text-align:center;font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ink)}
 #zoomFit{font-size:13px;white-space:nowrap}
 /* 사진과 목록의 스크롤 끝에서는 바깥 페이지로 스크롤을 이어 준다. */
-.canvas-stage{display:block;height:clamp(340px,calc(100dvh - 268px - var(--guide)),1100px);overflow:auto;margin:0 16px;padding:16px;border-radius:16px;background:var(--stage);scrollbar-color:var(--stage-line) transparent}
+.canvas-stage{display:block;height:clamp(340px,calc(100dvh - 268px - var(--guide)),1100px);overflow:auto;touch-action:pan-x pan-y;margin:0 16px;padding:16px;border-radius:16px;background:var(--stage);scrollbar-color:var(--stage-line) transparent}
 /* 상태 문구가 아랫줄로 내려간 만큼(약 28px) 사진 판을 줄여 페이지가 넘치지 않게 한다.
    좁은 화면(820px 이하)의 사진 판 높이는 아래 미디어 쿼리가 정한다. */
 @container editor (max-width:720px){
@@ -241,7 +241,8 @@ main{padding:8px 24px 16px}
   .canvas-stage{height:clamp(320px,calc(100dvh - 296px - var(--guide)),1100px)}
 }
 .canvas-sizer{display:flex;align-items:center;justify-content:center;position:relative}
-.canvas-wrap{position:relative;flex:0 0 auto;line-height:0;user-select:none;isolation:isolate;box-shadow:var(--photo-shadow);touch-action:pan-x pan-y}
+.canvas-wrap{position:relative;flex:0 0 auto;line-height:0;user-select:none;isolation:isolate;box-shadow:var(--photo-shadow);touch-action:pan-x pan-y;cursor:grab}
+.canvas-wrap.panning,.canvas-wrap.panning .region-box{cursor:grabbing}
 .canvas-wrap canvas{display:block;width:100%;height:100%;touch-action:pan-x pan-y}
 .canvas-wrap.drawing,.canvas-wrap.drawing canvas{cursor:crosshair;touch-action:none}
 .canvas-wrap.drawing .region-layer{pointer-events:none}
@@ -260,7 +261,7 @@ main{padding:8px 24px 16px}
     linear-gradient(var(--hud),var(--hud)) 100% 100%/var(--c) 2px no-repeat,
     linear-gradient(var(--hud),var(--hud)) 100% 100%/2px var(--c) no-repeat,
     var(--hud-fill);
-  pointer-events:auto;cursor:grab;touch-action:none;transition:background-color .12s,box-shadow .16s,border-color .16s}
+  pointer-events:auto;cursor:move;touch-action:none;transition:background-color .12s,box-shadow .16s,border-color .16s}
 .region-box:hover,.region-box.focused{--hud-fill:color-mix(in srgb,var(--accent) 16%,transparent)}
 /* 고른 순간에만 테두리가 또렷해진다. 가만히 있을 때 움직이는 것은 없다. */
 .region-box.focused{--c:13px;border-color:color-mix(in srgb,var(--hud) 70%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--hud) 28%,transparent);z-index:2}
@@ -1796,6 +1797,9 @@ window.PL_SAMPLE_PHOTOS={
 
   function moveGesture(event) {
     if(!gesture || event.pointerId!==gesture.pointerId) return;
+    if(gesture.type==='pan') {
+      const v=$('#canvasStage');v.scrollLeft=gesture.left-(event.clientX-gesture.x);v.scrollTop=gesture.top-(event.clientY-gesture.y);return;
+    }
     const p=point(event);
     if(gesture.type==='draw') {
       const rect={x:Math.min(gesture.start.x,p.x),y:Math.min(gesture.start.y,p.y),w:Math.abs(p.x-gesture.start.x),h:Math.abs(p.y-gesture.start.y)};
@@ -1817,6 +1821,7 @@ window.PL_SAMPLE_PHOTOS={
     const g=gesture;gesture=null;
     const wrap=$('#canvasWrap');if(wrap.hasPointerCapture(event.pointerId))wrap.releasePointerCapture(event.pointerId);
     $('#drawPreview').classList.add('hidden');
+    if(g.type==='pan') {wrap.classList.remove('panning');return;}
     if(g.type==='draw') {
       if(!cancelled && g.rect && g.rect.w>.008 && g.rect.h>.008) addRegion(g.rect);
       else if(!cancelled)notify('조금 더 넓은 영역을 드래그해 주세요.');
@@ -2094,18 +2099,21 @@ window.PL_SAMPLE_PHOTOS={
     state.phase='failed';state.analysisStatus='failed';$('#failureMessage').textContent=message;
     render();notify('분석하지 못했어요. 재시도하거나 직접 편집할 수 있어요.',true);
   }
-  function layoutCanvas(preserve=true) {
+  // anchor: {x,y}(화면 좌표, 커서·두 손가락 가운데)와 선택적으로 at(그 자리에 둘 사진 위 지점 0~1).
+  // 없으면 화면 가운데. 확대 뒤에도 그 지점이 같은 자리에 남도록 스크롤을 맞춘다.
+  function layoutCanvas(preserve=true,anchor=null) {
     if(!state.source)return;
     const viewport=$('#canvasStage'),wrap=$('#canvasWrap'),sizer=$('#canvasSizer');
     const width=Math.max(120,viewport.clientWidth-32),height=Math.max(180,viewport.clientHeight-32);
     const fit=Math.min(width/state.width,height/state.height,1);
-    const oldRect=wrap.getBoundingClientRect(),vp=viewport.getBoundingClientRect();
-    const center=preserve&&oldRect.width?Core.screenPoint(vp.left+viewport.clientWidth/2,vp.top+viewport.clientHeight/2,oldRect):{x:.5,y:.5};
+    const oldRect=wrap.getBoundingClientRect(),vp=viewport.getBoundingClientRect(),style=getComputedStyle(viewport);
+    const ax=anchor?anchor.x-vp.left-viewport.clientLeft:viewport.clientWidth/2,ay=anchor?anchor.y-vp.top-viewport.clientTop:viewport.clientHeight/2;
+    const at=anchor?.at||(preserve&&oldRect.width?Core.screenPoint(vp.left+viewport.clientLeft+ax,vp.top+viewport.clientTop+ay,oldRect):{x:.5,y:.5});
     const w=state.width*fit*state.zoom,h=state.height*fit*state.zoom;
     const sw=Math.max(width,w),sh=Math.max(height,h);
     sizer.style.width=sw+'px';sizer.style.height=sh+'px';
     wrap.style.width=w+'px';wrap.style.height=h+'px';wrap.style.maxWidth='none';
-    viewport.scrollLeft=(sw-w)/2+w*center.x-width/2;viewport.scrollTop=(sh-h)/2+h*center.y-height/2;
+    viewport.scrollLeft=parseFloat(style.paddingLeft)+(sw-w)/2+w*at.x-ax;viewport.scrollTop=parseFloat(style.paddingTop)+(sh-h)/2+h*at.y-ay;
     $('#zoomValue').textContent=Math.round(state.zoom*100)+'%';
     $('#zoomValue').title='화면 맞춤 대비 확대 비율 · 실제 원본 대비 '+Math.round(fit*state.zoom*100)+'%';
     $('#zoomOut').disabled=state.zoom<=.5;$('#zoomIn').disabled=state.zoom>=4;
@@ -2274,8 +2282,18 @@ window.PL_SAMPLE_PHOTOS={
   $('#centerRegion').addEventListener('click',()=>addRegion({x:.35,y:.4,w:.3,h:.2}));
   $('#undoButton').addEventListener('click',()=>{if(!state.history.length)return;state.regions=state.history.pop();if(!state.regions.some(r=>r.id===state.focused))state.focused=null;invalidate();render();notify('이전 영역 설정으로 되돌렸어요.');});
   $('#canvasWrap').addEventListener('pointerdown',event=>{
-    if(!state.source || state.phase!=='review' || state.mode!=='original' || event.button!==0)return;
-    const wrap=$('#canvasWrap'),p=point(event);
+    // 두 번째 손가락은 아래 두 손가락 확대가 맡는다
+    if(gesture || !state.source || event.button!==0)return;
+    const wrap=$('#canvasWrap');
+    // 마우스로 사진(상자 밖)을 잡고 끌면 이동. 손가락 한 개는 브라우저 스크롤이 그대로 움직인다
+    if(!state.drawing && event.pointerType!=='touch' && !event.target.closest('.region-box')) {
+      event.preventDefault();
+      const v=$('#canvasStage');
+      gesture={type:'pan',pointerId:event.pointerId,x:event.clientX,y:event.clientY,left:v.scrollLeft,top:v.scrollTop};
+      wrap.setPointerCapture(event.pointerId);wrap.classList.add('panning');return;
+    }
+    if(state.phase!=='review' || state.mode!=='original')return;
+    const p=point(event);
     if(state.drawing) {event.preventDefault();gesture={type:'draw',start:p,pointerId:event.pointerId};wrap.setPointerCapture(event.pointerId);return;}
     const box=event.target.closest('.region-box');if(!box)return;
     event.preventDefault();
@@ -2376,6 +2394,33 @@ window.PL_SAMPLE_PHOTOS={
   });
   $('#zoomIn').addEventListener('click',()=>zoomTo(state.zoom+.25));$('#zoomOut').addEventListener('click',()=>zoomTo(state.zoom-.25));
   $('#zoomFit').addEventListener('click',()=>{state.zoom=1;layoutCanvas(false);});
+  // 휠: 커서 자리를 기준으로 확대·축소. 노트북 터치패드 오므리기는 ctrlKey 가 붙은 작은 값으로 온다
+  $('#canvasStage').addEventListener('wheel',event=>{
+    if(!state.source)return;
+    event.preventDefault();
+    const px=event.deltaY*(event.deltaMode===1?16:event.deltaMode===2?400:1);
+    const next=clamp(state.zoom*Math.exp(-px*(event.ctrlKey?.01:.0015)),.5,4);
+    if(next!==state.zoom){state.zoom=next;layoutCanvas(true,{x:event.clientX,y:event.clientY});}
+  },{passive:false});
+  // 두 손가락 오므리기·벌리기: 처음 두 손가락 가운데에 있던 사진 지점이 손가락을 따라오게 한다(확대와 이동을 함께)
+  let pinch=null;
+  const touchMid=touches=>({x:(touches[0].clientX+touches[1].clientX)/2,y:(touches[0].clientY+touches[1].clientY)/2});
+  const touchGap=touches=>Math.hypot(touches[0].clientX-touches[1].clientX,touches[0].clientY-touches[1].clientY);
+  $('#canvasStage').addEventListener('touchstart',event=>{
+    if(event.touches.length!==2 || !state.source)return;
+    event.preventDefault();
+    if(gesture)endGesture({pointerId:gesture.pointerId},true);
+    const mid=touchMid(event.touches);
+    pinch={gap:touchGap(event.touches)||1,zoom:state.zoom,at:Core.screenPoint(mid.x,mid.y,$('#canvasWrap').getBoundingClientRect())};
+  },{passive:false});
+  $('#canvasStage').addEventListener('touchmove',event=>{
+    if(!pinch || event.touches.length!==2)return;
+    if(event.cancelable)event.preventDefault();
+    state.zoom=clamp(pinch.zoom*touchGap(event.touches)/pinch.gap,.5,4);
+    layoutCanvas(true,{...touchMid(event.touches),at:pinch.at});
+  },{passive:false});
+  const endPinch=event=>{if(event.touches.length<2)pinch=null;};
+  $('#canvasStage').addEventListener('touchend',endPinch);$('#canvasStage').addEventListener('touchcancel',endPinch);
   new ResizeObserver(()=>layoutCanvas()).observe($('#canvasStage'));
   $('#payloadButton').addEventListener('click',openPayload);$('#downloadPayload').addEventListener('click',savePayload);
   $('#cancelExport').addEventListener('click',()=>{cancelRequests();state.exportToken++;$('#saveState').classList.add('hidden');syncPanels();notify('저장 요청을 취소했어요. 편집 내용은 유지돼요.');});
