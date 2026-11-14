@@ -129,98 +129,32 @@
     if (region.poly && (dx || dy)) region.poly = region.poly.map(([x, y]) => [x + dx, y + dy]);
   }
 
-  // 코드로 그린 가상 문서. 실제 사진이나 실제 개인정보가 아니다. 서버로 실제 분석한다.
-  function rounded(c, x, y, w, h, r, fill, stroke) {
-    c.beginPath();
-    c.roundRect(x, y, w, h, r);
-    if (fill) { c.fillStyle = fill; c.fill(); }
-    if (stroke) { c.strokeStyle = stroke; c.lineWidth = 1.5; c.stroke(); }
-  }
+  // HEIC 안내 그림에 쓰는 글자 그리기.
   function write(c, text, x, y, size, color = '#26392f', weight = 400) {
     c.fillStyle = color;
     c.font = weight + ' ' + size + 'px "Malgun Gothic", sans-serif';
     c.fillText(text, x, y);
   }
-  function barcode(c, x, y, w, h) {
-    c.fillStyle = '#243d32';
-    let offset = 0;
-    for (let i = 0; offset < w; i++) {
-      const stripe = 1 + ((i * 7 + 3) % 4);
-      c.fillRect(x + offset, y, Math.min(stripe, w - offset), h);
-      offset += stripe + 2 + i % 3;
-    }
-  }
-  function parcelDocument(c, x, y, scale = 1) {
-    c.save(); c.translate(x, y); c.scale(scale, scale);
-    rounded(c, 0, 0, 1050, 610, 14, '#fffefa', '#d7ddcd');
-    rounded(c, 0, 0, 1050, 96, [14,14,0,0], '#314e3b');
-    write(c, 'LENS DELIVERY', 35, 59, 29, '#eef7df', 700);
-    write(c, '가상 택배 송장', 770, 59, 24, '#d4e4c2', 400);
-    write(c, '운송장번호 6012-3456-7890', 35, 145, 22, '#79896e', 600);
-    barcode(c, 660, 117, 350, 39);
-    c.strokeStyle = '#e3e7db'; c.beginPath(); c.moveTo(35, 177); c.lineTo(1015, 177); c.stroke();
-    write(c, '받는 분', 38, 230, 22, '#7c8871');
-    write(c, '김렌즈', 208, 230, 32, '#23372d', 600);
-    write(c, '연락처', 600, 230, 22, '#7c8871');
-    write(c, '010-0000-0000', 740, 230, 27, '#23372d', 500);
-    write(c, '배송지', 38, 316, 22, '#7c8871');
-    write(c, '가상시 안심구 렌즈로 123', 208, 314, 29, '#23372d', 600);
-    write(c, '프라이버시 아파트 101동 202호', 208, 359, 25, '#4b5b41');
-    c.beginPath(); c.moveTo(35, 400); c.lineTo(1015, 400); c.stroke();
-    write(c, '품목', 38, 454, 22, '#7c8871'); write(c, '무선 헤드폰 / 1개', 208, 454, 25, '#617053');
-    write(c, '고객센터', 38, 513, 22, '#7c8871'); write(c, '1588-0000', 208, 513, 24, '#617053');
-    write(c, 'SYNTHETIC DATA  ·  실제 수신인과 주소가 아닙니다', 38, 576, 17, '#9ba58e');
-    c.restore();
-  }
-  function studentDocument(c, x, y, scale = 1) {
-    c.save(); c.translate(x,y); c.scale(scale, scale);
-    rounded(c,0,0,720,445,24,'#fffefa','#d5dfcc');
-    rounded(c,0,0,720,107,[24,24,0,0],'#bcccab');
-    write(c,'LENS UNIVERSITY',35,47,22,'#3e5930',700);
-    write(c,'가상대학교',35,81,20,'#557446',500);
-    write(c,'STUDENT ID',510,62,18,'#5f794f',600);
-    rounded(c,37,146,154,193,10,'#e9efdf');
-    write(c,'DEMO',61,234,30,'#a0b68b',700);
-    write(c,'가상 학생',73,268,15,'#9aac88');
-    write(c,'성명 이안심',235,195,39,'#29482f',700);
-    write(c,'학번  2026000123',235,252,25,'#647b52');
-    write(c,'정보보안학과',235,297,25,'#647b52');
-    barcode(c,236,340,406,31);
-    write(c,'SAMPLE ONLY  /  교육용 가상 정보',37,410,17,'#a0ad90');
-    c.restore();
-  }
-  function screenDocument(c,x,y,scale=1) {
-    c.save();c.translate(x,y);c.scale(scale,scale);
-    rounded(c,0,0,620,420,15,'#fbfcf8','#d3ddca');
-    rounded(c,0,0,620,63,[15,15,0,0],'#dce5d2');
-    write(c,'PROJECT NOTE',26,40,19,'#577247',650);
-    write(c,'팀 연락처',31,121,22,'#7f916e');
-    write(c,'lens@example.com',31,168,28,'#364f2a',600);
-    write(c,'일상의 안전한 공유를 위한',31,245,22,'#96a288');
-    write(c,'프라이버시 렌즈 프로젝트',31,283,22,'#96a288');
-    write(c,'SAMPLE  /  가상 화면 문서',31,379,17,'#a0ad90');
-    c.restore();
-  }
+  // 샘플 사진. dist/samples.js 의 가상 장면(생성형 AI 그림)을 캔버스에 올린다. 미리 정해 둔 결과는 없고 누르면 실제로 분석한다.
   function makeFixture(key) {
     if (fixtures.has(key)) return fixtures.get(key);
-    const image = document.createElement('canvas'); image.width = 1440; image.height = 1000;
-    const c = image.getContext('2d');
-    c.fillStyle = key === 'student' ? '#e8eddf' : '#edece3'; c.fillRect(0,0,1440,1000);
-    write(c,'PRIVACY LENS  /  SAMPLE DOCUMENT',65,75,18,'#929e83',600);
-    write(c,'실제 개인정보가 없는 테스트 이미지',65,115,20,'#7e8d6f');
-    write(c,'2026',1300,75,18,'#9ba68e');
-    if(key === 'parcel') parcelDocument(c,195,235);
-    else if(key === 'student') studentDocument(c,245,260,1.32);
-    else { parcelDocument(c,65,230,.76); studentDocument(c,920,240,.62); screenDocument(c,920,595,.72); }
-    write(c,'SYNTHETIC DATA',65,945,16,'#a0aa93',500);
-    write(c,'사진 속 위험 영역 확인을 위한 데모 문서',935,945,16,'#9ca78e');
-    const fixture = {image};fixtures.set(key,fixture);return fixture;
+    const photo = window.PL_SAMPLE_PHOTOS[key];
+    const image = document.createElement('canvas'); image.width = photo.w; image.height = photo.h;
+    const picture = new Image();
+    const ready = new Promise((resolve, reject) => { picture.onload = () => { image.getContext('2d').drawImage(picture, 0, 0); resolve(); }; picture.onerror = () => reject(new Error('샘플 사진을 불러오지 못했어요.')); });
+    picture.src = photo.src;
+    const fixture = { image, ready }; fixtures.set(key, fixture); return fixture;
   }
+  // 썸네일은 사진 비율이 달라도 늘리지 않고 가운데를 잘라 그린다.
   function initializeThumbnails() {
     ['parcel','student','mixed'].forEach(key => {
       const fixture = makeFixture(key);
       const thumb = $('#thumb-' + key);
-      thumb.getContext('2d').drawImage(fixture.image,0,0,thumb.width,thumb.height);
+      fixture.ready.then(() => {
+        const { width: w, height: h } = fixture.image, scale = Math.max(thumb.width / w, thumb.height / h);
+        const sw = thumb.width / scale, sh = thumb.height / scale;
+        thumb.getContext('2d').drawImage(fixture.image, (w - sw) / 2, (h - sh) / 2, sw, sh, 0, 0, thumb.width, thumb.height);
+      }).catch(() => {});
     });
   }
 
@@ -296,12 +230,13 @@
       $('#fileInput').value='';
     }
   }
-  function loadSample(key) {
+  async function loadSample(key) {
     if(!['parcel','student','mixed'].includes(key))return;
-    state.loadToken++;cancelRequests();releaseExport();
     const fixture=makeFixture(key);
+    try{await fixture.ready;}catch(error){toast(error.message,true);return;}
+    state.loadToken++;cancelRequests();releaseExport();
     Object.assign(state,{source:fixture.image,file:null,width:fixture.image.width,height:fixture.image.height,
-      name:{parcel:'sample_delivery.png',student:'sample_student_id.png',mixed:'sample_documents.png'}[key],bytes:0,sample:true,sampleKey:key,serverImage:false,
+      name:{parcel:'sample_headphones.png',student:'sample_cafe.png',mixed:'sample_desk.png'}[key],bytes:0,sample:true,sampleKey:key,serverImage:false,
       rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,nextId:1,mode:'original',drawing:false,phase:'ready',analysisStatus:'idle',issues:[],groups:[],gps:[],backend:'',zoom:1,previewState:'none'});
     showImage();render();layoutCanvas(false);
     beginAnalysis();
@@ -421,7 +356,7 @@
     });
   }
   function metadataText() {
-    if(state.sample) return '샘플 문서 · 촬영 메타데이터 없음';
+    if(state.sample) return '가상 장면 · 촬영 메타데이터 없음';
     if(state.gps.length) return state.gps[0].message+' — 저장하면 자동으로 제거돼요.';
     if(state.analysisStatus==='idle'||state.analysisStatus==='manual') return '저장할 때 위치·기기·촬영 시각 등 원본 메타데이터를 모두 빼요.';
     return '사진 파일에서 위치정보가 발견되지 않았어요. 저장할 때 다른 메타데이터도 모두 빼요.';

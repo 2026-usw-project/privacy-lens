@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const [app,api,html,css]=await Promise.all(['app.js','api.js','index.html','styles.css'].map(file=>readFile(path.join(root,'dist',file),'utf8')));
+const [app,api,html,css,samples]=await Promise.all(['app.js','api.js','index.html','styles.css','samples.js'].map(file=>readFile(path.join(root,'dist',file),'utf8')));
 const checks=(()=>{
 const results = [];
 function check(name, condition) { if (!condition) throw new Error(name); results.push(name); }
@@ -36,17 +36,19 @@ const normalizeSource=app.slice(app.indexOf('  function normalizeRegion'),app.in
 const normalizeRegion=new Function('clamp',normalizeSource+';return normalizeRegion;')((v,min,max)=>Math.min(max,Math.max(min,v)));
 const edge=normalizeRegion({x:2,y:-1,w:4,h:.00001});
 check('Region geometry stays inside image',edge.x===0&&edge.y===0&&edge.w===1&&edge.h>=.008);
-const shiftSource=app.slice(app.indexOf('  function shiftPoly'),app.indexOf('  // 코드로 그린 가상 문서'));
+const shiftSource=app.slice(app.indexOf('  function shiftPoly'),app.indexOf('  // HEIC 안내 그림에'));
 const shiftPoly=new Function(shiftSource+';return shiftPoly;')();
 const moved={poly:[[.1,.1],[.2,.1],[.2,.2]]};shiftPoly(moved,.05,-.05);
 check('Moving a tilted region moves its outline',Math.abs(moved.poly[0][0]-.15)<1e-12&&Math.abs(moved.poly[2][1]-.15)<1e-12);
-const context={beginPath(){},roundRect(){},fill(){},stroke(){},fillRect(){},fillText(){},save(){},restore(){},translate(){},scale(){},moveTo(){},lineTo(){}};
-const fakeDocument={createElement:()=>({width:0,height:0,getContext:()=>context})};
-const fixtureSource=app.slice(app.indexOf('  function rounded'),app.indexOf('  function initializeThumbnails'));
-const makeFixture=new Function('document','fixtures',fixtureSource+';return makeFixture;')(fakeDocument,new Map());
+// 샘플 사진은 dist/samples.js 에 들어 있다. 가짜 문서·가짜 Image 로 makeFixture 만 돌려 본다.
+const fakeWindow={};new Function('window',samples)(fakeWindow);
+const fakeDocument={createElement:()=>({width:0,height:0,getContext:()=>({drawImage(){}})})};
+const fixtureSource=app.slice(app.indexOf('  function makeFixture'),app.indexOf('  // 썸네일은'));
+const makeFixture=new Function('document','fixtures','window','Image',fixtureSource+';return makeFixture;')(fakeDocument,new Map(),fakeWindow,class{});
 for(const key of ['parcel','student','mixed']) {
-  const f=makeFixture(key);
-  check('Sample '+key+' has valid image dimensions',f.image.width===1440&&f.image.height===1000);
+  const f=makeFixture(key),photo=fakeWindow.PL_SAMPLE_PHOTOS[key];
+  check('Sample '+key+' has valid image dimensions',f.image.width===photo.w&&f.image.height===photo.h&&photo.w>300&&photo.h>200);
+  check('Sample '+key+' is an embedded JPEG (no network)',photo.src.startsWith('data:image/jpeg;base64,/9j/'));
   check('Sample '+key+' has no predefined results (real analysis)',!('regions' in f));
 }
 check('Responsive breakpoints included',css.includes('@media(max-width:580px)')&&css.includes('@media(max-width:820px)'));
