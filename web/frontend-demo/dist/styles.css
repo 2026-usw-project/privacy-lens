@@ -677,3 +677,78 @@ dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
 .camera-status{position:absolute;inset:auto 0 0 0;margin:0;padding:10px 14px;font-size:13px;color:#fff;background:linear-gradient(transparent,#000a)}
 .camera-status:empty{display:none}
 #cameraDialog .export-actions{margin-top:14px}
+
+/* ── 결과 화면 정리(2026-11-14) ─────────────────────────────────────────
+   1) 개발자용(영역 데이터·OCR 원문·사진 크기·엔진 이름)은 '개발자 도구' 메뉴 하나로 모은다.
+   2) 저장 영역을 낮춰 항목 목록이 더 많이 보이게 한다.
+   3) 토스트는 위에서 내려와 사진 아래 도구 줄과 저장 버튼을 가리지 않는다. */
+.dev-menu{position:relative}
+.dev-menu>summary{list-style:none;cursor:pointer;user-select:none}
+.dev-menu>summary::-webkit-details-marker{display:none}
+.dev-menu[open]>summary{color:var(--ink)}
+.dev-menu-body{position:absolute;left:0;bottom:calc(100% + 10px);z-index:20;display:grid;gap:10px;width:260px;padding:14px 16px;border-radius:14px;background:var(--surface);box-shadow:0 0 0 1px var(--line),0 12px 32px #00000026;animation:rise .22s cubic-bezier(.16,1,.3,1)}
+.dev-menu-body .text-button{justify-content:flex-start}
+.dev-menu-body .raw-ocr-control{padding:10px 0 0;border-top:1px solid var(--line)}
+.dev-menu-body .raw-ocr-control label{font-size:13px}
+.dev-info{display:flex;flex-wrap:wrap;gap:2px 12px;padding-top:10px;border-top:1px solid var(--line)}
+.raw-ocr-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:12px;font-size:14px}
+.editor-tools{min-height:52px;padding:10px 20px 12px}
+
+.review-foot{gap:10px;padding:12px 24px 18px}
+.redaction-settings{gap:0}
+.style-options>button{height:38px;border-radius:10px;font-size:13px}
+/* 가림 방식 설명은 화면에서 빼고 읽어 주는 도구에만 남긴다 */
+#styleHint{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.metadata-box{align-items:center;gap:8px;padding:9px 12px;border-radius:10px}
+.metadata-box svg{width:16px;height:16px;flex-shrink:0}
+.metadata-box>div{display:flex;align-items:baseline;gap:8px;overflow:hidden}
+.metadata-box strong{white-space:nowrap}
+.metadata-box p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.4}
+.metadata-box.found{align-items:flex-start;background:var(--warn-bg)}
+.metadata-box.found svg{color:var(--warn);margin-top:2px}
+.metadata-box.found>div{display:grid;gap:2px}
+.metadata-box.found p{white-space:normal;color:var(--warn)}
+.button.big#saveButton{min-height:50px;padding-top:11px;padding-bottom:11px;border-radius:14px}
+
+.toast{top:calc(var(--topbar) + 14px);bottom:auto;transform:translate(-50%,-14px)}
+.toast.visible{transform:translate(-50%,0)}
+/* 넓은 화면에서는 사진 칸 가운데 위. 파일 이름과 '사진 바꾸기' 사이 빈 자리에 놓인다. */
+@media(min-width:1021px){.toast{left:calc(var(--sidebar) + (100% - var(--sidebar) - var(--side)) / 2);max-width:min(420px,calc(100% - var(--sidebar) - var(--side) - 300px))}}
+@media(max-width:580px){
+  .toast{top:12px;bottom:auto}
+  .dev-menu-body{left:auto;right:0;width:min(260px,calc(100vw - 48px))}
+  .review-foot{padding-left:20px;padding-right:20px}
+}
+
+/* ── 첫 화면 데모 + 결과 등장(2026-11-14) ───────────────────────────────
+   오른쪽 칸의 사진이 '훑기 → 찾기 → 가리기'를 세 샘플로 돌려 보여 준다. 아래 세 줄은 지금 어느 장면인지 가리키고, 누르면 그 장면으로 간다. */
+.demo{margin:0 0 14px}
+.demo-stage{position:relative;aspect-ratio:664/374;border-radius:14px;overflow:hidden;background:var(--surface-2);box-shadow:0 0 0 1px var(--line)}
+.demo-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.demo-blur{filter:blur(7px) saturate(.9);opacity:0;transition:opacity .5s}
+.demo.covered .demo-blur{opacity:1}
+.demo-scan{position:absolute;left:0;right:0;top:0;height:34%;opacity:0;pointer-events:none;
+  background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--primary) 38%,transparent));border-bottom:2px solid #fff;box-shadow:0 2px 0 var(--primary),0 6px 18px color-mix(in srgb,var(--primary) 70%,transparent);transform:translateY(-100%)}
+.demo.scan .demo-scan{opacity:1;animation:demo-sweep 1.25s cubic-bezier(.4,0,.2,1) both}
+@keyframes demo-sweep{from{transform:translateY(-100%)}to{transform:translateY(295%)}}
+.demo-box{position:absolute;border:2px solid var(--accent);border-radius:6px;background:color-mix(in srgb,var(--accent) 10%,transparent);opacity:0;transform:scale(1.12);transition:opacity .25s,transform .45s var(--spring),border-color .3s,background .3s}
+.demo.found .demo-box,.demo.covered .demo-box{opacity:1;transform:none}
+.demo.covered .demo-box{border-color:var(--primary);background:transparent}
+.demo-box b{position:absolute;left:-2px;bottom:calc(100% + 4px);padding:3px 8px;border-radius:6px;background:var(--accent-solid);color:#fff;font-size:12px;font-weight:700;line-height:1.3;white-space:nowrap;transition:background .3s}
+.demo.covered .demo-box b{background:var(--primary-solid)}
+/* 박스가 사진 맨 위에 붙으면 이름표를 안쪽으로 */
+.demo-box.at-top b{bottom:auto;top:6px;left:6px}
+.demo figcaption{margin-top:8px;font-size:12px;color:var(--muted)}
+
+.watch-list li{display:block;padding:0}
+.watch-list button{display:flex;gap:14px;align-items:center;width:100%;padding:10px;margin:0 -10px;width:calc(100% + 20px);border-radius:14px;text-align:left;transition:background .25s}
+.watch-list button:hover{background:var(--surface-2)}
+.watch-list button.on{background:var(--primary-wash)}
+.watch-list button>span{display:grid;gap:2px;min-width:0}
+.watch-list small{font-size:13px;line-height:1.6;color:var(--muted)}
+.watch-list svg{flex-shrink:0;transition:transform .35s var(--spring)}
+.watch-list button.on svg{transform:scale(1.06)}
+
+.region-list.reveal .region-item{animation:rise .5s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0) * 70ms)}
+.region-layer.reveal .region-box{animation:box-in .45s var(--spring) both;animation-delay:calc(150ms + var(--i,0) * 70ms)}
+@keyframes box-in{from{opacity:0;transform:scale(1.3)}to{opacity:1;transform:none}}
