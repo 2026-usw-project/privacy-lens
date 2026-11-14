@@ -62,7 +62,9 @@ git clone https://github.com/2026-usw-project/privacy-lens.git
 cd privacy-lens
 ```
 
-파이썬 가상환경 사용시 사용할 Python 버전을 확인하고 가상환경을 만듭니다. 다음은 **Python 3.12와 venv가 설치된 환경**의 예시입니다. 3.10·3.11·3.13을 사용한다면 첫 명령의 실행 파일 이름을 해당 버전으로 바꾸세요.
+아래에서 CPU용과 NVIDIA GPU용 중 하나를 골라 새 가상환경에 설치합니다. 명령은 Python 3.12 기준입니다.
+
+#### CPU용 설치 (Linux 예시)
 
 ```bash
 python3.12 -m venv .venv
@@ -70,13 +72,47 @@ source .venv/bin/activate
 python --version
 ```
 
-선택한 Python 환경에서 패키지를 설치합니다. PaddlePaddle은 저장소에서 동작을 확인한 3.2.2를 지정합니다.
+리눅스 x86-64에서 YOLO도 CPU용으로 설치하려면 아래와 같이 PyTorch CPU 패키지를 먼저 설치합니다. 다른 플랫폼은 [PyTorch 설치 안내](https://pytorch.org/get-started/locally/)에서 CPU용 명령을 확인하세요.
 
 ```bash
 python -m pip install --upgrade pip
+python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 python -m pip install -r requirements.txt
 python -m pip install paddlepaddle==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
 python -m pip install paddleocr
+```
+
+#### NVIDIA GPU용 설치 (Windows x86-64 예시)
+
+아래는 **CUDA 12.6 빌드** 예시입니다. 먼저 `nvidia-smi`로 GPU와 드라이버를 확인하고, PaddlePaddle과 ONNX Runtime이 요구하는 CUDA·cuDNN 9 라이브러리를 준비합니다. 배포 파일과 요구 조건은 [PaddlePaddle GPU 배포 목록](https://www.paddlepaddle.org.cn/packages/stable/cu126/paddlepaddle-gpu/), [PyTorch 설치 안내](https://pytorch.org/get-started/previous-versions/#v271), [ONNX Runtime CUDA 안내](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)를 참고하세요.
+
+```powershell
+py -3.12 -m venv .venv-gpu
+.\.venv-gpu\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install torch==2.7.1 torchvision==0.22.1 --index-url https://download.pytorch.org/whl/cu126
+python -m pip install -r requirements.txt
+python -m pip install paddlepaddle-gpu==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+python -m pip install paddleocr
+python -m pip uninstall -y onnxruntime
+python -m pip install onnxruntime-gpu==1.20.1
+python -m pip check
+```
+
+GPU 환경에서는 PaddleOCR이 `paddlepaddle-gpu`를, `.pt` YOLO 모델은 CUDA용 PyTorch를, `.onnx` 모델은 `onnxruntime-gpu`를 사용합니다. Linux에서는 같은 CUDA 빌드끼리도 NVIDIA 라이브러리의 요구 버전이 다를 수 있으므로 해당 OS용 패키지 요구 조건을 확인한 뒤 설치하세요.
+
+```powershell
+python -c "import paddle; paddle.utils.run_check(); print(paddle.device.get_device())"
+python -c "import torch; print(torch.cuda.is_available())"
+python -c "import torch, onnxruntime as ort; s = ort.InferenceSession('models/daily.onnx', providers=['CUDAExecutionProvider', 'CPUExecutionProvider']); print(s.get_providers()); assert 'CUDAExecutionProvider' in s.get_providers()"
+```
+
+마지막 확인 명령은 아래 [모델 받기](#모델-받기적용-선택) 안내에 따라 `models/daily.onnx`를 받은 뒤 실행합니다. `get_available_providers()`에 CUDA가 표시되는 경우에도 모델 세션에서 초기화에 실패할 수 있습니다.
+
+#### 모델 받기 및 실행 (공통)
+
+```bash
+python -m pipeline.objects download
 python run.py
 ```
 
@@ -249,12 +285,9 @@ PL_OCR=tesseract python run.py
 | 얼굴·증명사진(YuNet) | OpenCV 공식 저장소 | `models/face_detection_yunet_2023mar.onnx` | 아래 `download` 명령이 받고 SHA-256 을 확인합니다 |
 | 번호판 | 드라이브 `objects/plate_vNNN/best.onnx` (2026-11-03 추천: **v003**) | `models/plate.onnx` | 있으면 자동 사용(`PL_PLATE_MODEL` 로 경로 지정, `off` 로 끔) |
 | 문서·카드 검출(YOLO) | 드라이브 `models/vNNN/` 의 `best.pt` 와 `metrics.json` | `models/vNNN/best.pt`, `models/vNNN/metrics.json` | 가장 큰 번호 폴더를 자동 사용(`PL_YOLO_WEIGHTS` 로 고정, `PL_YOLO=off` 로 끔) |
+| 일상 사진 9종(YOLO) | 드라이브 `objects/daily_v002/best.onnx` | `models/daily.onnx` | 있으면 문서 모델과 함께 사용(`PL_DAILY_MODEL`로 경로 지정 가능) |
 
-1. 검출 패키지(ultralytics·onnx·onnxruntime)를 설치합니다. GPU 로 돌리려면 `onnxruntime` 대신 `onnxruntime-gpu` 를 설치합니다(둘 중 하나만).
-
-   ```bash
-   python -m pip install -r vision/requirements.txt
-   ```
+1. 위의 [CPU용 설치](#cpu용-설치-linux-예시) 또는 [NVIDIA GPU용 설치](#nvidia-gpu용-설치-windows-x86-64-예시) 절에서 검출 패키지도 함께 설치합니다.
 
 2. 얼굴 모델을 받습니다.
 
@@ -462,7 +495,7 @@ python -m eval.rotation
 | `PL_PADDLE_TEXTLINE` | `auto` | 글자 줄 방향 판별. `auto`는 판별 없이 읽고 결과가 이상할 때만 판별을 켜고 다시 읽습니다. `on`(모든 줄 판별, 똑바른 줄을 거꾸로 읽는 일이 있음)·`off`(90°·180° 사진을 못 읽음). [개발 노트](docs/DEVELOPMENT.md#글자-줄-방향-판별-2026-11-04-pl_paddle_textline) |
 | `PL_PADDLE_REC` | 언어별 기본 모델 | 한국어 기본 조합은 `korean_PP-OCRv5_mobile_rec`입니다. |
 | `PL_TESSERACT` | 자동 탐색 | Tesseract 실행 파일 경로 |
-| `PL_YOLO_WEIGHTS` | `models`에서 자동 탐색 | 직접 지정한 경로가 우선입니다. 미설정이면 프로젝트 루트 `models` 안의 `v숫자` 폴더 중 숫자가 가장 큰 폴더의 `best.pt`를 사용합니다(`v10` > `v9`). 버전 폴더가 없으면 `models/best.pt`를 사용하며, 선택한 파일이 없으면 OCR만 실행합니다. `pip install -r vision/requirements.txt` 필요. 학습은 [vision/README.md](vision/README.md) |
+| `PL_YOLO_WEIGHTS` | `models`에서 자동 탐색 | 직접 지정한 경로가 우선입니다. 미설정이면 프로젝트 루트 `models` 안의 `v숫자` 폴더 중 숫자가 가장 큰 폴더의 `best.pt`를 사용합니다(`v10` > `v9`). 버전 폴더가 없으면 `models/best.pt`를 사용하며, 선택한 파일이 없으면 OCR만 실행합니다. 학습은 [vision/README.md](vision/README.md) |
 | `PL_YOLO` | `on` | `off`로 지정하면 모델 파일이 있어도 문서 검출을 끕니다. 모델 선택은 서버 재시작 시 적용됩니다. |
 | `PL_YOLO_CONF` | `0.35` | 문서 검출 기준값 |
 | `PL_UNLABELED_NAMES` | `context` | 라벨 없는 이름 판단. `off`(라벨 뒤 이름만) · `context`(연락처·주소 옆, 명찰·학생증 단서, 호칭이 있을 때) · `all`(단서 없는 이름 후보도 검토 권장, 오탐 증가). [D-12](docs/DECISIONS.md#d-12-가림-기준표-확정) |
