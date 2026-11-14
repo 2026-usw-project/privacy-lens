@@ -372,6 +372,9 @@ main{padding:8px 24px 16px}
 .risk-tag{flex-shrink:0;padding:3px 9px;border-radius:999px;background:var(--accent-tint);font-family:var(--mono);font-size:12px;font-weight:700;line-height:1.5;color:var(--accent-ink)}
 .risk-tag.manual{background:var(--surface-2);color:var(--ink-2)}
 .region-item-description{margin:4px 0 0 34px;font-size:13px;line-height:1.6;color:var(--muted)}
+.region-item-body{display:flex;align-items:flex-start;gap:10px;margin:6px 0 0 34px}
+.region-item-body .region-item-description{margin:0;flex:1;min-width:0}
+.region-thumb{width:72px;height:54px;flex-shrink:0;border-radius:6px;border:1px solid var(--line);background:var(--surface-2);cursor:pointer}
 .region-item-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 0 34px}
 .region-actions{display:inline-flex;align-items:center;gap:2px}
 .region-item.editing .risk-tag{display:none}
@@ -1752,14 +1755,33 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       const cert=r.kind!=='manual'&&r.certainty&&r.certainty!=='read'?'<span class="cert-label">'+escapeHTML(r.certaintyLabel||'')+'</span>':'';
       return '<div class="region-item'+(focused?' selected-detail':'')+(detail?' editing':'')+'" data-region="'+escapeHTML(r.id)+'">'+
         '<div class="region-item-top"><input type="checkbox" data-action="toggle" '+(r.enabled?'checked ':'')+'aria-label="'+title+' 가리기"><button class="region-item-name" data-action="focus" aria-pressed="'+focused+'"><span class="row-number">'+String(index+1).padStart(2,'0')+'</span>'+title+'</button>'+cert+severityTag(r)+'</div>'+
-        '<p class="region-item-description">'+escapeHTML(r.reason)+'</p><div class="region-item-meta">'+(r.text?'<code>'+escapeHTML(r.text)+'</code>':'<span></span>')+'<span class="region-actions"><button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'유형 · 좌표 수정')+'</button><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span></div>'+
+        // 작게 찍혀 사진에서 잘 안 보이는 것을 바로 알아보게, 그 자리를 잘라 크게 보여 준다(D-21)
+        '<div class="region-item-body"><canvas class="region-thumb" data-action="focus" data-thumb="'+escapeHTML(r.id)+'" width="144" height="108" aria-hidden="true"></canvas><p class="region-item-description">'+escapeHTML(r.reason)+'</p></div><div class="region-item-meta">'+(r.text?'<code>'+escapeHTML(r.text)+'</code>':'<span></span>')+'<span class="region-actions"><button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'유형 · 좌표 수정')+'</button><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span></div>'+
         (detail?'<div class="region-detail"><label class="type-label">개인정보 유형<select data-region-type="true" aria-label="'+title+' 개인정보 유형">'+Object.entries(Core.TYPES).map(([key,label])=>'<option value="'+key+'" '+(r.type===key?'selected':'')+'>'+label+'</option>').join('')+'</select></label><div class="coordinate-title">원본 좌표 <span>'+state.width+' × '+state.height+' px'+(r.poly?' · 기울어진 외곽선':'')+'</span></div><div class="coordinate-editor" aria-label="원본 픽셀 좌표">'+[['x','왼쪽',px.x],['y','위쪽',px.y],['w','너비',px.width],['h','높이',px.height]].map(([key,label,value])=>'<label>'+label+'<input type="number" min="'+(['w','h'].includes(key)?1:0)+'" max="'+(['x','w'].includes(key)?state.width:state.height)+'" step="1" value="'+value+'" data-coordinate="'+key+'" aria-label="'+title+' '+label+' 픽셀">px</label>').join('')+'</div></div>':'')+'</div>';
     }).join('');
+    drawThumbs(list);
     if(focusId) {
       const row=Array.from(list.children).find(el=>el.dataset.region===focusId);
       const target=row && (focusCoordinate?$('[data-coordinate="'+focusCoordinate+'"]',row):focusType?$('[data-region-type]',row):focusAction?$('[data-action="'+focusAction+'"]',row):null);
       target?.focus({preventScroll:true});
     }
+  }
+
+  // 목록의 작은 그림: 영역 주변을 짧은 변의 60% 만큼 넓혀 잘라 칸에 맞게 그린다. 원본 사진(state.source)은 화면용으로 줄었을 수 있어 비율로 옮긴다.
+  function drawThumbs(list) {
+    if(!state.source || !state.width)return;
+    const kx=state.source.width/state.width,ky=state.source.height/state.height;
+    $$('canvas[data-thumb]',list).forEach(canvas=>{
+      const r=state.regions.find(item=>item.id===canvas.dataset.thumb);if(!r)return;
+      const p=Core.toPixels(r,state.width,state.height),pad=Math.min(p.width,p.height)*0.6+8,padX=pad,padY=pad;
+      const x0=Math.max(0,p.x-padX),y0=Math.max(0,p.y-padY),x1=Math.min(state.width,p.x+p.width+padX),y1=Math.min(state.height,p.y+p.height+padY);
+      const ctx=canvas.getContext('2d'),cw=canvas.width,ch=canvas.height,scale=Math.min(cw/(x1-x0),ch/(y1-y0));
+      const dw=(x1-x0)*scale,dh=(y1-y0)*scale,dx=(cw-dw)/2,dy=(ch-dh)/2;
+      ctx.clearRect(0,0,cw,ch);
+      ctx.drawImage(state.source,x0*kx,y0*ky,(x1-x0)*kx,(y1-y0)*ky,dx,dy,dw,dh);
+      ctx.strokeStyle='#e5484d';ctx.lineWidth=3;
+      ctx.strokeRect(dx+(p.x-x0)*scale,dy+(p.y-y0)*scale,p.width*scale,p.height*scale);
+    });
   }
 
   function renderReview() {

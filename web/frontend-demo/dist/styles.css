@@ -362,6 +362,9 @@ main{padding:8px 24px 16px}
 .risk-tag{flex-shrink:0;padding:3px 9px;border-radius:999px;background:var(--accent-tint);font-family:var(--mono);font-size:12px;font-weight:700;line-height:1.5;color:var(--accent-ink)}
 .risk-tag.manual{background:var(--surface-2);color:var(--ink-2)}
 .region-item-description{margin:4px 0 0 34px;font-size:13px;line-height:1.6;color:var(--muted)}
+.region-item-body{display:flex;align-items:flex-start;gap:10px;margin:6px 0 0 34px}
+.region-item-body .region-item-description{margin:0;flex:1;min-width:0}
+.region-thumb{width:72px;height:54px;flex-shrink:0;border-radius:6px;border:1px solid var(--line);background:var(--surface-2);cursor:pointer}
 .region-item-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 0 34px}
 .region-actions{display:inline-flex;align-items:center;gap:2px}
 .region-item.editing .risk-tag{display:none}
