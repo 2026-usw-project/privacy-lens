@@ -23,8 +23,8 @@ def preload_torch() -> bool:
 
     Windows 의 PyTorch 는 CUDA·cuDNN·OpenMP DLL 을 torch/lib 에 따로 들고 있고, paddlepaddle-gpu 는 pip 의
     nvidia-* 패키지 DLL 을 쓴다. 이름이 같은 DLL 은 먼저 불러온 쪽이 쓰이기 때문에, Paddle 을 먼저 불러온 뒤
-    PyTorch(YOLO)를 불러오면 OSError [WinError 127] 로 멈췄다(2026-11-14, RTX 3070 Laptop, torch 2.6.0+cu126,
-    paddlepaddle-gpu 3.2.2 cu126). PyTorch 를 먼저 불러오면 함께 동작했다(cuDNN 9.5 로 버전도 맞춰야 한다, README).
+    PyTorch(YOLO)를 불러오면 OSError [WinError 127](shm.dll)로 멈췄다. PyTorch 를 먼저 불러오면 함께 동작했다
+    (RTX 3070 Laptop, torch 2.12.1+cu130 + paddlepaddle-gpu 3.4.0 cu130, cuDNN 을 9.20 으로 맞춤, README).
     Linux 는 둘 다 pip 의 nvidia-* 패키지를 써서 이 문제가 없으므로 아무것도 하지 않는다.
     """
     if os.name != "nt" or importlib.util.find_spec("torch") is None:
