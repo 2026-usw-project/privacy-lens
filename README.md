@@ -107,10 +107,27 @@ python -m pip install paddleocr
 
 **Linux NVIDIA GPU**
 
-Linux에서는 **글자 인식(PaddleOCR)만 GPU**로 돌리고, YOLO는 PyTorch **CPU 빌드**로 돌립니다. 분석 시간의 대부분은 글자 인식이고, YOLO는 CPU에서도 한 장에 0.1초대입니다.
+`nvidia-smi` 오른쪽 위의 `CUDA Version`(드라이버가 지원하는 최대 CUDA)을 보고 하나를 고릅니다.
 
-- **PyTorch까지 GPU 빌드를 쓰지 않는 이유**: Linux의 Paddle과 PyTorch GPU 빌드는 둘 다 pip의 `nvidia-*` 패키지를 쓰는데, 서로 다른 cuDNN·NCCL 버전을 정확히 고정합니다(예: Paddle cu126 은 NCCL 2.25.1, torch 2.7.1 cu126 은 2.26.2). 맞는 조합이 없습니다.
-- **CUDA 빌드를 섞어도 안 됩니다**: Paddle cu118(`nvidia-nccl-cu11`)과 PyTorch cu126(`nvidia-nccl-cu12`)은 같은 파일 `nvidia/nccl/lib/libnccl.so.2`를 덮어써서, PyTorch import 가 `undefined symbol: ncclCommInitRankScalable`로 실패했습니다(`pip check`는 통과).
+*A. 드라이버가 CUDA 13.0 이상 — 글자 인식·YOLO·ONNX 모두 GPU (권장)*
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install torch==2.12.1 torchvision --index-url https://download.pytorch.org/whl/cu130
+python -m pip install -r requirements.txt
+python -m pip uninstall -y onnxruntime
+python -m pip install onnxruntime-gpu
+python -m pip install paddlepaddle-gpu==3.4.0 -i https://www.paddlepaddle.org.cn/packages/stable/cu130/ --extra-index-url https://pypi.org/simple
+python -m pip install paddleocr
+```
+
+- PyTorch 2.12.1 cu130 과 PaddlePaddle 3.4.0 cu130 은 `cuda-toolkit 13.0.2`·cuDNN `9.20.0.48`·cuBLAS 13.1 을 똑같이 고정해 한 환경에 함께 설치됩니다. ONNX Runtime 최신판(1.32)도 CUDA 13·cuDNN 9 를 씁니다.
+- `python -m pip check` 는 **한 줄을 알립니다**: `torch … requires nvidia-nccl-cu13==2.29.7, but you have 2.30.7`. NCCL 은 여러 GPU 사이의 통신용이고 새 버전이 예전 버전과 호환되며, 한 GPU 분석에서는 쓰지 않습니다. 이 한 줄 외의 충돌이 있으면 설치를 다시 확인하세요.
+- Paddle 배포 목록에는 `cuda-toolkit` 이 없어서 `--extra-index-url https://pypi.org/simple` 이 꼭 필요합니다.
+- PaddlePaddle 은 이 조합에서만 **3.4.0** 을 씁니다(CPU·다른 조합은 3.2.2). 3.3.x 의 CPU 추론 오류를 피하려 3.2.2 로 고정했는데, 3.4.0 GPU 는 아래 확인에서 정상이었습니다. 3.2.2 와 글자 인식 결과를 비교하지는 않았습니다.
+- PyTorch 2.13 이상(cu130·cu132·cu134)은 cuDNN·NCCL·`cuda-toolkit` 고정 값이 Paddle 과 달라 함께 설치하지 않습니다.
+
+*B. 드라이버가 CUDA 12.x — 글자 인식만 GPU, YOLO 는 CPU*
 
 ```bash
 python -m pip install --upgrade pip
@@ -121,8 +138,8 @@ python -m pip install paddleocr
 python -m pip check
 ```
 
-- `cu129`는 드라이버가 CUDA 12.9 이상을 지원해야 합니다(`nvidia-smi` 오른쪽 위 `CUDA Version`). RTX 50 시리즈(Blackwell)는 cu129가 필요합니다. 드라이버가 더 오래됐다면 주소의 `cu129`를 `cu126`으로 바꿉니다(이 조합은 실제로 돌려 보지 않았습니다).
-- [PaddlePaddle GPU 배포 목록](https://www.paddlepaddle.org.cn/packages/stable/cu129/paddlepaddle-gpu/)
+- CUDA 12 에서는 Paddle 과 PyTorch GPU 빌드가 cuDNN·NCCL 을 서로 다른 버전으로 고정해(예: Paddle cu126 NCCL 2.25.1, torch 2.7.1 cu126 NCCL 2.26.2) 맞는 조합이 없습니다. CUDA 빌드를 섞으면 `nvidia/nccl/lib/libnccl.so.2`·`nvidia/cudnn/lib/libcudnn.so.9` 처럼 **같은 파일을 덮어써** PyTorch 가 `undefined symbol: ncclCommInitRankScalable` 로 멈췄습니다(`pip check` 는 통과). 그래서 PyTorch 는 CPU 빌드로 둡니다. 분석 시간의 대부분은 글자 인식이고 YOLO 는 CPU 에서도 한 장 0.1초대입니다.
+- `cu129` 는 드라이버가 CUDA 12.9 이상이어야 합니다. RTX 50 시리즈(Blackwell)는 cu129 가 필요합니다. 드라이버가 더 오래됐다면 주소의 `cu129` 를 `cu126` 으로 바꿉니다(이 조합은 실제로 돌려 보지 않았습니다).
 
 **Windows NVIDIA GPU**
 
@@ -142,19 +159,14 @@ python -m pip check
 Windows에서는 PaddleOCR·YOLO·ONNX 모두 GPU를 씁니다. `onnxruntime-gpu`는 `onnxruntime`과 함께 설치하면 충돌하므로 둘 중 하나만 둡니다.
 
 > **확인한 환경(2026-11-14)** — 새 가상환경에서 위 명령 그대로 설치한 뒤 `run.py`로 가상 샘플을 분석했습니다.
-> Linux GPU: Ubuntu 24.04 · RTX 5090 · 드라이버 580(CUDA 13.0) · `cu129`, 글자 인식 GPU + YOLO CPU, 두 번째 분석 0.9초.
+> Linux GPU A: Ubuntu 24.04 · RTX 5070 · 드라이버 615(CUDA 13.4) · torch 2.12.1 cu130 + Paddle 3.4.0 cu130 + ONNX Runtime 1.32, 글자 인식·YOLO(`cuda:0`)·ONNX 모두 GPU, 두 번째 분석 1.3초. 두 라이브러리를 어느 순서로 불러와도 동작했습니다.
+> Linux GPU B: Ubuntu 24.04 · RTX 5090 · 드라이버 580(CUDA 13.0) · `cu129`, 글자 인식 GPU + YOLO CPU, 두 번째 분석 0.9초.
 > Windows GPU: Windows 11 · RTX 3070 Laptop · `cu126`, 글자 인식·YOLO·ONNX 모두 GPU, 두 번째 분석 3.0초.
 > Linux CPU(16코어) 약 3초, Windows CPU 설치도 같은 방식으로 확인했습니다. 다른 GPU·드라이버에서는 아래 확인 명령으로 먼저 점검하세요.
 
 **GPU 사용 확인**
 
-Linux(글자 인식만 GPU):
-
-```bash
-python -c "import paddle; paddle.utils.run_check(); print(paddle.device.get_device())"
-```
-
-Windows(글자 인식·YOLO·ONNX 모두 GPU):
+Linux B(글자 인식만 GPU)는 첫 줄만, Linux A 와 Windows 는 세 줄 모두 실행합니다:
 
 ```bash
 python -c "import paddle; paddle.utils.run_check(); print(paddle.device.get_device())"
