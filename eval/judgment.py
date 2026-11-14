@@ -212,6 +212,67 @@ def digit_groups(f: Fake, split: bool):
     return lines, [Gold(" ".join(groups), NONE, "숫자 묶음")]
 
 
+def _exp(f: Fake) -> str:
+    return f"0{f.r.randint(1, 9)}/2{f.r.randint(6, 9)}"
+
+
+def card_misread(f: Fake, split: bool):
+    """OCR 이 한 자리를 잘못 읽어 Luhn 이 안 맞는 카드 번호. 카드 앞면 단서(VALID THRU)가 옆에 있다."""
+    d = list(f.card().replace("-", ""))
+    k = f.r.randint(4, 15)
+    d[k] = str((int(d[k]) + f.r.randint(1, 8)) % 10)
+    groups = ["".join(d[i:i + 4]) for i in range(0, 16, 4)]
+    num = groups if split else [" ".join(groups)]
+    lines = [["NURI CARD"], num, ["VALID THRU", _exp(f)]]
+    return lines, [Gold(" ".join(groups), COVER, "카드번호")]
+
+
+def card_vertical(f: Fake, split: bool):
+    """세로형 카드: 번호가 4자리씩 네 줄, 또는 8자리씩 두 줄로 쌓여 있다."""
+    groups = f.card().split("-")
+    rows = [[g] for g in groups] if split else [[groups[0], groups[1]], [groups[2], groups[3]]]
+    lines = [["NURI", "check"], *rows, ["VALID THRU " + _exp(f)]]
+    return lines, [Gold(" ".join(groups), COVER, "카드번호")]
+
+
+def card_15(f: Fake, split: bool):
+    """15자리(4-6-5) 카드 번호."""
+    digits = [9] + [f.r.randint(0, 9) for _ in range(13)]
+    d = next("".join(map(str, digits + [last])) for last in range(10) if kp.valid_luhn("".join(map(str, digits + [last]))))
+    c = f"{d[:4]} {d[4:10]} {d[10:]}"
+    lines = [["NURI CARD"], [c], ["VALID THRU", _exp(f)]]
+    return lines, [Gold(c, COVER, "카드번호")]
+
+
+def card_lookalike(f: Fake, split: bool):
+    """숫자 몇 개가 닮은 글자로 읽힌 카드 번호(0→O, 1→l, 5→S, 8→B)."""
+    c = f.card().replace("-", " ")
+    swaps, out, used = {"0": "O", "1": "l", "5": "S", "8": "B"}, [], 0
+    for ch in c:
+        if ch in swaps and used < 2 and f.r.random() < 0.5:
+            out.append(swaps[ch]); used += 1
+        else:
+            out.append(ch)
+    c2 = "".join(out)
+    lines = [["NURI CARD"], [c2], ["VALID THRU", _exp(f)]]
+    return lines, [Gold(c2, COVER, "카드번호")]
+
+
+def not_card_numbers(f: Fake, split: bool):
+    """카드가 아닌 숫자: 세로로 쌓인 4자리 숫자(Luhn 이 우연히 맞음), '카드승인' 옆 Luhn 안 맞는 주문번호."""
+    while True:
+        col = [str(f.r.randint(1000, 9999)) for _ in range(4)]
+        if kp.valid_luhn("".join(col)):
+            break
+    while True:
+        o = "".join(str(f.r.randint(0, 9)) for _ in range(16))
+        if not kp.valid_luhn(o):
+            break
+    order = " ".join(o[i:i + 4] for i in range(0, 16, 4))
+    lines = [["재고 수량"], *[[c] for c in col], _lv("주문번호", order, split), ["카드승인 합계 12,500원"]]
+    return lines, [Gold(" ".join(col), NONE, "숫자 묶음"), Gold(order, NONE, "숫자 묶음")]
+
+
 def student_id_other(f: Fake, split: bool):
     """학교마다 학번 모양이 다르다. 연도로 시작하지 않는 8자리(실물 학생증에서 나온 모양)."""
     n, s = f.name(), f.pick(SCHOOLS)
@@ -251,6 +312,11 @@ TEMPLATES = {
     "숫자 묶음": digit_groups,
     "학생증(학번 모양 다름)": student_id_other,
     "신분증(한자 이름)": id_card_hanja,
+    "카드(한 자리 잘못 읽힘)": card_misread,
+    "카드(세로로 쌓임)": card_vertical,
+    "카드(15자리)": card_15,
+    "카드(닮은 글자)": card_lookalike,
+    "카드 아닌 숫자": not_card_numbers,
 }
 
 

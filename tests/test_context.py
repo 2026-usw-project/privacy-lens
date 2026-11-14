@@ -1,6 +1,7 @@
 """문맥 판단과 문서 군집. ScriptedBackend 대신 TextSpan 을 직접 넣는다."""
 
 from pipeline import context, grouping
+from pipeline import kr_patterns as kp
 from pipeline.types import Box, Certainty, Severity, TextSpan
 
 
@@ -217,3 +218,46 @@ def test_own_label_beats_inherited():
              span("고객센터", 0, 48, 80), span("010-1234-5678", 100, 48)]
     [m] = by_kind(context.evaluate(spans), "mobile")
     assert m.severity is Severity.INFO
+
+
+# ------------------------------------------------------------ 카드번호(find_cards)
+
+def _card_spans(rows):
+    out = []
+    for r, parts in enumerate(rows):
+        x = 40
+        for text in parts:
+            w = max(22 * len(text), 30)
+            out.append(TextSpan(text, Box(x, 40 + 60 * r, w, 30), 0.95))
+            x += w + 40
+    return out
+
+
+def _cards(rows):
+    return [f for f in context.evaluate(_card_spans(rows)) if f.kind == "card"]
+
+
+def test_card_with_one_misread_digit_needs_card_face_words():
+    # 9036 0603 2521 7487 은 Luhn 이 안 맞는다(가상 번호)
+    assert not kp.valid_luhn("9036060325217487")
+    got = _cards([["NURI CARD"], ["9036 0603 2521 7487"], ["VALID THRU", "08/28"]])
+    assert len(got) == 1 and got[0].severity is Severity.COVER and got[0].certainty is Certainty.PARTIAL
+    # 카드 단서가 없으면(주문표) 잡지 않는다. 영수증의 '카드승인'은 단서가 아니다
+    assert _cards([["주문 내역"], ["9036 0603 2521 7487"], ["카드승인 합계 12,500원"]]) == []
+
+
+def test_card_stacked_in_rows_and_lookalike_letters_and_15_digits():
+    assert kp.valid_luhn("9176132558283917")
+    rows = [["NURI", "check"], ["9176"], ["1325"], ["5828"], ["3917"], ["VALID THRU 08/28"]]
+    got = _cards(rows)
+    assert len(got) == 1 and got[0].detail["parts"] == 4 and got[0].severity is Severity.COVER
+    # 단서 없이 세로로 쌓인 숫자는 Luhn 이 맞아도 잡지 않는다
+    assert _cards([["재고 수량"], ["9176"], ["1325"], ["5828"], ["3917"]]) == []
+    # 닮은 글자: 9176 l325 S828 3917
+    got = _cards([["9176 l325 S828 3917"]])
+    assert len(got) == 1 and got[0].evidence_text == "9176 l325 S828 3917"
+    # 15자리 4-6-5
+    assert kp.valid_luhn("949849412757399")
+    assert len(_cards([["9498 494127 57399"]])) == 1
+    # 글자뿐인 낱말은 숫자로 보지 않는다
+    assert _cards([["SOLD BOSS ZOOS LOLL"], ["VISA"]]) == []
