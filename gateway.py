@@ -9,7 +9,7 @@
 - **줄을 서지 않는 요청**(/redact/preview, /llm/models)은 살아 있는 엔진에 번갈아 보낸다.
 - **상태 확인**: 엔진마다 /health 를 주기적으로 묻고, 안 되는 엔진은 빼고 살아나면 다시 넣는다.
   보내다가 연결이 안 되면(처리 전) 그 엔진을 빼고 같은 요청을 줄 맨 앞에 다시 세운다.
-- **엔진은 게이트웨이만 받는다.** 공유 비밀값(PL_GATEWAY_TOKEN)을 X-PL-Token 헤더로 보낸다(run_backend.py --token).
+- **엔진 토큰은 선택 사항이다.** 공유 비밀값(PL_GATEWAY_TOKEN)이 설정되면 X-PL-Token 헤더로 보낸다.
 - **엔진 목록 관리**: 화면의 '엔진 N대'를 누르면 엔진을 더하고 뺄 수 있다(/admin/engines). 관리 키(PL_ADMIN_KEY,
   X-PL-Admin 헤더)가 맞을 때만 된다. 누구나 엔진을 빼거나(서비스 중단) 자기 서버를 넣으면(사진이 그리로 감) 안 되기 때문이다.
   목록 변경은 메모리에만 남고, 게이트웨이를 다시 켜면 실행 옵션(--backend)의 목록으로 돌아간다.
@@ -183,7 +183,7 @@ class Gateway:
         b.fails += 1
         if rejected:
             if not b.rejected:
-                log.warning("엔진 %s 이 연결을 거절했습니다 — 비밀값(--token)이 다릅니다", b.url)
+                log.warning("엔진 %s 이 연결을 거절했습니다 — 양쪽의 --token 또는 PL_GATEWAY_TOKEN 설정을 확인하세요", b.url)
             b.rejected, b.healthy = True, False
             return
         if b.healthy and (refused or b.fails >= SLOW_FAILS):

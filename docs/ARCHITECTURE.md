@@ -35,9 +35,9 @@
 
 ```
 사용자 브라우저 ──▶ gateway.py (run_gateway.py: 화면 + 대기열 하나 + 분산 + 5초마다 /health)
-                      │  X-PL-Token(공유 비밀값), 비어 있는 엔진에 한 건씩, 번호표 → 엔진 고정
+                      │  X-PL-Token(공유 비밀값, 선택), 비어 있는 엔진에 한 건씩, 번호표 → 엔진 고정
                       ▼
-                 server.py × N (run_backend.py --token, 1 서버 1 엔진. 토큰이 다르면 403)
+                 server.py × N (run_backend.py --token, 1 서버 1 엔진. 설정한 토큰이 없거나 다르면 403)
 ```
 
 - 줄 서는 요청: `/analyze`, `/redact`. 배정 전 `/queue?ticket`·`/progress` 는 게이트웨이가 답하고, 배정 뒤에는 그 엔진의 응답을 그대로 넘긴다.
@@ -46,7 +46,7 @@
 - 같은 번호표·같은 요청의 재시도는 결과를 30초 동안 메모리에서 다시 준다(엔진의 규칙과 같다).
 - 엔진 목록 관리: `GET /admin/engines`, `POST /admin/engines {url}`, `POST /admin/engines/remove {url}`. `X-PL-Admin`(관리 키)가 맞을 때만.
   바꾼 목록은 메모리에만 있다. 게이트웨이는 `X-PL-Gateway`(이름)를 보내고, 엔진은 처음 연결·30초 넘게 조용함(끊김)·비밀값 거절을 콘솔에 적는다.
-- https 는 게이트웨이 앞에서만 끝낸다: Caddy(`deploy/Caddyfile`) 또는 `run_gateway.py --ssl-cert/--ssl-key`. 게이트웨이 → 엔진은 교내망 http + 토큰.
+- https 는 게이트웨이 앞에서만 끝낸다: Caddy(`deploy/Caddyfile`) 또는 `run_gateway.py --ssl-cert/--ssl-key`. 게이트웨이 → 엔진은 내부망에서 연결하고, 공유 토큰은 선택 사항이다.
 
 DB 는 없습니다. 사진은 요청 처리 함수 안에서만 존재하고, 디스크(임시 파일 포함)·로그에 남기지 않습니다.
 디스크에 남는 것은 처리 단계별 걸린 시간 통계 파일 하나뿐입니다(단계 키와 숫자, D-17).
