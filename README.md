@@ -103,10 +103,10 @@ Linux GPU 조합은 패키지 요구 사항을 확인한 설치 예시입니다.
 
 #### Windows CPU
 
-PowerShell에서 실행합니다. 가상환경의 Python을 직접 호출하므로 활성화 스크립트 실행 권한 설정이 필요 없습니다.
+PowerShell에서 `python --version`으로 Python 3.12인지 확인한 뒤 실행합니다. 가상환경의 Python을 직접 호출하므로 활성화 스크립트 실행 권한 설정이 필요 없습니다.
 
 ```powershell
-py -3.12 -m venv .venv
+python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
