@@ -268,7 +268,7 @@ def test_prompt_carries_spans_and_positions():
     # 글줄 관계: '홍길동'의 바로 왼쪽은 '받는분', 같은 줄에서 두 번째
     name = user["spans"][1]
     assert name["left"] == 0 and name["line"] == user["spans"][0]["line"] and name["order"] == 1
-    assert user["spans"][0]["left"] is None
+    assert "left" not in user["spans"][0]          # 값이 없는 관계 필드는 보내지 않는다
 
 
 def test_relations_lines_and_documents():
@@ -433,3 +433,8 @@ def test_claude_caches_the_system_prompt():
     _, _, body = llm_judge._request(_cfg("anthropic", "auto"), "SYS", "u")
     assert body["system"] == [{"type": "text", "text": "SYS", "cache_control": {"type": "ephemeral"}}]
 
+
+def test_user_message_is_compact():
+    text = llm_judge._user_message(SPANS, 300, 200)
+    assert ", " not in text and ": " not in text and "null" not in text
+    assert _json.loads(text)["spans"][2]["text"] == SPANS[2].text

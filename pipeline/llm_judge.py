@@ -93,7 +93,7 @@ SYSTEM_PROMPT = """너는 사진 속 개인정보를 가려 주는 서비스의 
 OCR 이 사진에서 읽은 글자 조각 목록을 받는다. 각 조각:
 - i: 번호, text: 글자, conf: OCR 신뢰도, box: 원본 픽셀 상자 [x, y, w, h]
 - line: 몇 번째 글줄인지, order: 그 줄에서 몇 번째인지(기울어진 사진도 글줄 방향 기준)
-- left: 같은 줄 바로 왼쪽(앞) 조각 번호, above: 바로 윗줄에 줄머리를 맞춘 조각 번호(없으면 null)
+- left: 같은 줄 바로 왼쪽(앞) 조각 번호, above: 바로 윗줄에 줄머리를 맞춘 조각 번호(없으면 그 필드가 빠진다)
 - doc: 같은 종이(문서)로 묶인 묶음 번호. 다른 묶음의 정보는 서로의 근거로 쓰지 않는다
 라벨과 값은 left·above 로 연결한다. 좌표를 직접 계산하기보다 이 관계를 먼저 본다.
 
@@ -114,7 +114,9 @@ tracking(운송장번호), brn(사업자등록번호), long_digits(정체 모를
 - 비밀번호는 '비밀번호·비번·PW' 라벨 뒤 값만. 라벨이 없는 문자열은 고르지 않는다.
 - 라벨 없는 긴 숫자는 계좌인지 주문번호인지 알 수 없으므로 info(long_digits).
 
-출력: JSON 객체 하나만. 설명·코드블록 없이.
+출력: JSON 객체 하나만. 설명·코드블록·줄바꿈·공백 없이 한 줄로.
+해당하지 않는 필드는 아예 빼고 null 을 쓰지 않는다. label_i 는 basis 가 label·info 일 때만, doc 은 document 일 때만,
+with 는 linked 일 때만 넣는다. text 는 조각 글자 전체가 그 값이면 뺀다.
 {"findings":[{"i":[조각번호,...],"kind":"종류","severity":"cover|review|info","text":"조각 안의 해당 값 그대로",
   "basis":"label|document|linked|honorific|format","label_i":라벨 조각번호,"doc":"문서 종류","with":[함께 있는 개인정보의 조각번호,...]}]}
 - i: 한 값이 여러 조각으로 나뉘었으면(예: 4자리씩 끊긴 카드번호) 모두 넣는다. 한 조각이면 [번호].
@@ -450,9 +452,11 @@ def _user_message(spans: list[TextSpan], width: int, height: int) -> str:
     sent = spans[:MAX_SPANS]
     rel = _relations(sent)
     items = [{"i": i, "text": s.text[:MAX_SPAN_CHARS], "conf": round(s.ocr_confidence, 2),
-              "box": [s.box.x, s.box.y, s.box.w, s.box.h], **rel[i]}
+              "box": [s.box.x, s.box.y, s.box.w, s.box.h], **{k: v for k, v in rel[i].items() if v is not None}}
              for i, s in enumerate(sent)]
-    return json.dumps({"image": {"width": width, "height": height}, "spans": items}, ensure_ascii=False)
+    # 공백 없는 JSON: 같은 내용을 더 적은 토큰으로(조각이 많을수록 입력 시간·요금이 준다)
+    return json.dumps({"image": {"width": width, "height": height}, "spans": items},
+                      ensure_ascii=False, separators=(",", ":"))
 
 
 def _evidence(claimed: str, span_text: str) -> str:
