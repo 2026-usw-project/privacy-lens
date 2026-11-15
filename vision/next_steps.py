@@ -352,6 +352,33 @@ def build_daily(*, oi_train: int = 2000, oi_val: int = 300, hit_step: int = 2, r
     return res
 
 
+def _unpack_daily() -> None:
+    dd = _fresh("vision.daily_data")
+    if not (DAILY_DS / "data.yaml").exists():
+        print("데이터 풀기…", flush=True)
+        zipfile.ZipFile(DAILY_ZIP).extractall(DAILY_DS)
+        (DAILY_DS / "data.yaml").write_text(
+            f"path: {DAILY_DS}\ntrain: images/train\nval: images/val\nnames:\n" +
+            "".join(f"  {i}: {n}\n" for i, n in enumerate(dd.CLASSES)))
+
+
+def train_cards(*, n: int = 3000, epochs: int = 15, run: str = "daily_objects_cards") -> Path:
+    """가상 결제 카드를 학습 사진에 합성해 더한 뒤, 가장 최근 9종 모델에서 이어 학습한다(→ 다음 daily_vNNN).
+
+    양각·카드와 같은 색 번호처럼 OCR 이 못 읽는 카드도 물건으로는 찾게 하려는 것(vision/card_synth.py).
+    합성 사진은 학습(train)에만 넣는다. 검증 사진은 그대로라 이전 모델과 숫자를 바로 비교할 수 있다."""
+    cs = _fresh("vision.card_synth")
+    _unpack_daily()
+    print("카드 합성:", cs.add_to_dataset(DAILY_DS, n=n, split="train"), flush=True)
+    cache = DAILY_DS / "labels" / "train.cache"           # 사진이 늘었으니 라벨 캐시를 다시 만든다
+    if cache.exists():
+        cache.unlink()
+    done = sorted(OUT.glob("daily_v[0-9][0-9][0-9]/best.pt"))
+    base = str(done[-1]) if done else "yolo26n.pt"
+    print("시작 모델:", base, flush=True)
+    return train_daily(epochs=epochs, base=base, run=run)
+
+
 def train_daily(*, epochs: int = 30, base: str = "yolo26n.pt", run: str = "daily_objects") -> Path:
     """일상 사진 개인정보 물체 9종 YOLO26n(GPU). 데이터는 build_daily 가 만든 드라이브 zip. 끊기면 이어서.
 
@@ -363,12 +390,7 @@ def train_daily(*, epochs: int = 30, base: str = "yolo26n.pt", run: str = "daily
     if done and (OUT / "runs" / run / "DONE").exists():
         print("이미 있음:", done[-1])
         return done[-1]
-    if not (DAILY_DS / "data.yaml").exists():
-        print("데이터 풀기…", flush=True)
-        zipfile.ZipFile(DAILY_ZIP).extractall(DAILY_DS)
-        (DAILY_DS / "data.yaml").write_text(
-            f"path: {DAILY_DS}\ntrain: images/train\nval: images/val\nnames:\n" +
-            "".join(f"  {i}: {n}\n" for i, n in enumerate(dd.CLASSES)))
+    _unpack_daily()
     last = resumable_train(base, data=str(DAILY_DS / "data.yaml"), name=run, epochs=epochs)
     m = YOLO(str(last))
     metrics = m.val(data=str(DAILY_DS / "data.yaml"), imgsz=640, verbose=False, plots=False)
