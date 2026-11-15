@@ -35,7 +35,7 @@ $env:PL_WORK  = "D:\pl_work"                        # 임시 파일, 여유 50GB
 $env:PL_BATCH = "16"                                # 부하를 줄이려면 8
 python -m vision.pc_train check      # 경로·GPU·온도 확인
 python -m vision.pc_train daily      # 일상 사진 9종 (드라이브에 daily_ds.zip 이 없으면 먼저 합침, 20GB 안팎 받음)
-python -m vision.pc_train cards      # 결제 카드 보강: 가상 카드 3,000장을 학습 사진에 합성 → daily_v002 에서 15 epoch 이어 학습 → daily_v003
+python -m vision.pc_train cards      # 결제 카드 보강: 실물 카드 공개 데이터(objects/raw/cards/*.zip, vision/README.md) + 가상 카드 3,000장 합성 → daily_v002 에서 15 epoch 이어 학습 → daily_v003(10종: 9종 + card_number)
 python -m vision.pc_train plate      # 번호판 v004 + 평가
 python -m vision.pc_train face_eval  # 증명사진 평가
 ```

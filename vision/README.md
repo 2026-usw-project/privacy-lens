@@ -199,6 +199,23 @@ GPU 한도가 풀리면 노트북을 위에서부터 돌린다. 칸마다 혼자
 - VizWiz-Priv: 사진 9,291장 들어감(못 찾은 것 1장). `Text:Miscellaneous Papers` 4,052개 → `document`. 얼굴·액자 사진 등은 쓰지 않음.
 - 데이터 집계는 드라이브 `objects/daily_ds_counts.json`, 클래스별 결과는 `objects/daily_v00N_val.json`.
 
+#### 결제 카드 보강 (2026-11-15, `python -m vision.pc_train cards`)
+
+실물 카드는 번호가 양각이거나 카드와 같은 색이라 OCR 이 번호를 못 읽는다. 카드와 **번호 줄(`card_number`, 10번째 클래스)** 을 물건으로 찾게 한다.
+
+| 데이터 | 사진 | 우리 클래스 | 라이선스 |
+|---|---|---|---|
+| [Card Number Detecter](https://universe.roboflow.com/test-3klwp/card-number-detecter) (Roboflow, test) | 967 · 손에 든 실물 카드 | `card_number` | CC BY 4.0 |
+| [credit card object detection](https://universe.roboflow.com/karthik-b1wgt/credit-card-object-detection) (KARTHIK) | 218 · 카드 정면 | `card_number`(Card number), 나머지 4종은 안 씀 | CC BY 4.0 |
+| [Credit card](https://universe.roboflow.com/test-70hyp/credit-card-xk7ik) (test) | 944 · 장면 속 카드 | `card` | MIT |
+| [credit-card-detector](https://universe.roboflow.com/khaled-6hzrf/credit-card-detector-mltzy) (khaled) | 979 · 장면 속 카드 | `card` | MIT |
+| 합성(`vision/card_synth.py`) | 3,000 · 가상 카드를 학습 사진에 붙임 | `card` + `card_number` | — |
+
+- 받는 법: 각 페이지에서 로그인 → Download Dataset → 형식 **YOLOv8** → zip 을 드라이브 `objects/raw/cards/` 에 둔다(이름 그대로). 없으면 합성만으로 학습한다.
+- 클래스 이름은 `card_synth.map_card_class` 가 옮긴다(이름에 number → `card_number`, card·credit card → `card`, 그 밖은 버림). 실행하면 zip 마다 옮긴 결과와 장수를 찍는다.
+- 사진은 저장소에 넣지 않는다(드라이브·작업 폴더에만). 공개 데이터라도 카드 사진이므로 발표 자료에 그대로 싣지 않는다.
+- 서버: `card_number` 를 찾았는데 OCR 이 그 자리에서 카드번호를 못 읽었으면 번호 줄만 가림 권장(`pipeline/detect.py`).
+
 새 클래스 후보 — 서명(OCR 이 못 읽는 개인 식별 정보):
 
 | 데이터 | 장수 | 라이선스 | 비고 |

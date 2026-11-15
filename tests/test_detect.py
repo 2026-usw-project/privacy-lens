@@ -376,3 +376,19 @@ def test_card_with_unread_number_is_covered_as_a_whole():
     number = Finding(kind="card", box=Box(130, 300, 420, 34), certainty=Certainty.READ, severity=Severity.COVER,
                      message="카드번호 형식의 숫자가 인식됨", span_index=0)
     assert detect.region_findings([card], spans, [name, number]) == []
+
+
+def test_card_number_region_from_detector():
+    """번호 줄 검출(card_number): OCR 이 못 읽은 번호는 그 자리만 가림 권장, 읽었으면 OCR 항목을 쓴다."""
+    card = Detection("card", Box(100, 100, 600, 380), 0.8)
+    strip = Detection("card_number", Box(140, 300, 460, 50), 0.7)
+    spans = [TextSpan("NURI CARD", Box(130, 120, 200, 30), 0.95),
+             TextSpan("VALID THRU 08/28", Box(130, 380, 260, 26), 0.95)]
+    out = detect.region_findings([card, strip], spans, [])
+    assert len(out) == 1                                   # 번호 줄만. 카드째 영역은 더하지 않는다
+    f = out[0]
+    assert f.kind == "card" and f.box == strip.box and f.severity is Severity.COVER
+    assert f.certainty is Certainty.REGION_ONLY and f.evidence_text is None and "카드번호" in f.message
+    number = Finding(kind="card", box=Box(150, 305, 420, 34), certainty=Certainty.READ, severity=Severity.COVER,
+                     message="카드번호 형식의 숫자가 인식됨", span_index=0)
+    assert detect.region_findings([card, strip], spans, [number]) == []
