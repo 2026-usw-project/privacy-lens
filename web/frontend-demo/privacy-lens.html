@@ -2385,7 +2385,8 @@ window.PL_SAMPLE_PHOTOS={
   function layoutCanvas(preserve=true,anchor=null) {
     if(!state.source)return;
     const viewport=$('#canvasStage'),wrap=$('#canvasWrap'),sizer=$('#canvasSizer');
-    const width=Math.max(120,viewport.clientWidth-32),height=Math.max(180,viewport.clientHeight-32);
+    // client 크기는 스크롤바가 생기면 줄어 '맞춤 크기 줄어듦 → 스크롤바 사라짐 → 다시 커짐'이 반복된다. 스크롤바와 무관한 offset 크기로
+    const width=Math.max(120,viewport.offsetWidth-32),height=Math.max(180,viewport.offsetHeight-32);
     const fit=Math.min(width/state.width,height/state.height,1);
     const oldRect=wrap.getBoundingClientRect(),vp=viewport.getBoundingClientRect(),style=getComputedStyle(viewport);
     const ax=anchor?anchor.x-vp.left-viewport.clientLeft:viewport.clientWidth/2,ay=anchor?anchor.y-vp.top-viewport.clientTop:viewport.clientHeight/2;
