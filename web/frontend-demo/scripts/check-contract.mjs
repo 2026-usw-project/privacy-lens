@@ -78,7 +78,7 @@ await test('analyze posts original file and ticket, no judge for rules',async()=
 await test('only analyze carries the developer-mode judge',async()=>{
   const dev=C.devSettings({provider:'gemini',providers:{gemini:{apiKey:'test-key-not-real'}}});
   const judge=C.judgeField(dev);
-  assert.deepEqual(JSON.parse(judge),{provider:'gemini',model:'gemini-flash-latest',api_key:'test-key-not-real',base_url:''});
+  assert.deepEqual(JSON.parse(judge),{provider:'gemini',model:'gemini-flash-latest',api_key:'test-key-not-real',base_url:'',reasoning:'auto'});
   const seen=[];const api=A.client('',async(url,o)=>{seen.push([url,o.body.get('judge')]);return json({report});});
   await api.analyze(file,{judge});await api.redact(file,[],'blur',{judge});
   assert.deepEqual(seen,[['/analyze',judge],['/redact',null]]);
@@ -133,6 +133,16 @@ await test('engine order sends every url in the new order, key only in a header'
   assert.equal(seen.url,'/admin/engines/order');assert.equal(seen.o.method,'POST');
   assert.equal(seen.o.headers['X-PL-Admin'],'k-2');
   assert.deepEqual(JSON.parse(seen.o.body),{urls:['http://b:8000','http://a:8000']});
+});
+await test('reasoning starts at auto and keeps only values the provider accepts',()=>{
+  const d=C.devSettings({provider:'anthropic',providers:{anthropic:{model:'m',apiKey:'k',reasoning:'none'},openai:{reasoning:'xhigh'},ollama:{reasoning:'on'}}});
+  assert.equal(d.providers.anthropic.reasoning,'auto');        // Claude 는 none 이 없다
+  assert.equal(d.providers.openai.reasoning,'xhigh');
+  assert.equal(d.providers.ollama.reasoning,'on');
+  assert.equal(C.devSettings(null).providers.gemini.reasoning,'auto');
+  assert.equal(C.REASONING.openai[0],'auto');
+  assert.ok(Object.values(C.REASONING).every(v=>v[0]==='auto'));
+  assert.equal(JSON.parse(C.judgeField({provider:'openai',providers:{openai:{model:'m',apiKey:'k',reasoning:'low'}}})).reasoning,'low');
 });
 await test('queue asks with ticket',async()=>{
   const api=A.client('',async(url,o)=>{assert.equal(url,'/queue?ticket=a%20b');assert.equal(o.method,'GET');return json({running:0,waiting:0});});

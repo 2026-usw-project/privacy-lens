@@ -25,6 +25,16 @@
     ollama:{label:'Ollama',model:'qwen2.5:7b',url:'http://127.0.0.1:11434'},
     custom:{label:'Custom API',model:'',key:'optional',url:'',urlRequired:true}
   };
+  // 추론 정도(서버 pipeline/llm_judge.py REASONING 과 같게). 맨 앞 auto 는 아무것도 보내지 않는다(모델 기본값)
+  const REASONING = {
+    openai:['auto','none','minimal','low','medium','high','xhigh','max'],
+    custom:['auto','none','minimal','low','medium','high','xhigh','max'],
+    openrouter:['auto','none','minimal','low','medium','high','xhigh','max'],
+    anthropic:['auto','low','medium','high','xhigh','max'],
+    gemini:['auto','minimal','low','medium','high','xhigh'],
+    ollama:['auto','off','on','low','medium','high']
+  };
+  const REASONING_LABELS = {auto:'auto (모델 기본값, 보내지 않음)',none:'끄기 (none)',off:'끄기',on:'켜기',minimal:'최소 (minimal)',low:'낮음 (low)',medium:'중간 (medium)',high:'높음 (high)',xhigh:'매우 높음 (xhigh)',max:'최대 (max)'};
   const MAX_FIELD = 500;
   const field = v => typeof v==='string' ? v.slice(0,MAX_FIELD) : '';
   // 브라우저에 저장된 판단 모델 창 설정을 믿지 않고 다듬는다. 공급자마다 모델·키·주소를 따로 기억한다.
@@ -35,7 +45,8 @@
     for(const [id,j] of Object.entries(JUDGES)) {
       if(id==='rules')continue;
       const p=src.providers&&typeof src.providers[id]==='object'?src.providers[id]:{};
-      providers[id]={model:field(p.model)||j.model||'',apiKey:j.key?field(p.apiKey):'',baseUrl:'url' in j?(field(p.baseUrl)||j.url):''};
+      providers[id]={model:field(p.model)||j.model||'',apiKey:j.key?field(p.apiKey):'',baseUrl:'url' in j?(field(p.baseUrl)||j.url):'',
+        reasoning:(REASONING[id]||['auto']).includes(p.reasoning)?p.reasoning:'auto'};
     }
     return {provider,providers};
   }
@@ -44,7 +55,7 @@
     const s=devSettings(settings);
     if(s.provider==='rules')return undefined;
     const p=s.providers[s.provider];
-    return JSON.stringify({provider:s.provider,model:p.model.trim(),api_key:p.apiKey.trim(),base_url:p.baseUrl.trim()});
+    return JSON.stringify({provider:s.provider,model:p.model.trim(),api_key:p.apiKey.trim(),base_url:p.baseUrl.trim(),reasoning:p.reasoning});
   }
   // 글자가 이 컴퓨터 밖으로 나가는가. 클라우드 공급자는 항상, Ollama·Custom 은 주소가 이 컴퓨터가 아닐 때.
   function sendsOutside(settings) {
@@ -232,5 +243,5 @@
     return {url:String(e?.url||''),label:e?.busy?label+' · 처리 중':label,tone};
   }
 
-  globalThis.PrivacyLensCore=Object.freeze({queueBadge,engineRow,TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
+  globalThis.PrivacyLensCore=Object.freeze({REASONING,REASONING_LABELS,queueBadge,engineRow,TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
 })();
