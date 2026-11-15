@@ -78,7 +78,7 @@ await test('analyze posts original file and ticket, no judge for rules',async()=
 await test('only analyze carries the developer-mode judge',async()=>{
   const dev=C.devSettings({provider:'gemini',providers:{gemini:{apiKey:'test-key-not-real'}}});
   const judge=C.judgeField(dev);
-  assert.deepEqual(JSON.parse(judge),{provider:'gemini',model:'gemini-flash-latest',api_key:'test-key-not-real',base_url:'',reasoning:'auto'});
+  assert.deepEqual(JSON.parse(judge),{provider:'gemini',model:'gemini-flash-latest',api_key:'test-key-not-real',base_url:'',reasoning:'auto',fast:false});
   const seen=[];const api=A.client('',async(url,o)=>{seen.push([url,o.body.get('judge')]);return json({report});});
   await api.analyze(file,{judge});await api.redact(file,[],'blur',{judge});
   assert.deepEqual(seen,[['/analyze',judge],['/redact',null]]);
@@ -133,6 +133,12 @@ await test('engine order sends every url in the new order, key only in a header'
   assert.equal(seen.url,'/admin/engines/order');assert.equal(seen.o.method,'POST');
   assert.equal(seen.o.headers['X-PL-Admin'],'k-2');
   assert.deepEqual(JSON.parse(seen.o.body),{urls:['http://b:8000','http://a:8000']});
+});
+await test('fast mode is kept only for ChatGPT and Claude',()=>{
+  const d=C.devSettings({provider:'openai',providers:{openai:{fast:true},anthropic:{fast:true},gemini:{fast:true},ollama:{fast:'yes'}}});
+  assert.equal(d.providers.openai.fast,true);assert.equal(d.providers.anthropic.fast,true);
+  assert.equal(d.providers.gemini.fast,false);assert.equal(d.providers.ollama.fast,false);
+  assert.equal(JSON.parse(C.judgeField({provider:'anthropic',providers:{anthropic:{model:'m',apiKey:'k',fast:true}}})).fast,true);
 });
 await test('reasoning starts at auto and keeps only values the provider accepts',()=>{
   const d=C.devSettings({provider:'anthropic',providers:{anthropic:{model:'m',apiKey:'k',reasoning:'none'},openai:{reasoning:'xhigh'},ollama:{reasoning:'on'}}});

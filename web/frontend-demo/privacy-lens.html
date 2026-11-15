@@ -573,6 +573,8 @@ dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
 .dev-field input{background:var(--surface-2);border:0;border-radius:12px;padding:8px 14px;font-size:14px;font-family:var(--code)}
 .dev-field select{background:var(--surface-2);border-radius:12px;padding:8px 14px}
 .dev-key{display:flex;align-items:center;gap:8px}
+.dev-check{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--ink);cursor:pointer}
+.dev-check input{width:18px;height:18px;accent-color:var(--primary)}
 .dev-key input,.dev-key select{flex:1}
 #devDialog .export-actions{margin-top:22px}
 .dialog-callout.warn{background:var(--warn-bg);color:var(--warn)}
@@ -1042,6 +1044,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   <div class="dev-field" id="judgeModelListField"><label for="judgeModelList">모델 목록</label><div class="dev-key"><select id="judgeModelList" disabled><option value="">목록을 먼저 불러오세요</option></select><button type="button" class="text-button" id="judgeLoadModels">목록 불러오기</button></div><p class="fine-print" id="judgeModelStatus" role="status"></p></div>
   <div class="dev-field" id="judgeModelField"><label for="judgeModel">모델 (직접 입력)</label><input id="judgeModel" type="text" autocomplete="off" spellcheck="false" maxlength="500"></div>
   <div class="dev-field" id="judgeReasoningField"><label for="judgeReasoning">추론 정도</label><select id="judgeReasoning"></select><p class="fine-print">auto 는 추론 설정을 보내지 않아 모델 기본값을 써요. 높을수록 정확해질 수 있지만 오래 걸리고 요금이 늘어요. 모델이 받지 않는 값이면 오류가 나니 그때는 auto 로 바꿔 주세요.</p></div>
+  <div class="dev-field" id="judgeFastField"><label class="dev-check"><input type="checkbox" id="judgeFast"> 빠른 처리 (요금 추가)</label><p class="fine-print" id="judgeFastHint"></p></div>
   <div class="dev-field" id="judgeKeyField"><label for="judgeKey" id="judgeKeyLabel">API 키</label><div class="dev-key"><input id="judgeKey" type="password" autocomplete="off" spellcheck="false" maxlength="500"><button type="button" class="text-button" id="judgeKeyToggle" aria-controls="judgeKey" aria-pressed="false">보기</button></div></div>
   <div class="dev-field" id="judgeUrlField"><label for="judgeUrl">API 주소</label><input id="judgeUrl" type="url" autocomplete="off" spellcheck="false" maxlength="500"></div>
   <p class="fine-print" id="judgeHint"></p>
@@ -1088,6 +1091,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     ollama:['auto','off','on','low','medium','high']
   };
   const REASONING_LABELS = {auto:'auto (모델 기본값, 보내지 않음)',none:'끄기 (none)',off:'끄기',on:'켜기',minimal:'최소 (minimal)',low:'낮음 (low)',medium:'중간 (medium)',high:'높음 (high)',xhigh:'매우 높음 (xhigh)',max:'최대 (max)'};
+  // 빠른 처리(요금 추가)를 고를 수 있는 공급자(서버 pipeline/llm_judge.py FAST 와 같게)
+  const FAST = ['openai','anthropic'];
   const MAX_FIELD = 500;
   const field = v => typeof v==='string' ? v.slice(0,MAX_FIELD) : '';
   // 브라우저에 저장된 판단 모델 창 설정을 믿지 않고 다듬는다. 공급자마다 모델·키·주소를 따로 기억한다.
@@ -1099,7 +1104,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       if(id==='rules')continue;
       const p=src.providers&&typeof src.providers[id]==='object'?src.providers[id]:{};
       providers[id]={model:field(p.model)||j.model||'',apiKey:j.key?field(p.apiKey):'',baseUrl:'url' in j?(field(p.baseUrl)||j.url):'',
-        reasoning:(REASONING[id]||['auto']).includes(p.reasoning)?p.reasoning:'auto'};
+        reasoning:(REASONING[id]||['auto']).includes(p.reasoning)?p.reasoning:'auto',fast:FAST.includes(id)&&p.fast===true};
     }
     return {provider,providers};
   }
@@ -1108,7 +1113,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     const s=devSettings(settings);
     if(s.provider==='rules')return undefined;
     const p=s.providers[s.provider];
-    return JSON.stringify({provider:s.provider,model:p.model.trim(),api_key:p.apiKey.trim(),base_url:p.baseUrl.trim(),reasoning:p.reasoning});
+    return JSON.stringify({provider:s.provider,model:p.model.trim(),api_key:p.apiKey.trim(),base_url:p.baseUrl.trim(),reasoning:p.reasoning,fast:p.fast});
   }
   // 글자가 이 컴퓨터 밖으로 나가는가. 클라우드 공급자는 항상, Ollama·Custom 은 주소가 이 컴퓨터가 아닐 때.
   function sendsOutside(settings) {
@@ -1296,7 +1301,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     return {url:String(e?.url||''),label:e?.busy?label+' · 처리 중':label,tone};
   }
 
-  globalThis.PrivacyLensCore=Object.freeze({REASONING,REASONING_LABELS,queueBadge,engineRow,TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
+  globalThis.PrivacyLensCore=Object.freeze({FAST,REASONING,REASONING_LABELS,queueBadge,engineRow,TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
 })();
 
 'use strict';
@@ -2613,7 +2618,7 @@ window.PL_SAMPLE_PHOTOS={
   function renderDev() {
     const id=state.dev.provider,j=Core.JUDGES[id],p=state.dev.providers[id],llm=id!=='rules';
     $('#judgeProvider').value=id;
-    $('#judgeModelField').classList.toggle('hidden',!llm);$('#judgeReasoningField').classList.toggle('hidden',!llm);$('#judgeModelListField').classList.toggle('hidden',!llm);$('#judgeKeyField').classList.toggle('hidden',!llm||!j.key);$('#judgeUrlField').classList.toggle('hidden',!llm||!('url' in j));
+    $('#judgeModelField').classList.toggle('hidden',!llm);$('#judgeReasoningField').classList.toggle('hidden',!llm);$('#judgeFastField').classList.toggle('hidden',!Core.FAST.includes(id));$('#judgeModelListField').classList.toggle('hidden',!llm);$('#judgeKeyField').classList.toggle('hidden',!llm||!j.key);$('#judgeUrlField').classList.toggle('hidden',!llm||!('url' in j));
     if(llm){
       if(document.activeElement!==$('#judgeModel'))$('#judgeModel').value=p.model;
       if(document.activeElement!==$('#judgeKey'))$('#judgeKey').value=p.apiKey;
@@ -2622,6 +2627,9 @@ window.PL_SAMPLE_PHOTOS={
       const sel=$('#judgeReasoning'),values=Core.REASONING[id]||['auto'];
       if(sel.dataset.provider!==id){sel.dataset.provider=id;sel.replaceChildren(...values.map(v=>{const o=document.createElement('option');o.value=v;o.textContent=Core.REASONING_LABELS[v]||v;return o;}));}
       sel.value=p.reasoning;
+      $('#judgeFast').checked=!!p.fast;
+      $('#judgeFastHint').textContent=id==='openai'?'service_tier "fast" 로 보내요. 토큰마다 요금이 더 붙고, 붐빌 때는 보통 속도로 처리될 수 있어요.'
+        :'speed "fast" 로 보내요. Claude Opus 5.5·Fable 5.2 같은 지원 모델에서만 되고, 토큰마다 요금이 더 붙어요.';
       $('#judgeUrl').placeholder=j.url||'http://localhost:1234/v1';
       $('#judgeKeyLabel').textContent=j.key==='optional'?'API 키 (필요할 때만)':'API 키';
     }
@@ -2669,6 +2677,7 @@ window.PL_SAMPLE_PHOTOS={
   $('#judgeProvider').addEventListener('change',e=>{updateDev({provider:e.target.value});renderModelList();});
   $('#judgeModel').addEventListener('input',e=>{updateDev({model:e.target.value});renderModelList();});
   $('#judgeReasoning').addEventListener('change',e=>updateDev({reasoning:e.target.value}));
+  $('#judgeFast').addEventListener('change',e=>updateDev({fast:e.target.checked}));
   $('#judgeKey').addEventListener('input',e=>updateDev({apiKey:e.target.value}));
   $('#judgeUrl').addEventListener('input',e=>updateDev({baseUrl:e.target.value}));
   $('#judgeKeyToggle').addEventListener('click',()=>{const k=$('#judgeKey'),show=k.type==='password';k.type=show?'text':'password';$('#judgeKeyToggle').textContent=show?'숨기기':'보기';$('#judgeKeyToggle').setAttribute('aria-pressed',String(show));});
