@@ -59,6 +59,27 @@ LABEL_MAX = 12           # 라벨로 인정할 최대 글자 수(공백 빼고).
 _WORSE = [Certainty.READ, Certainty.PARTIAL, Certainty.REGION_ONLY]
 
 TIMEOUT_S = 90
+
+# 추론(생각) 정도. 'auto' 는 아무것도 보내지 않아 모델 기본값을 쓴다. 공급자마다 받는 값이 다르다(2026-11 공식 문서).
+#   ChatGPT·Custom(OpenAI 호환): reasoning_effort        OpenRouter: reasoning.effort
+#   Claude: output_config.effort(최신 모델은 생각을 끌 수 없어 'none' 없음)
+#   Gemini: generationConfig.thinkingConfig.thinkingLevel(Gemini 3 이후)
+#   Ollama: think(off=false, on=true, 또는 모델이 정한 단계)
+REASONING = {
+    "openai": ("none", "minimal", "low", "medium", "high", "xhigh", "max"),
+    "custom": ("none", "minimal", "low", "medium", "high", "xhigh", "max"),
+    "openrouter": ("none", "minimal", "low", "medium", "high", "xhigh", "max"),
+    "anthropic": ("low", "medium", "high", "xhigh", "max"),
+    "gemini": ("minimal", "low", "medium", "high", "xhigh"),
+    "ollama": ("off", "on", "low", "medium", "high"),
+}
+# 생각을 많이 하면 오래 걸리고 출력 토큰도 많이 쓴다. 기다리는 시간과 Claude 의 출력 한도를 늘린다
+SLOW_REASONING = {"high": 180, "xhigh": 300, "max": 300}
+CLAUDE_MAX_TOKENS = {"high": 16000, "xhigh": 32000, "max": 32000}
+
+
+def timeout_for(cfg: "JudgeConfig") -> float:
+    return SLOW_REASONING.get(cfg.reasoning, TIMEOUT_S)
 MAX_SPANS = 400          # 한 번에 보낼 조각 수 상한. 넘는 조각은 보내지 않고 판단도 하지 않는다
 MAX_SPAN_CHARS = 200
 MAX_FIELD = 500
@@ -122,10 +143,12 @@ class JudgeConfig:
     model: str
     api_key: str = ""
     base_url: str = ""
+    reasoning: str = "auto"
 
     @property
     def label(self) -> str:
-        return f"{PROVIDERS[self.provider]} · {self.model}"
+        tail = "" if self.reasoning == "auto" else f" · 추론 {self.reasoning}"
+        return f"{PROVIDERS[self.provider]} · {self.model}{tail}"
 
     @property
     def sends_outside(self) -> bool:
@@ -170,7 +193,10 @@ def parse_config(raw: str | None, *, need_model: bool = True) -> JudgeConfig | N
         if parts.scheme not in ("http", "https") or not parts.netloc:
             raise ValueError(wording.LLM_URL_MISSING)
         url = url.rstrip("/")
-    return JudgeConfig(provider, model, key, url)
+    reasoning = field("reasoning").lower() or "auto"
+    if reasoning != "auto" and reasoning not in REASONING.get(provider, ()):
+        raise ValueError(wording.LLM_CONFIG_INVALID)
+    return JudgeConfig(provider, model, key, url, reasoning)
 
 
 # ------------------------------------------------------------------ 요청
@@ -221,6 +247,26 @@ def _openai_style(url: str, cfg: JudgeConfig, system: str, user: str, *, json_mo
 
 
 def _request(cfg: JudgeConfig, system: str, user: str) -> tuple[str, dict, dict]:
+    url, headers, body = _base_request(cfg, system, user)
+    r = cfg.reasoning
+    if r == "auto":
+        return url, headers, body  # 추론 정도는 보내지 않는다(모델 기본값)
+    p = cfg.provider
+    if p in ("openai", "custom"):
+        body["reasoning_effort"] = r
+    elif p == "openrouter":
+        body["reasoning"] = {"effort": r}
+    elif p == "anthropic":
+        body["output_config"] = {"effort": r}
+        body["max_tokens"] = CLAUDE_MAX_TOKENS.get(r, body["max_tokens"])
+    elif p == "gemini":
+        body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": r.upper()}
+    elif p == "ollama":
+        body["think"] = {"off": False, "on": True}.get(r, r)
+    return url, headers, body
+
+
+def _base_request(cfg: JudgeConfig, system: str, user: str) -> tuple[str, dict, dict]:
     p = cfg.provider
     if p == "openai":
         return _openai_style("https://api.openai.com/v1/chat/completions", cfg, system, user, json_mode=True)
@@ -240,7 +286,8 @@ def _request(cfg: JudgeConfig, system: str, user: str) -> tuple[str, dict, dict]
                 {"x-goog-api-key": cfg.api_key},
                 {"systemInstruction": {"parts": [{"text": system}]},
                  "contents": [{"role": "user", "parts": [{"text": user}]}],
-                 "generationConfig": {"responseMimeType": "application/json", "temperature": 0}})
+                 # temperature 는 보내지 않는다: Gemini 3.6 이후 '무시되고, 다음 세대부터 400'(공식 문서)
+                 "generationConfig": {"responseMimeType": "application/json"}})
     if p == "ollama":
         return (cfg.base_url + "/api/chat", {},
                 {"model": cfg.model, "stream": False, "format": "json", "options": {"temperature": 0},
@@ -522,7 +569,7 @@ def evaluate(spans: list[TextSpan], cfg: JudgeConfig, *, width: int, height: int
     url, headers, body = _request(cfg, SYSTEM_PROMPT, _user_message(spans, width, height))
     post = transport or _http_post
     data = _traced(trace, "judge", cfg, "POST", url, headers, body,
-                   lambda: post(url, headers, body, TIMEOUT_S))
+                   lambda: post(url, headers, body, timeout_for(cfg)))
     try:
         if not isinstance(data, dict):
             raise LlmJudgeError(wording.LLM_BAD_RESPONSE)

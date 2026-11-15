@@ -37,7 +37,8 @@ def judge_key(judge: llm_judge.JudgeConfig | None) -> str:
     """판단 단계 키. 넓은 키로 빌려 쓸 수 있게 공급자 → 모델 순."""
     if judge is None:
         return "judge:rules"
-    return f"judge:llm:{judge.provider}:{judge.model}"
+    key = f"judge:llm:{judge.provider}:{judge.model}"
+    return key if judge.reasoning == "auto" else f"{key}:{judge.reasoning}"
 
 
 def megapixels(image: Image.Image) -> float:

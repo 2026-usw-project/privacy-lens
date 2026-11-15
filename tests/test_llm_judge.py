@@ -352,3 +352,59 @@ def test_model_list_needs_key_not_model():
 def test_bad_model_list_reply():
     with pytest.raises(LlmJudgeError):
         llm_judge.list_models(JudgeConfig("openai", "", "k"), transport=fake_get([{"oops": 1}], []))
+
+
+# ------------------------------------------------------------------ 추론 정도
+
+import json as _json
+
+
+def _cfg(provider, reasoning, **extra):
+    raw = {"provider": provider, "model": "m", "api_key": "k", "reasoning": reasoning, **extra}
+    if provider in ("ollama", "custom"):
+        raw["base_url"] = "http://127.0.0.1:9"
+    return llm_judge.parse_config(_json.dumps(raw))
+
+
+def test_reasoning_auto_sends_nothing():
+    for p in ("openai", "custom", "openrouter", "anthropic", "gemini", "ollama"):
+        _, _, body = llm_judge._request(_cfg(p, "auto"), "s", "u")
+        text = _json.dumps(body)
+        for key in ("reasoning", "output_config", "thinkingConfig", '"think"'):
+            assert key not in text, (p, key)
+        assert _cfg(p, "auto").label.endswith("· m")
+    assert llm_judge.parse_config(_json.dumps({"provider": "openai", "model": "m", "api_key": "k"})).reasoning == "auto"
+
+
+def test_reasoning_maps_to_each_provider_field():
+    body = lambda p, r: llm_judge._request(_cfg(p, r), "s", "u")[2]
+    assert body("openai", "low")["reasoning_effort"] == "low"
+    assert body("custom", "none")["reasoning_effort"] == "none"
+    assert body("openrouter", "xhigh")["reasoning"] == {"effort": "xhigh"}
+    b = body("anthropic", "high")
+    assert b["output_config"] == {"effort": "high"} and b["max_tokens"] == 16000
+    assert body("anthropic", "low")["max_tokens"] == 8192
+    assert body("gemini", "medium")["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "MEDIUM"}
+    assert body("ollama", "off")["think"] is False and body("ollama", "on")["think"] is True
+    assert body("ollama", "high")["think"] == "high"
+    assert _cfg("openai", "high").label.endswith("추론 high")
+
+
+def test_reasoning_rejects_values_the_provider_lacks():
+    for p, r in (("anthropic", "none"), ("gemini", "max"), ("ollama", "xhigh"), ("openai", "turbo")):
+        with pytest.raises(ValueError):
+            _cfg(p, r)
+
+
+def test_gemini_sends_no_temperature():
+    """Gemini 3.6 이후 temperature 는 무시되고 다음 세대부터 400 이라 보내지 않는다."""
+    _, _, body = llm_judge._request(_cfg("gemini", "auto"), "s", "u")
+    assert "temperature" not in body["generationConfig"]
+
+
+def test_slow_reasoning_waits_longer_and_timing_key_splits():
+    from pipeline import analyze
+    assert llm_judge.timeout_for(_cfg("openai", "auto")) == llm_judge.TIMEOUT_S
+    assert llm_judge.timeout_for(_cfg("openai", "xhigh")) > llm_judge.TIMEOUT_S
+    assert analyze.judge_key(_cfg("openai", "auto")) == "judge:llm:openai:m"
+    assert analyze.judge_key(_cfg("openai", "high")) == "judge:llm:openai:m:high"
