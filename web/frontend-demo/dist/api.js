@@ -127,6 +127,10 @@
       addEngine(adminKey,url,{signal}={}) {
         return request('/admin/engines',{method:'POST',headers:{'X-PL-Admin':adminKey,'Content-Type':'application/json'},body:JSON.stringify({url})},signal);
       },
+      // 목록 순서 = 우선순위(맨 위 엔진이 먼저 맡는다). 지금 목록의 주소를 빠짐없이 원하는 순서로.
+      orderEngines(adminKey,urls,{signal}={}) {
+        return request('/admin/engines/order',{method:'POST',headers:{'X-PL-Admin':adminKey,'Content-Type':'application/json'},body:JSON.stringify({urls})},signal);
+      },
       removeEngine(adminKey,url,{signal}={}) {
         return request('/admin/engines/remove',{method:'POST',headers:{'X-PL-Admin':adminKey,'Content-Type':'application/json'},body:JSON.stringify({url})},signal);
       },
