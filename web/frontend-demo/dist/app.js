@@ -1143,7 +1143,7 @@
   function renderDev() {
     const id=state.dev.provider,j=Core.JUDGES[id],p=state.dev.providers[id],llm=id!=='rules';
     $('#judgeProvider').value=id;
-    $('#judgeModelField').classList.toggle('hidden',!llm);$('#judgeReasoningField').classList.toggle('hidden',!llm);$('#judgeModelListField').classList.toggle('hidden',!llm);$('#judgeKeyField').classList.toggle('hidden',!llm||!j.key);$('#judgeUrlField').classList.toggle('hidden',!llm||!('url' in j));
+    $('#judgeModelField').classList.toggle('hidden',!llm);$('#judgeReasoningField').classList.toggle('hidden',!llm);$('#judgeFastField').classList.toggle('hidden',!Core.FAST.includes(id));$('#judgeModelListField').classList.toggle('hidden',!llm);$('#judgeKeyField').classList.toggle('hidden',!llm||!j.key);$('#judgeUrlField').classList.toggle('hidden',!llm||!('url' in j));
     if(llm){
       if(document.activeElement!==$('#judgeModel'))$('#judgeModel').value=p.model;
       if(document.activeElement!==$('#judgeKey'))$('#judgeKey').value=p.apiKey;
@@ -1152,6 +1152,9 @@
       const sel=$('#judgeReasoning'),values=Core.REASONING[id]||['auto'];
       if(sel.dataset.provider!==id){sel.dataset.provider=id;sel.replaceChildren(...values.map(v=>{const o=document.createElement('option');o.value=v;o.textContent=Core.REASONING_LABELS[v]||v;return o;}));}
       sel.value=p.reasoning;
+      $('#judgeFast').checked=!!p.fast;
+      $('#judgeFastHint').textContent=id==='openai'?'service_tier "fast" 로 보내요. 토큰마다 요금이 더 붙고, 붐빌 때는 보통 속도로 처리될 수 있어요.'
+        :'speed "fast" 로 보내요. Claude Opus 5.5·Fable 5.2 같은 지원 모델에서만 되고, 토큰마다 요금이 더 붙어요.';
       $('#judgeUrl').placeholder=j.url||'http://localhost:1234/v1';
       $('#judgeKeyLabel').textContent=j.key==='optional'?'API 키 (필요할 때만)':'API 키';
     }
@@ -1199,6 +1202,7 @@
   $('#judgeProvider').addEventListener('change',e=>{updateDev({provider:e.target.value});renderModelList();});
   $('#judgeModel').addEventListener('input',e=>{updateDev({model:e.target.value});renderModelList();});
   $('#judgeReasoning').addEventListener('change',e=>updateDev({reasoning:e.target.value}));
+  $('#judgeFast').addEventListener('change',e=>updateDev({fast:e.target.checked}));
   $('#judgeKey').addEventListener('input',e=>updateDev({apiKey:e.target.value}));
   $('#judgeUrl').addEventListener('input',e=>updateDev({baseUrl:e.target.value}));
   $('#judgeKeyToggle').addEventListener('click',()=>{const k=$('#judgeKey'),show=k.type==='password';k.type=show?'text':'password';$('#judgeKeyToggle').textContent=show?'숨기기':'보기';$('#judgeKeyToggle').setAttribute('aria-pressed',String(show));});

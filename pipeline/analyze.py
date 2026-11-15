@@ -38,7 +38,9 @@ def judge_key(judge: llm_judge.JudgeConfig | None) -> str:
     if judge is None:
         return "judge:rules"
     key = f"judge:llm:{judge.provider}:{judge.model}"
-    return key if judge.reasoning == "auto" else f"{key}:{judge.reasoning}"
+    if judge.reasoning != "auto":
+        key += f":{judge.reasoning}"
+    return key + ":fast" if judge.fast else key
 
 
 def megapixels(image: Image.Image) -> float:

@@ -408,3 +408,28 @@ def test_slow_reasoning_waits_longer_and_timing_key_splits():
     assert llm_judge.timeout_for(_cfg("openai", "xhigh")) > llm_judge.TIMEOUT_S
     assert analyze.judge_key(_cfg("openai", "auto")) == "judge:llm:openai:m"
     assert analyze.judge_key(_cfg("openai", "high")) == "judge:llm:openai:m:high"
+
+
+
+# ------------------------------------------------------------------ 빠른 처리·캐싱·보내는 양
+
+def test_fast_mode_only_for_openai_and_claude():
+    body = lambda p: llm_judge._request(_cfg(p, "auto", fast=True), "s", "u")[2]
+    assert body("openai")["service_tier"] == "fast"
+    assert body("anthropic")["speed"] == "fast"
+    for p in ("gemini", "openrouter", "ollama", "custom"):
+        with pytest.raises(ValueError):
+            _cfg(p, "auto", fast=True)
+    with pytest.raises(ValueError):
+        _cfg("openai", "auto", fast="yes")
+    off = llm_judge._request(_cfg("openai", "auto"), "s", "u")[2]
+    assert "service_tier" not in off
+    from pipeline import analyze
+    assert analyze.judge_key(_cfg("anthropic", "high", fast=True)) == "judge:llm:anthropic:m:high:fast"
+    assert _cfg("openai", "auto", fast=True).label.endswith("빠른 처리")
+
+
+def test_claude_caches_the_system_prompt():
+    _, _, body = llm_judge._request(_cfg("anthropic", "auto"), "SYS", "u")
+    assert body["system"] == [{"type": "text", "text": "SYS", "cache_control": {"type": "ephemeral"}}]
+

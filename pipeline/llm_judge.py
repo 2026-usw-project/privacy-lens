@@ -78,6 +78,11 @@ SLOW_REASONING = {"high": 180, "xhigh": 300, "max": 300}
 CLAUDE_MAX_TOKENS = {"high": 16000, "xhigh": 32000, "max": 32000}
 
 
+# 빠른 처리(요금 추가). ChatGPT: service_tier "fast"(예전 이름 priority, 최대 2.5배·붐비면 보통 속도로 처리될 수 있음)
+# Claude: speed "fast"(Opus 5.5·Fable 5.2 등 지원 모델만, 아니면 공급자가 오류를 돌려준다)
+FAST = {"openai", "anthropic"}
+
+
 def timeout_for(cfg: "JudgeConfig") -> float:
     return SLOW_REASONING.get(cfg.reasoning, TIMEOUT_S)
 MAX_SPANS = 400          # 한 번에 보낼 조각 수 상한. 넘는 조각은 보내지 않고 판단도 하지 않는다
@@ -144,10 +149,13 @@ class JudgeConfig:
     api_key: str = ""
     base_url: str = ""
     reasoning: str = "auto"
+    fast: bool = False
 
     @property
     def label(self) -> str:
         tail = "" if self.reasoning == "auto" else f" · 추론 {self.reasoning}"
+        if self.fast:
+            tail += " · 빠른 처리"
         return f"{PROVIDERS[self.provider]} · {self.model}{tail}"
 
     @property
@@ -196,7 +204,10 @@ def parse_config(raw: str | None, *, need_model: bool = True) -> JudgeConfig | N
     reasoning = field("reasoning").lower() or "auto"
     if reasoning != "auto" and reasoning not in REASONING.get(provider, ()):
         raise ValueError(wording.LLM_CONFIG_INVALID)
-    return JudgeConfig(provider, model, key, url, reasoning)
+    fast = data.get("fast", False)
+    if not isinstance(fast, bool) or (fast and provider not in FAST):
+        raise ValueError(wording.LLM_CONFIG_INVALID)
+    return JudgeConfig(provider, model, key, url, reasoning, fast)
 
 
 # ------------------------------------------------------------------ 요청
@@ -248,6 +259,8 @@ def _openai_style(url: str, cfg: JudgeConfig, system: str, user: str, *, json_mo
 
 def _request(cfg: JudgeConfig, system: str, user: str) -> tuple[str, dict, dict]:
     url, headers, body = _base_request(cfg, system, user)
+    if cfg.fast:
+        body["service_tier" if cfg.provider == "openai" else "speed"] = "fast"
     r = cfg.reasoning
     if r == "auto":
         return url, headers, body  # 추론 정도는 보내지 않는다(모델 기본값)
@@ -277,7 +290,10 @@ def _base_request(cfg: JudgeConfig, system: str, user: str) -> tuple[str, dict, 
     if p == "anthropic":
         return ("https://api.anthropic.com/v1/messages",
                 {"x-api-key": cfg.api_key, "anthropic-version": "2023-06-01"},
-                {"model": cfg.model, "max_tokens": 8192, "system": system,
+                # 시스템 프롬프트는 늘 같으므로 캐시한다(두 번째 요청부터 그 부분 입력 요금 약 1/10, 첫 요청만 1.25배).
+                # ChatGPT·Gemini 는 앞부분이 같으면 공급자가 알아서 캐시한다(시스템 프롬프트를 맨 앞에 둔다)
+                {"model": cfg.model, "max_tokens": 8192,
+                 "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
                  "messages": [{"role": "user", "content": user}]})
     if p == "gemini":
         # 키는 주소(쿼리)가 아니라 헤더로 보낸다
