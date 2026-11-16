@@ -286,6 +286,15 @@ def _yaml_names(text: str) -> list[str]:
     return out
 
 
+def _enclosing_card(boxes: list[tuple[float, float, float, float]]) -> str:
+    """칸만 단 데이터의 card 상자. 이 데이터는 카드를 가까이 찍은 사진이라 칸 일부만 라벨이 달린 경우가 많아,
+    칸들을 둘러싼 상자보다 사진 전체가 실제 카드에 더 가깝다(직접 확인함). 칸이 사진 밖으로 나가면 그만큼 넓힌다."""
+    x0, y0 = min(0.0, *(b[0] for b in boxes)), min(0.0, *(b[1] for b in boxes))
+    x1, y1 = max(1.0, *(b[2] for b in boxes)), max(1.0, *(b[3] for b in boxes))
+    x0, y0, x1, y1 = max(0.0, x0), max(0.0, y0), min(1.0, x1), min(1.0, y1)
+    return f"{CARD_CLASS} {(x0 + x1) / 2:.6f} {(y0 + y1) / 2:.6f} {x1 - x0:.6f} {y1 - y0:.6f}"
+
+
 def import_real(ds: Path, zips: list[Path], max_side: int = 1280) -> dict:
     """Roboflow YOLO zip 들을 ds 에 더한다. train → train, valid·test → val. 이미 가져온 zip 은 건너뛴다.
     다각형 라벨은 둘러싼 상자로 바꾼다. 쓸 클래스가 하나도 없는 사진은 넣지 않는다."""
@@ -303,6 +312,9 @@ def import_real(ds: Path, zips: list[Path], max_side: int = 1280) -> dict:
             yml = next((n for n in names_in if n.endswith("data.yaml")), None)
             classes = _yaml_names(z.read(yml).decode("utf-8", "replace")) if yml else []
             mapping = {i: map_card_class(c) for i, c in enumerate(classes)}
+            # 카드 통째 클래스 없이 칸(번호·이름·유효기간·로고)만 단 데이터: card 상자를 덧붙인다(_enclosing_card).
+            # 이렇게 안 하면 사진 대부분을 차지한 카드가 '배경'으로 학습된다.
+            fields_only = CARD_CLASS not in mapping.values() and len(classes) >= 3
             count = {"train": 0, "val": 0, "card": 0, "card_number": 0}
             for n in names_in:
                 parts = n.replace("\\", "/").split("/")
@@ -315,9 +327,10 @@ def import_real(ds: Path, zips: list[Path], max_side: int = 1280) -> dict:
                 if lab_name not in names_in:
                     continue
                 rows = []
+                all_boxes = []
                 for ln in z.read(lab_name).decode("utf-8", "replace").splitlines():
                     v = ln.split()
-                    if len(v) < 5 or not v[0].isdigit() or mapping.get(int(v[0])) is None:
+                    if len(v) < 5 or not v[0].isdigit():
                         continue
                     nums = [float(t) for t in v[1:]]
                     if len(nums) == 4:
@@ -327,9 +340,15 @@ def import_real(ds: Path, zips: list[Path], max_side: int = 1280) -> dict:
                         cx, cy, w, h = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, max(xs) - min(xs), max(ys) - min(ys)
                     if w <= 0 or h <= 0:
                         continue
+                    all_boxes.append((cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2))
+                    if mapping.get(int(v[0])) is None:
+                        continue
                     cls = mapping[int(v[0])]
                     rows.append(f"{cls} {cx:.6f} {cy:.6f} {min(w, 1):.6f} {min(h, 1):.6f}")
                     count["card" if cls == CARD_CLASS else "card_number"] += 1
+                if fields_only and len(all_boxes) >= 2:
+                    rows.insert(0, _enclosing_card(all_boxes))
+                    count["card"] += 1
                 if not rows:
                     continue
                 try:
