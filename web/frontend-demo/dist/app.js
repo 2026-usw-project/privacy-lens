@@ -1148,7 +1148,7 @@
   function renderDev() {
     const id=state.dev.provider,j=Core.JUDGES[id],p=state.dev.providers[id],llm=id!=='rules';
     $('#judgeProvider').value=id;
-    $('#judgeModelField').classList.toggle('hidden',!llm);$('#judgeReasoningField').classList.toggle('hidden',!llm);$('#judgeFastField').classList.toggle('hidden',!Core.FAST.includes(id));$('#judgeModelListField').classList.toggle('hidden',!llm);$('#judgeKeyField').classList.toggle('hidden',!llm||!j.key);$('#judgeUrlField').classList.toggle('hidden',!llm||!('url' in j));
+    $('#judgeModelField').classList.toggle('hidden',!llm);$('#judgeReasoningField').classList.toggle('hidden',!llm||!Core.REASONING[id]);$('#judgeFastField').classList.toggle('hidden',!Core.FAST.includes(id));$('#judgeModelListField').classList.toggle('hidden',!llm);$('#judgeKeyField').classList.toggle('hidden',!llm||!j.key);$('#judgeUrlField').classList.toggle('hidden',!llm||!('url' in j));
     if(llm){
       if(document.activeElement!==$('#judgeModel'))$('#judgeModel').value=p.model;
       if(document.activeElement!==$('#judgeKey'))$('#judgeKey').value=p.apiKey;
@@ -1169,6 +1169,7 @@
     $('#judgeHint').textContent=!llm?'서버의 규칙(정규식·체크섬·주변 문구·결합)으로 판단해요. 기본값이에요.'
       :id==='ollama'?'이 컴퓨터의 Ollama 로 판단해요. 글자가 컴퓨터 밖으로 나가지 않아요. 모델을 먼저 받아 두세요(ollama pull).'
       :id==='custom'?'OpenAI 호환 API 주소를 넣어요. 서버가 이 주소 뒤에 /chat/completions 를 붙여 불러요.'
+      :id==='gemini_decision'?'Gemini Decisions API 로 글자 조각마다 등급을 물어요. 글을 만들지 않아 빠르고(사진당 1초 안팎) 출력 요금이 없어요. 키는 Gemini 와 같은 Google AI Studio 키예요.'
       :'모델 이름은 예시예요. 쓰는 계정에서 되는 이름으로 바꿔도 돼요. 사진 한 장마다 API 요금이 나갈 수 있어요.';
     if(serverJudge&&serverJudge.provider===id)$('#judgeHint').textContent+=' 이 서버의 기본 판단 모델이에요'+(serverJudge.hasKey?'(서버 API 키 사용 가능).':'.');
     $('#judgeWarning').classList.toggle('hidden',!Core.sendsOutside(state.dev,serverJudge));

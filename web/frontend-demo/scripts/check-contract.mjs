@@ -222,7 +222,11 @@ await test('developer settings are sanitized and remembered per provider',()=>{
   assert.equal(d.provider,'rules');assert.equal(C.judgeField(d),undefined);assert.equal(C.judgeLabel(d),'문맥·결합');
   assert.equal(d.providers.openai.model.length,500);assert.equal(d.providers.openai.apiKey,'');
   assert.equal(d.providers.ollama.apiKey,'');assert.equal(d.providers.ollama.baseUrl,'http://127.0.0.1:11434');
-  assert.deepEqual(Object.keys(C.JUDGES),['rules','openai','gemini','anthropic','openrouter','ollama','custom']);
+  assert.deepEqual(Object.keys(C.JUDGES),['rules','openai','gemini','gemini_decision','anthropic','openrouter','ollama','custom']);
+  // Gemini Decision: 키가 필요하고 글자가 밖으로 나가며, 추론 정도·빠른 처리는 받지 않는다(서버 REASONING·FAST 에 없음)
+  const dec=C.devSettings({provider:'gemini_decision',providers:{gemini_decision:{apiKey:'test-key-not-real',reasoning:'high',fast:true}}});
+  assert.deepEqual(JSON.parse(C.judgeField(dec)),{provider:'gemini_decision',model:'gemini-decision-1',api_key:'test-key-not-real',base_url:'',reasoning:'auto',fast:false});
+  assert.equal(C.sendsOutside(dec),true);assert.equal(C.judgeLabel(dec),'Gemini Decision · gemini-decision-1');
   const custom=C.devSettings({provider:'custom',providers:{custom:{model:'local',baseUrl:'http://localhost:1234/v1'}}});
   assert.equal(JSON.parse(C.judgeField(custom)).base_url,'http://localhost:1234/v1');
   assert.equal(C.judgeLabel(custom),'Custom API · local');

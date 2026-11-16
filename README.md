@@ -409,9 +409,10 @@ flowchart LR
 
 ### 판단 모델 (LLM 판단)
 
-왼쪽 메뉴나 머리글 칩의 **판단 모델** 창에서 판단 방법을 고를 수 있습니다: 규칙 기반 판단(기본) · ChatGPT · Gemini · Claude · OpenRouter · Ollama · Custom API(OpenAI 호환).
+왼쪽 메뉴나 머리글 칩의 **판단 모델** 창에서 판단 방법을 고를 수 있습니다: 규칙 기반 판단(기본) · ChatGPT · Gemini · Gemini Decision · Claude · OpenRouter · Ollama · Custom API(OpenAI 호환).
 LLM 을 고르면 규칙 판단은 꺼지고 OCR 조각과 위치를 LLM 에 보내 글자 판단을 모두 맡깁니다. 설정과 API 키는 이 브라우저의 localStorage 에만 저장되고, 서버는 요청마다 받아 쓰고 남기지 않습니다.
-**클라우드 공급자를 고르면 사진 속 글자가 그 회사로 전송됩니다.** 가상 사진에만 쓰고, 실사는 규칙 기반이나 로컬 Ollama 로 검사하세요([D-15](docs/DECISIONS.md)). LLM 판단의 정확도는 아직 측정하지 않았습니다.
+**클라우드 공급자를 고르면 사진 속 글자가 그 회사로 전송됩니다.** 가상 사진에만 쓰고, 실사는 규칙 기반이나 로컬 Ollama 로 검사하세요([D-15](docs/DECISIONS.md)).
+**Gemini Decision** 은 글을 만드는 LLM 이 아니라 질문마다 확률로 답하는 Gemini Decisions API(`gemini-decision-1`)입니다. 조각마다 등급을 묻고 코드에서 조합하며, 사진당 1초 안팎이고 출력 요금이 없습니다. 가상 장면·소품 사진으로 잰 수치와 한계는 [D-23](docs/DECISIONS.md)에 있습니다.
 
 ### 개인정보 보호 원칙
 

@@ -3,9 +3,11 @@
 OCR 이 읽은 조각과 좌표를 LLM 에 보내고, '몇 번 조각이 어떤 개인정보인지'만 받는다.
 LLM 을 고르면 정규식·체크섬·문맥 규칙은 돌리지 않는다. 위치정보(EXIF)·QR·YOLO 영역
 경고는 글자 판단이 아니라서 그대로 둔다.
+'Gemini Decision'(gemini_decision)은 글 대신 질문별 확률로 답하는 API 라서 decision_judge 가 맡는다(D-23).
+설정·키·모델 목록·개발자 콘솔 기록은 이 모듈의 것을 같이 쓴다.
 
 지키는 것
-  - **OCR 원문이 외부로 나간다.** 클라우드 공급자(ChatGPT·Gemini·Claude·OpenRouter)를
+  - **OCR 원문이 외부로 나간다.** 클라우드 공급자(ChatGPT·Gemini·Gemini Decision·Claude·OpenRouter)를
     고르면 사진 속 글자가 그 회사 서버로 간다. 판단 모델 창에서만 쓰고 실사 개인정보
     사진에는 쓰지 않는다(DECISIONS D-15).
   - 키는 요청마다 화면에서 받아 쓰고 저장하지 않는다. 예외로 서버 운영자가 .env(PL_JUDGE_API_KEY)에
@@ -36,13 +38,14 @@ from .types import Box, Certainty, Finding, Severity, TextSpan
 PROVIDERS = {
     "openai": "ChatGPT",
     "gemini": "Gemini",
+    "gemini_decision": "Gemini Decision",
     "anthropic": "Claude",
     "openrouter": "OpenRouter",
     "ollama": "Ollama",
     "custom": "Custom API",
 }
 # 사진 속 글자가 이 컴퓨터 밖으로 나가는 공급자
-CLOUD = {"openai", "gemini", "anthropic", "openrouter"}
+CLOUD = {"openai", "gemini", "gemini_decision", "anthropic", "openrouter"}
 NEEDS_KEY = CLOUD
 NEEDS_URL = {"custom"}
 DEFAULT_URL = {"ollama": "http://127.0.0.1:11434"}
@@ -640,6 +643,9 @@ def evaluate(spans: list[TextSpan], cfg: JudgeConfig, *, width: int, height: int
     """
     if not spans:
         return []
+    if cfg.provider == "gemini_decision":  # 글이 아니라 질문별 확률로 답하는 Decisions API(D-23)
+        from . import decision_judge
+        return decision_judge.evaluate(spans, cfg, width=width, height=height, transport=transport, trace=trace)
     url, headers, body = _request(cfg, SYSTEM_PROMPT, _user_message(spans, width, height))
     post = transport or _http_post
     data = _traced(trace, "judge", cfg, "POST", url, headers, body,
@@ -674,7 +680,7 @@ def _model_request(cfg: JudgeConfig, page: str | None) -> tuple[str, dict]:
         q = {"limit": "1000", **({"after_id": page} if page else {})}
         return ("https://api.anthropic.com/v1/models?" + urllib.parse.urlencode(q),
                 {"x-api-key": cfg.api_key, "anthropic-version": "2023-06-01"})
-    if p == "gemini":
+    if p in ("gemini", "gemini_decision"):
         q = {"pageSize": "1000", **({"pageToken": page} if page else {})}
         return ("https://generativelanguage.googleapis.com/v1beta/models?" + urllib.parse.urlencode(q),
                 {"x-goog-api-key": cfg.api_key})
@@ -690,6 +696,11 @@ def _model_page(provider: str, data: dict) -> tuple[list[str], str | None]:
             # 판단에 쓰는 generateContent 를 지원하는 모델만. 이름 앞의 'models/' 는 뗀다
             names = [m["name"].removeprefix("models/") for m in data.get("models", [])
                      if "generateContent" in m.get("supportedGenerationMethods", ["generateContent"])]
+            return names, data.get("nextPageToken") or None
+        if provider == "gemini_decision":
+            # Decisions API 를 지원하는 모델만(createDecision)
+            names = [m["name"].removeprefix("models/") for m in data.get("models", [])
+                     if "createDecision" in m.get("supportedGenerationMethods", [])]
             return names, data.get("nextPageToken") or None
         names = [m["id"] for m in data["data"]]
         if provider == "anthropic" and data.get("has_more") and data.get("last_id"):

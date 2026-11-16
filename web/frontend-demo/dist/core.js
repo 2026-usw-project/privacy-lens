@@ -14,12 +14,14 @@
     document:['UNKNOWN','문서 영역'],face_photo:['FACE','증명사진'],face:['FACE','얼굴'],other:['UNKNOWN','개인정보 후보']
   };
   const SEVERITY = { cover:'가림 권장',review:'검토 권장',info:'참고' };
-  // 판단 방법(판단 모델 창). rules 는 서버의 문맥·결합 규칙, 나머지는 LLM 이 모든 글자 판단을 맡는다.
+  // 판단 방법(판단 모델 창). rules 는 서버의 문맥·결합 규칙, 나머지는 LLM(또는 Decision 모델)이 모든 글자 판단을 맡는다.
   // cloud: 사진에서 읽은 글자가 그 회사 서버로 나간다. 모델 기본값은 고쳐 쓸 수 있는 예시다.
   const JUDGES = {
     rules:{label:'규칙 기반 판단'},
     openai:{label:'ChatGPT',model:'gpt-4.1-mini',key:'required',cloud:true},
     gemini:{label:'Gemini',model:'gemini-flash-latest',key:'required',cloud:true},
+    // 글 대신 질문마다 확률로 답하는 Gemini Decisions API(D-23). 추론 정도·빠른 처리는 없다
+    gemini_decision:{label:'Gemini Decision',model:'gemini-decision-1',key:'required',cloud:true},
     anthropic:{label:'Claude',model:'claude-haiku-5-5',key:'required',cloud:true},
     openrouter:{label:'OpenRouter',model:'openai/gpt-4.1-mini',key:'required',cloud:true},
     ollama:{label:'Ollama',model:'qwen2.5:7b',url:'http://127.0.0.1:11434'},
