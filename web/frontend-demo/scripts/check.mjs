@@ -20,7 +20,7 @@ check('No remote assets required', Array.from(html.matchAll(/(?:src|href)="([^"]
 check('Network access only through api.js', !/\bfetch\s*\(|XMLHttpRequest|sendBeacon/.test(app));
 check('Browser storage only for display preferences and developer mode', !/sessionStorage|indexedDB/.test(app) && Array.from(app.matchAll(/localStorage\.(?:get|set)Item\('([^']+)'/g),m=>m[1]).every(k=>k==='pl.maskStyle'||k==='pl.devMode'||k==='pl.theme'));
 check('Comparison conditions removed from screen', !/conditionSelect|CONDITIONS|정규식만|심각도표/.test(html+app));
-check('Developer mode offers every judge', ['rules','openai','gemini','anthropic','openrouter','ollama','custom'].every(v=>html.includes('<option value="'+v+'"')));
+check('Developer mode offers every judge', ['rules','openai','gemini','gemini_decision','anthropic','openrouter','ollama','custom'].every(v=>html.includes('<option value="'+v+'"')));
 check('API key input is masked', /id="judgeKey" type="password"/.test(html));
 check('No client-side masking of the saved file', !/filter\s*=\s*'blur|imageSmoothingEnabled\s*=\s*false/.test(app));
 check('Old demo modes removed', !/connectionDialog|scenarioSelect|demoPanel|data-style="pixel"/.test(html+app));

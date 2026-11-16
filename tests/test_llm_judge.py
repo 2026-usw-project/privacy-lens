@@ -111,6 +111,7 @@ def test_split_value_becomes_one_item_with_joined_box():
     assert len(out) == 1
     assert out[0].box.as_dict() == {"x": 20, "y": 100, "w": 350, "h": 30}
     assert out[0].evidence_text == "1234 5678 9012 3456" and out[0].detail["parts"] == 4
+    assert out[0].detail["span_indices"] == [1, 2, 3, 4]
 
 
 def test_label_must_be_near_and_not_a_value():

@@ -33,8 +33,8 @@ multipart: `image`(원본 파일), `ticket`(번호표, 선택), `judge`(판단 �
   처음 요청이 끝난 뒤 30초 안에 온 재시도도 같습니다. 사진이나 설정이 다르면 400 `이미 대기열에 있는 번호표입니다.` 입니다. `/redact` 도 같습니다(가릴 영역·방식까지 같아야 함).
 - 판정은 '문맥·결합' 하나입니다. 예전 `mode`(`baseline` | `naive`)는 화면·서버에서 뺐고, 비교 실험(`eval`)에서만 씁니다.
 - `judge` 가 없거나 `{"provider":"rules"}` 면 규칙 기반 판단입니다. LLM 판단이면 JSON 문자열
-  `{"provider","model","api_key","base_url"}` 을 보냅니다. provider: `openai`(ChatGPT) · `gemini` · `anthropic`(Claude) ·
-  `openrouter` · `ollama` · `custom`(OpenAI 호환, `base_url` 뒤에 `/chat/completions`). 클라우드 4종은 `api_key` 필수,
+  `{"provider","model","api_key","base_url"}` 을 보냅니다. provider: `openai`(ChatGPT) · `gemini` · `gemini_decision`(Gemini Decisions API,
+  모델 `gemini-decision-1`, D-23) · `anthropic`(Claude) · `openrouter` · `ollama` · `custom`(OpenAI 호환, `base_url` 뒤에 `/chat/completions`). 클라우드 5종은 `api_key` 필수,
   `ollama` 는 `base_url` 기본값 `http://127.0.0.1:11434`.
 - LLM 판단이면 규칙(정규식·체크섬·문맥)은 돌지 않고 글자 판단을 모두 LLM 이 합니다. 위치정보·QR·문서 검출은 그대로입니다.
   OCR 원문이 그 공급자에게 전송됩니다(DECISIONS D-15).
@@ -108,7 +108,7 @@ multipart: `judge`(JSON 문자열 `{"provider","api_key","base_url"}`, `model` �
 ```
 
 - 공급자 목록 API: OpenAI `GET /v1/models`, OpenRouter `GET /api/v1/models`, Anthropic `GET /v1/models`(쪽 넘김),
-  Gemini `GET /v1beta/models`(generateContent 지원 모델만, `models/` 접두어 뗌), Ollama `GET /api/tags`, Custom `GET {base_url}/models`.
+  Gemini `GET /v1beta/models`(generateContent 지원 모델만, `models/` 접두어 뗌), Gemini Decision 은 같은 주소에서 createDecision 지원 모델만, Ollama `GET /api/tags`, Custom `GET {base_url}/models`.
 - 정렬·중복 제거, 최대 2000개. 키는 헤더로만 보냅니다. `rules` 면 빈 목록입니다.
 - 설정이 잘못되면 400, 공급자 호출이 실패하면 502(`/analyze` 와 같은 문구).
 
