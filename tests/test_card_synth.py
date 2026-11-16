@@ -65,3 +65,26 @@ def test_import_real_maps_classes_and_polygons(tmp_path: Path):
     assert rows[0].startswith(f"{cs.NUMBER_CLASS} 0.5") and rows[1] == f"{cs.CARD_CLASS} 0.500000 0.500000 0.800000 0.800000"
     assert cs.import_real(ds, [zp])[zp.name] == "이미 가져옴"
     assert cs.map_card_class("Expiry date") is None and cs.map_card_class("valid-credit-card") == cs.CARD_CLASS
+
+
+def test_import_real_fields_only_adds_enclosing_card(tmp_path: Path):
+    """카드 통째 라벨 없이 칸만 단 데이터(번호·이름·유효기간·로고)는 카드 근접 사진이라 사진 전체를 card 로 덧붙인다."""
+    import io
+    import zipfile
+    zp = tmp_path / "credit card object detection.v1i.yolov8.zip"
+    buf = io.BytesIO()
+    Image.new("RGB", (640, 400), "gray").save(buf, "JPEG")
+    with zipfile.ZipFile(zp, "w") as z:
+        z.writestr("data.yaml", "nc: 5\nnames: ['Card issuer', 'Card number', 'Cardholder', 'Expiry date', 'Payment network']\n")
+        z.writestr("train/images/a.jpg", buf.getvalue())
+        z.writestr("train/labels/a.txt", "0 0.2 0.15 0.2 0.1\n1 0.5 0.55 0.6 0.1\n2 0.3 0.8 0.3 0.05\n")
+        z.writestr("train/images/b.jpg", buf.getvalue())
+        z.writestr("train/labels/b.txt", "1 0.5 0.55 0.6 0.1\n")                # 칸 하나뿐이면 card 를 지어내지 않는다
+    ds = tmp_path / "ds"
+    got = cs.import_real(ds, [zp])[zp.name]
+    assert (got["train"], got["card"], got["card_number"]) == (2, 1, 2)
+    rows = next((ds / "labels/train").glob("realcard_*_a.txt")).read_text().split()
+    assert rows[0] == str(cs.CARD_CLASS)
+    assert rows[1:5] == ["0.500000", "0.500000", "1.000000", "1.000000"]
+    only = next((ds / "labels/train").glob("realcard_*_b.txt")).read_text().split("\n")
+    assert only[0].startswith(f"{cs.NUMBER_CLASS} ")
