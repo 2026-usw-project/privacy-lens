@@ -294,6 +294,20 @@ def id_card_hanja(f: Fake, split: bool):
     return lines, [Gold(n, COVER, "이름"), Gold(r, COVER, "주민번호"), Gold(a, COVER, "도로명주소")]
 
 
+def prescription(f: Fake, split: bool):
+    """처방전(라벨·값이 다른 조각)과 병원 진료 화면(한 조각). 이름 라벨이 '환자명'이다.
+    생년월일·진료일자·약 이름은 기준표에 아직 항목이 없어(미결) 정답에 넣지 않는다."""
+    n = f.name()
+    birth = f"{f.r.randint(1960, 2010)}. {f.r.randint(1, 12):02d}. {f.r.randint(1, 28):02d}."
+    if split:
+        lines = [["처방전"], ["가상내과의원"], ["환자명", n], ["생년월일", birth],
+                 ["처방일", "2026. 10. 30."], ["약품명", "아세트아미노펜500mg"]]
+    else:
+        lines = [["환자조회", "진료상세 정보"], [f"환자명:{n}"], [f"생년월일: {birth.replace(' ', '')}"],
+                 ["진료기록", "진료일자:2026.10.30(금)15:20"], ["1.아세트아미노펜 500mg 1T 3회/일"]]
+    return lines, [Gold(n, COVER, "이름")]
+
+
 TEMPLATES = {
     "송장(라벨 있음)": waybill_labeled,
     "송장(라벨 없음)": waybill_unlabeled,
@@ -317,6 +331,7 @@ TEMPLATES = {
     "카드(15자리)": card_15,
     "카드(닮은 글자)": card_lookalike,
     "카드 아닌 숫자": not_card_numbers,
+    "처방전·진료 화면": prescription,   # 맨 뒤에 둔다(앞 틀들의 무작위 값이 바뀌지 않게)
 }
 
 

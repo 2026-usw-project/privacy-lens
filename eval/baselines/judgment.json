@@ -17,8 +17,8 @@
    56
   ],
   "cover|이름": [
-   154,
-   154
+   168,
+   168
   ],
   "cover|이메일": [
    14,
@@ -99,8 +99,8 @@
  },
  "false_cover": 0,
  "summary": {
-  "items": 798,
-  "cover_total": 518,
+  "items": 812,
+  "cover_total": 532,
   "cover_hit": 100.0,
   "cover_weak": 0.0,
   "cover_miss": 0.0,
