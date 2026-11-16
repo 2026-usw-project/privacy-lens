@@ -61,9 +61,9 @@ left(같은 줄 바로 앞 조각), above(바로 윗줄 조각), doc(같은 종�
   가게·병원·기관 라벨(대표·문의·예약·배달·Tel·고객센터) 옆이면 public. 15xx·16xx·080 은 public.
 - 주소: 개인 라벨(받는분·주소·배송지) 옆이나 이름 옆이면 cover, 라벨 없이 주소만 있으면 review. 가게·병원·본사·기관 주소는 public.
 - 상세주소(동·호수, 아파트·건물 이름이 든 괄호): 항상 cover.
-- 이름: 이름 라벨(받는분·보내는분·성명·이름·환자명·예금주) 옆, 명찰·학생증·신분증 위, 같은 묶음에 연락처·주소가 있으면 cover. '…님'·'…씨' 호칭만 있으면 review.
+- 이름: 이름 라벨(받는분·보내는분·성명·이름·환자명·수진자·예금주) 옆, 명찰·학생증·신분증 위, 같은 묶음에 연락처·주소가 있으면 cover. '…님'·'…씨' 호칭만 있으면 review.
   상호·지명·학교·병원·회사 이름, 일반 낱말, 의사·발급 기관장 직함은 이름이 아니다.
-- 생년월일: 개인 문서(처방전·신분증·진료 화면) 위면 review.
+- 생년월일: '생년월일·출생일·생일' 라벨 옆 날짜가 이름(cover)과 같은 묶음이면 cover, 이름이 없으면 review. 진료일·처방일·유효기간·가입일 같은 다른 라벨의 날짜는 none.
 - 비밀번호·PIN: '비밀번호·비번·PW·도어락' 라벨 바로 뒤나 아래의 값은 cover(와이파이 비번 포함). 값 없는 문구('비밀번호 변경')는 none.
 - 학번·사번: 라벨 + 학생증·사원증 단서면 cover. 학생증 위 라벨 없는 8~10자리 숫자는 review.
 - 운송장번호: 송장 위 번호는 review. 사업자등록번호는 public.
@@ -78,8 +78,8 @@ none 으로 보는 것
 """
 
 SEV_CRITERIA = {
-    "cover": "가림: 기준표의 가림 항목. 혼자서 또는 옆 정보와 합쳐 특정 개인을 알아볼 수 있는 값(라벨 옆 이름·연락처·주소, 동·호수, 주민번호, 카드번호, 비밀번호 등).",
-    "review": "확인 필요: 개인정보일 수 있으나 문맥이 부족한 값(호칭만 붙은 이름, 라벨 없는 주소·전화, 운송장번호, 생년월일, 일부 가려진 주민번호).",
+    "cover": "가림: 기준표의 가림 항목. 혼자서 또는 옆 정보와 합쳐 특정 개인을 알아볼 수 있는 값(라벨 옆 이름·연락처·주소, 동·호수, 주민번호, 카드번호, 비밀번호, 이름 옆 생년월일 등).",
+    "review": "확인 필요: 개인정보일 수 있으나 문맥이 부족한 값(호칭만 붙은 이름, 라벨 없는 주소·전화, 운송장번호, 이름 없는 생년월일, 일부 가려진 주민번호).",
     "public": "공개: 가게·병원·기업·기관이 일부러 알리는 번호·주소·메일·사업자번호.",
     "none": "아님: 개인 값이 없는 조각. 라벨·제목·양식 문구, 발급 기관·발급일, 날짜, 가격, 수량, 상품명, 성별·나이만 있는 조각, 일반 낱말.",
 }
@@ -91,7 +91,8 @@ KIND_CRITERIA = {
     "card": "Payment card number", "account": "Bank account number", "password": "Password or PIN after a password label",
     "student_id": "Student or employee ID number", "address_road": "Road or lot address",
     "address_unit": "Building/unit (dong/ho) detail", "plate": "Vehicle plate number", "tracking": "Parcel tracking number",
-    "brn": "Business registration number", "long_digits": "Unidentified long number", "other": "Other personal info",
+    "brn": "Business registration number", "long_digits": "Unidentified long number",
+    "birth_date": "Date of birth next to a birth-date label", "other": "Other personal info",
     "not_personal": "Not personal information at all",
 }
 

@@ -169,3 +169,30 @@ def test_model_list_only_decision_models():
     names = llm_judge.list_models(JudgeConfig("gemini_decision", "", "k"), transport=get)
     assert names == ["gemini-decision-1"]
     assert "generativelanguage.googleapis.com/v1beta/models" in seen[0][0] and seen[0][1] == {"x-goog-api-key": "k"}
+
+
+# ------------------------------------------------------------------ 기준표 2026-11-16(생년월일·건강 정보)과 맞춤
+
+RX = [
+    TextSpan("처방전", Box(10, 10, 80, 20), 0.97),
+    TextSpan("환자명", Box(10, 40, 60, 20), 0.97),
+    TextSpan("김가상", Box(80, 40, 60, 20), 0.96),
+    TextSpan("생년월일", Box(10, 70, 60, 20), 0.97),
+    TextSpan("1990. 01. 02.", Box(80, 70, 120, 20), 0.96),
+    TextSpan("약품명 아세트아미노펜500mg", Box(10, 100, 220, 20), 0.95),
+]
+
+
+def test_birth_date_kind_and_health_document_like_rules():
+    got = llm_judge.evaluate(RX, CFG, width=300, height=200, transport=fake({
+        2: answer("cover", 0.97, "name"), 4: answer("cover", 0.9, "birth_date")}))
+    kinds = {f.kind: f for f in got}
+    assert kinds["birth_date"].severity is Severity.COVER and kinds["birth_date"].message == wording.found("birth_date")
+    # 이름이 있는 진료·처방 문서는 규칙과 같은 코드로 종이째 가림
+    doc = kinds["health_document"]
+    assert doc.severity is Severity.COVER and doc.detail["span_indices"] == list(range(len(RX)))
+
+
+def test_no_person_no_health_document():
+    got = llm_judge.evaluate(RX, CFG, width=300, height=200, transport=fake({}))
+    assert got == []

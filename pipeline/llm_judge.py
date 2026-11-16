@@ -29,7 +29,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Callable
 
-from . import wording
+from . import context, wording
 from .context import CONTEXT_RADIUS_EM, _certainty_from_ocr, _region_only
 from .grouping import _cluster
 from .layout import layout
@@ -54,7 +54,7 @@ DEFAULT_URL = {"ollama": "http://127.0.0.1:11434"}
 KINDS = [
     "name", "mobile", "landline", "service_line", "tollfree", "email", "rrn", "rrn_unverified",
     "card", "account", "password", "student_id", "address_road", "address_unit", "plate",
-    "tracking", "brn", "long_digits", "other",
+    "tracking", "brn", "long_digits", "birth_date", "other",
 ]
 SEVERITIES = {"cover": Severity.COVER, "review": Severity.REVIEW, "info": Severity.INFO}
 # basis=document 일 때 받는 문서 종류(wording.DOC_NOUN 의 키)
@@ -111,11 +111,12 @@ OCR 이 사진에서 읽은 글자 조각 목록을 받는다. 각 조각:
 종류(kind): name, mobile, landline, service_line(15xx·16xx 대표번호), tollfree(080), email,
 rrn(주민등록번호), rrn_unverified(체크섬 불확실한 주민번호 형식), card, account(계좌), password(비밀번호·PIN),
 student_id(학번·사번), address_road(도로명·지번 주소), address_unit(동·호수), plate(차량번호),
-tracking(운송장번호), brn(사업자등록번호), long_digits(정체 모를 긴 숫자), other(그 밖의 개인정보)
+tracking(운송장번호), brn(사업자등록번호), long_digits(정체 모를 긴 숫자), birth_date(생년월일), other(그 밖의 개인정보)
 
 기준 예
 - '받는분 홍길동', '연락처 010-…', '배송지 …' 옆 값은 cover. 동·호수는 cover.
-- 이름은 라벨, 명찰·학생증 단서, 같은 묶음의 연락처·주소가 있으면 cover. 호칭(…님)만 있으면 review. 상호·지명·일반 낱말은 이름이 아니다.
+- 이름은 라벨(받는분·성명·환자명·수진자 등), 명찰·학생증 단서, 같은 묶음의 연락처·주소가 있으면 cover. 호칭(…님)만 있으면 review. 상호·지명·일반 낱말은 이름이 아니다.
+- 생년월일은 '생년월일·출생일·생일' 라벨 옆 날짜만. 이름(cover) 바로 옆이면 cover, 이름이 없으면 review. 진료일·처방일·유효기간·가입일 같은 다른 날짜는 넣지 않는다.
 - 비밀번호는 '비밀번호·비번·PW' 라벨 뒤 값만. 라벨이 없는 문자열은 고르지 않는다.
 - 라벨 없는 긴 숫자는 계좌인지 주문번호인지 알 수 없으므로 info(long_digits).
 
@@ -645,7 +646,8 @@ def evaluate(spans: list[TextSpan], cfg: JudgeConfig, *, width: int, height: int
         return []
     if cfg.provider == "gemini_decision":  # 글이 아니라 질문별 확률로 답하는 Decisions API(D-23)
         from . import decision_judge
-        return decision_judge.evaluate(spans, cfg, width=width, height=height, transport=transport, trace=trace)
+        findings = decision_judge.evaluate(spans, cfg, width=width, height=height, transport=transport, trace=trace)
+        return findings + context.find_health_documents(spans, findings)
     url, headers, body = _request(cfg, SYSTEM_PROMPT, _user_message(spans, width, height))
     post = transport or _http_post
     data = _traced(trace, "judge", cfg, "POST", url, headers, body,
@@ -653,9 +655,12 @@ def evaluate(spans: list[TextSpan], cfg: JudgeConfig, *, width: int, height: int
     try:
         if not isinstance(data, dict):
             raise LlmJudgeError(wording.LLM_BAD_RESPONSE)
-        return to_findings(_parse_json(_reply_text(cfg.provider, data)), spans)
+        findings = to_findings(_parse_json(_reply_text(cfg.provider, data)), spans)
     except LlmJudgeError as exc:
         raise _fail(trace, str(exc)) from None
+    # 진료·처방 문서 종이째 가림은 문서 단위 판단이라 모델에 묻지 않고 규칙과 같은 코드로 붙인다(기준표 2026-11-16).
+    # 모델이 낸 이름·생년월일(가림)을 사람 정보로 쓴다
+    return findings + context.find_health_documents(spans, findings)
 
 
 # ------------------------------------------------------------------ 모델 목록
