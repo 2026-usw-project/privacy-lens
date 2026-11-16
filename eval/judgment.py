@@ -321,10 +321,24 @@ def pharmacy_notice(f: Fake, split: bool):
 
 def birth_alone(f: Fake, split: bool):
     """이름 없이 생년월일만 보이는 화면. 다른 라벨의 날짜(가입일)는 생년월일로 보지 않는다.
-    ('유효기간'을 쓰면 카드 규칙이 날짜 두 줄을 세로 카드번호로 본다 — 카드 규칙의 별도 문제)"""
+    ('유효기간' 과 같이 있는 경우는 '날짜 두 줄(유효기간)' 장면이 본다)"""
     birth = _birth(f)
     lines = [["회원정보 수정"], _lv("생년월일", birth, split), _lv("가입일", "2025.01.31", split)]
     return lines, [Gold(birth, REVIEW, "생년월일"), Gold("2025.01.31", NONE, "날짜")]
+
+
+def card_dates(f: Fake, split: bool):
+    """날짜가 두 줄인 회원증·면허증. 8자리 날짜 둘이 세로로 쌓인 16자리처럼 보이고 '유효기간'은 카드 앞면 단서다."""
+    sep = f.pick([". ", ".", "-"])
+
+    def day(y0: int, y1: int) -> str:
+        d = sep.join([str(f.r.randint(y0, y1)), f"{f.r.randint(1, 12):02d}", f"{f.r.randint(1, 28):02d}"])
+        return d + "." if sep == ". " else d
+
+    b, e = day(1950, 2005), day(2026, 2032)
+    lines = [[f.pick(["회원정보 수정", "NURI 회원증", "운전면허증"])], _lv("생년월일", b, split), _lv("유효기간", e, split)]
+    # 생년월일 라벨 옆 날짜는 기준표(2026-11-16)대로 이름이 없으면 확인 필요. 카드번호로 가리면 안 된다
+    return lines, [Gold(b, REVIEW, "생년월일"), Gold(e, NONE, "날짜")]
 
 
 TEMPLATES = {
@@ -353,6 +367,7 @@ TEMPLATES = {
     "처방전·진료 화면": prescription,   # 새 틀은 맨 뒤에 둔다(앞 틀들의 무작위 값이 바뀌지 않게)
     "약국 안내(사람 없음)": pharmacy_notice,
     "생년월일(이름 없음)": birth_alone,
+    "날짜 두 줄(유효기간)": card_dates,
 }
 
 
