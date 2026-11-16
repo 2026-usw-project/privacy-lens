@@ -294,6 +294,19 @@ def id_card_hanja(f: Fake, split: bool):
     return lines, [Gold(n, COVER, "이름"), Gold(r, COVER, "주민번호"), Gold(a, COVER, "도로명주소")]
 
 
+def card_dates(f: Fake, split: bool):
+    """날짜가 두 줄인 회원증·면허증. 8자리 날짜 둘이 세로로 쌓인 16자리처럼 보이고 '유효기간'은 카드 앞면 단서다."""
+    sep = f.pick([". ", ".", "-"])
+
+    def day(y0: int, y1: int) -> str:
+        d = sep.join([str(f.r.randint(y0, y1)), f"{f.r.randint(1, 12):02d}", f"{f.r.randint(1, 28):02d}"])
+        return d + "." if sep == ". " else d
+
+    b, e = day(1950, 2005), day(2026, 2032)
+    lines = [[f.pick(["회원정보 수정", "NURI 회원증", "운전면허증"])], _lv("생년월일", b, split), _lv("유효기간", e, split)]
+    return lines, [Gold(b, NONE, "날짜"), Gold(e, NONE, "날짜")]
+
+
 TEMPLATES = {
     "송장(라벨 있음)": waybill_labeled,
     "송장(라벨 없음)": waybill_unlabeled,
@@ -317,6 +330,7 @@ TEMPLATES = {
     "카드(15자리)": card_15,
     "카드(닮은 글자)": card_lookalike,
     "카드 아닌 숫자": not_card_numbers,
+    "날짜 두 줄(유효기간)": card_dates,
 }
 
 

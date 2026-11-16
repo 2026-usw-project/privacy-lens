@@ -44,6 +44,10 @@
    14,
    14
   ],
+  "none|날짜": [
+   28,
+   28
+  ],
   "none|대표번호": [
    14,
    14
@@ -99,14 +103,14 @@
  },
  "false_cover": 0,
  "summary": {
-  "items": 798,
+  "items": 826,
   "cover_total": 518,
   "cover_hit": 100.0,
   "cover_weak": 0.0,
   "cover_miss": 0.0,
   "review_total": 56,
   "review_ok": 100.0,
-  "none_total": 224,
+  "none_total": 252,
   "false_cover": 0.0,
   "false_review": 0.0
  }
