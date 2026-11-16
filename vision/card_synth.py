@@ -34,7 +34,14 @@ _FONT_PATHS: tuple[str, str] | None = None
 def _font(px: int, bold: bool = True) -> ImageFont.FreeTypeFont:
     global _FONT_PATHS
     if _FONT_PATHS is None:
-        _FONT_PATHS = fonts.find_korean_font()
+        try:
+            _FONT_PATHS = fonts.find_korean_font()
+        except RuntimeError:
+            # 한글 폰트가 없는 곳(Colab 기본): 영문 폰트로 대신한다. 숫자·영문은 그대로, 한글 글자만 네모로 나온다
+            import matplotlib
+            d = Path(matplotlib.get_data_path()) / "fonts" / "ttf"
+            _FONT_PATHS = (str(d / "DejaVuSans.ttf"), str(d / "DejaVuSans-Bold.ttf"))
+            print("한글 폰트 없음: 카드 글자를 영문 폰트로 그립니다(apt install fonts-nanum 이면 한글도 나옴)", flush=True)
     return ImageFont.truetype(_FONT_PATHS[1 if bold else 0], max(8, int(px)))
 
 
