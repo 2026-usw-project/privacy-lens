@@ -366,3 +366,47 @@ def import_real(ds: Path, zips: list[Path], max_side: int = 1280) -> dict:
         marker.write_text("ok")
         stats[zp.name] = {"클래스": {c: mapping[i] for i, c in enumerate(classes)}, **count}
     return stats
+
+
+def pseudo_label_cards(ds: Path, predict, batch: int = 32) -> dict:
+    """card_number 만 있고 card 라벨이 없는 실물 사진에, 이전 모델이 찾은 card 상자를 덧붙인다.
+
+    card-number-detecter 처럼 번호 줄만 라벨한 데이터는 카드 크기·위치가 제각각이라 사진 전체를 card 로 둘 수 없고,
+    그대로 두면 카드가 배경으로 학습된다. predict(경로 목록) → 사진마다 [(cx, cy, w, h), ...](0~1) 를 돌려주는 함수.
+    한 번만 돈다(.pseudo_cards.done)."""
+    marker = ds / ".pseudo_cards.done"
+    if marker.exists():
+        return {"상태": "이미 함"}
+    todo: list[tuple[Path, Path, list[str]]] = []
+    for split in ("train", "val"):
+        for lab in sorted((ds / "labels" / split).glob(f"{REAL_PREFIX}*.txt")):
+            rows = [r for r in lab.read_text().splitlines() if r.strip()]
+            cls = {r.split()[0] for r in rows}
+            if str(CARD_CLASS) in cls or str(NUMBER_CLASS) not in cls:
+                continue
+            img = ds / "images" / split / (lab.stem + ".jpg")
+            if img.exists():
+                todo.append((img, lab, rows))
+    added = found = 0
+    for i in range(0, len(todo), batch):
+        part = todo[i:i + batch]
+        for (img, lab, rows), boxes in zip(part, predict([str(t[0]) for t in part])):
+            if not boxes:
+                continue
+            found += 1
+            new = [f"{CARD_CLASS} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}" for cx, cy, w, h in boxes]
+            lab.write_text("\n".join(new + rows) + "\n")
+            added += len(new)
+    marker.write_text("ok")
+    return {"대상 사진": len(todo), "card 찾은 사진": found, "덧붙인 card": added}
+
+
+def yolo_card_predictor(weights: str, conf: float = 0.35, imgsz: int = 640):
+    """pseudo_label_cards 에 넘길 예측 함수(이전 일상 모델의 card 클래스만)."""
+    from ultralytics import YOLO
+    m = YOLO(weights)
+
+    def predict(paths: list[str]) -> list[list[tuple[float, float, float, float]]]:
+        res = m.predict(paths, imgsz=imgsz, conf=conf, classes=[CARD_CLASS], verbose=False)
+        return [[tuple(b) for b in r.boxes.xywhn.tolist()] for r in res]
+    return predict
