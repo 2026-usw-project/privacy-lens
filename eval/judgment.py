@@ -294,6 +294,39 @@ def id_card_hanja(f: Fake, split: bool):
     return lines, [Gold(n, COVER, "이름"), Gold(r, COVER, "주민번호"), Gold(a, COVER, "도로명주소")]
 
 
+def _birth(f: Fake) -> str:
+    return f"{f.r.randint(1960, 2010)}. {f.r.randint(1, 12):02d}. {f.r.randint(1, 28):02d}."
+
+
+def prescription(f: Fake, split: bool):
+    """처방전(라벨·값이 다른 조각)과 병원 진료 화면(한 조각). 이름 라벨이 '환자명'이다.
+    이름이 있는 건강 문서라 종이째 가림 → 약 이름도 가림으로 센다(기준표 2026-11-16)."""
+    n = f.name()
+    birth = _birth(f) if split else _birth(f).replace(" ", "")   # 진료 화면은 띄어쓰기 없이 보인다
+    if split:
+        lines = [["처방전"], ["가상내과의원"], ["환자명", n], ["생년월일", birth],
+                 ["처방일", "2026. 10. 30."], ["약품명", "아세트아미노펜500mg"]]
+    else:
+        lines = [["환자조회", "진료상세 정보"], [f"환자명:{n}"], [f"생년월일: {birth}"],
+                 ["진료기록", "진료일자:2026.10.30(금)15:20"], ["1.아세트아미노펜 500mg 1T 3회/일"]]
+    return lines, [Gold(n, COVER, "이름"), Gold(birth, COVER, "생년월일"), Gold("아세트아미노펜", COVER, "건강 정보")]
+
+
+def pharmacy_notice(f: Fake, split: bool):
+    """사람 정보 없는 약국 안내. 진료·처방 단어와 약 이름이 있어도 가리지 않는다."""
+    lines = [["가상온누리약국"], ["처방전 접수", "복약 상담"] if split else ["처방전 접수 · 복약 상담"],
+             ["아세트아미노펜500mg 3,000원"], ["영업시간 09:00-21:00"]]
+    return lines, [Gold("아세트아미노펜", NONE, "건강 정보")]
+
+
+def birth_alone(f: Fake, split: bool):
+    """이름 없이 생년월일만 보이는 화면. 다른 라벨의 날짜(가입일)는 생년월일로 보지 않는다.
+    ('유효기간'을 쓰면 카드 규칙이 날짜 두 줄을 세로 카드번호로 본다 — 카드 규칙의 별도 문제)"""
+    birth = _birth(f)
+    lines = [["회원정보 수정"], _lv("생년월일", birth, split), _lv("가입일", "2025.01.31", split)]
+    return lines, [Gold(birth, REVIEW, "생년월일"), Gold("2025.01.31", NONE, "날짜")]
+
+
 TEMPLATES = {
     "송장(라벨 있음)": waybill_labeled,
     "송장(라벨 없음)": waybill_unlabeled,
@@ -317,6 +350,9 @@ TEMPLATES = {
     "카드(15자리)": card_15,
     "카드(닮은 글자)": card_lookalike,
     "카드 아닌 숫자": not_card_numbers,
+    "처방전·진료 화면": prescription,   # 새 틀은 맨 뒤에 둔다(앞 틀들의 무작위 값이 바뀌지 않게)
+    "약국 안내(사람 없음)": pharmacy_notice,
+    "생년월일(이름 없음)": birth_alone,
 }
 
 

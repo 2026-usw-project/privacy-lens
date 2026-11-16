@@ -843,8 +843,66 @@ def evaluate(
         findings.extend(find_cards(spans, findings))
         findings.extend(find_unlabeled_names(spans, findings, unlabeled_names))
         _promote_phones_next_to_names(spans, findings)
+        findings.extend(find_birth_dates(spans, findings))
+        findings.extend(find_health_documents(spans, findings))
 
     return findings
+
+
+def find_birth_dates(spans: list[TextSpan], findings: list[Finding]) -> list[Finding]:
+    """'생년월일' 라벨 옆(같은 조각·같은 줄 왼쪽)의 날짜. 이름 바로 옆이면 가림, 아니면 확인 필요.
+
+    기준표 원칙 1: 생년월일 혼자서는 특정인을 알 수 없지만 이름과 합치면 알 수 있다.
+    """
+    names = {f.span_index for f in findings
+             if f.kind == "name" and f.severity is Severity.COVER and f.span_index is not None}
+    out: list[Finding] = []
+    for i, span in enumerate(spans):
+        text = kp.normalize(span.text)
+        label = next((w for w in kp.BIRTH_LABELS if w in text), None)
+        m = kp.RE_DATE.search(text.split(label, 1)[1]) if label else None
+        if not m:
+            m = kp.RE_DATE.search(text)
+            label = _left_label(i, spans, kp.BIRTH_LABELS) if m else None
+        if not (m and label):
+            continue
+        certainty = _certainty_from_ocr(span.ocr_confidence)
+        if certainty is Certainty.REGION_ONLY:
+            out.append(_region_only("birth_date", span, i))
+            continue
+        with_name = i in names or any(j in names for j, _ in _nearby(i, spans))
+        out.append(Finding(
+            kind="birth_date", box=span.box, certainty=certainty,
+            severity=Severity.COVER if with_name else Severity.REVIEW,
+            message=wording.found("birth_date", near=label), evidence_text=m.group(0).strip(),
+            context_words=[label] + (["이름"] if with_name else []), span_index=i,
+        ))
+    return out
+
+
+def find_health_documents(spans: list[TextSpan], findings: list[Finding]) -> list[Finding]:
+    """진료·처방 단어가 둘 이상인 종이에 그 사람의 이름·생년월일(가림)이 같이 있으면 종이째 가림.
+
+    개인정보보호법의 민감정보(건강)라 '누가 어떤 진료·약을 받았는지'를 통째로 가린다.
+    사람 정보 없이 약 이름·진료 안내만 있는 종이(약국 안내·광고)는 건드리지 않는다.
+    """
+    from .grouping import _cluster, _hull   # grouping 이 이 모듈을 쓰지 않으니 순환 없음
+
+    person = {f.span_index for f in findings
+              if f.kind in ("name", "birth_date") and f.severity is Severity.COVER and f.span_index is not None}
+    out: list[Finding] = []
+    for group in _cluster(spans) if person else []:
+        if not person & set(group):
+            continue
+        words = [w for w in kp.HEALTH_WORDS if any(w in kp.compact(spans[k].text) for k in group)]
+        if len(words) < 2:
+            continue
+        out.append(Finding(
+            kind="health_document", box=_hull([spans[k].box for k in group]), certainty=Certainty.READ,
+            severity=Severity.COVER, message=wording.health_document(words[:2]), evidence_text="",
+            context_words=words[:4], detail={"span_indices": sorted(group)}, span_index=min(group),
+        ))
+    return out
 
 
 # 이름과 같은 묶음이면 '그 사람의 정보'로 보고 올리는 항목. 유선전화는 회사 번호일 수 있어 뺀다
