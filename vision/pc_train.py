@@ -4,7 +4,8 @@
     python -m vision.pc_train face_eval                  # 증명사진: YuNet vs face_photo_v002
     python -m vision.pc_train plate                      # 번호판 v004 학습 + 평가
     python -m vision.pc_train daily                      # 일상 사진 9종: (zip 없으면 합치기) + 학습
-    python -m vision.pc_train all                        # 위 셋을 차례로
+    python -m vision.pc_train cards                      # 가상 카드 3,000장 합성 + 최근 9종 모델에서 15 epoch 이어 학습
+    python -m vision.pc_train all                        # 위 셋(face_eval·plate·daily)을 차례로
 
 경로는 환경 변수로 준다(설명: docs/PC_TRAIN.md).
     PL_DRIVE   구글 드라이브 데스크톱의 팀 폴더 (예: G:/내 드라이브/PrivacyLens-YOLO)
@@ -80,6 +81,10 @@ def main(argv: list[str]) -> None:
     if step in ("plate", "all"):
         ns.train_plate_rot(epochs=20)
         ns.eval_plate()
+    if step == "cards":                 # 가상 카드 합성 + 최근 9종 모델에서 이어 학습(양각·같은 색 번호 카드)
+        if not ns.DAILY_ZIP.exists():
+            ns.build_daily()
+        ns.train_cards()
     if step in ("daily", "all"):
         if not ns.DAILY_ZIP.exists():
             ns.build_daily()

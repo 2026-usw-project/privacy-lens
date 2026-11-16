@@ -49,6 +49,8 @@ DOC_CLASSES = {
     "document": "document",
     "ticket": "ticket",
     "health_item": "health_item",
+    # 카드 번호 줄(10번째 클래스, daily_v003~). 양각·카드와 같은 색 번호는 OCR 이 못 읽어 자리로 찾는다
+    "card_number": "card",
 }
 # 내용을 못 읽었을 때 바로 '가림 권장'으로 올릴 문서. 신원·결제와 직결된다
 COVER_WHEN_UNREAD = {"id_card", "name_tag", "card"}
@@ -356,9 +358,19 @@ def region_findings(dets: list[Detection], spans: list[TextSpan],
                     findings: list[Finding]) -> list[Finding]:
     """OCR 로 못 읽은 문서·증명사진·코드를 '영역'으로 알린다. 내용은 비워 둔다."""
     out: list[Finding] = []
-    for det in dets:
+    # 번호 줄을 먼저 본다. 뒤따르는 '카드째 가림' 판단이 번호 줄을 찾았는지 알아야 한다
+    for det in sorted(dets, key=lambda d: d.name != "card_number"):
         detail = {"source": "detector", "detector_class": det.name,
                   "detector_confidence": round(det.confidence, 3)}
+        if det.name == "card_number":
+            # OCR 이 이미 카드번호로 읽었으면(같은 자리) 그 항목을 쓴다. 못 읽었으면 자리만 가림 권장으로 알린다
+            read = any(f.kind == "card" and f.box is not None
+                       and (_center_in(f.box, det.box) or _center_in(det.box, f.box)) for f in findings)
+            if not read:
+                out.append(Finding(kind="card", box=det.box, certainty=Certainty.REGION_ONLY,
+                                   severity=Severity.COVER, message=wording.card_number_region(),
+                                   detail={**detail, "reason": "card_number_region"}))
+            continue
         if det.is_document:
             inside = [s for s in spans if _center_in(s.box, det.box)]
             if _confident_chars(inside) < MIN_READ_CHARS:
@@ -380,7 +392,7 @@ def region_findings(dets: list[Detection], spans: list[TextSpan],
             # 사람 눈에는 보인다. 이름·유효기간만 읽고 번호를 못 찾았으면 카드째 가림 권장으로 알린다.
             if det.name == "card":
                 number_found = any(f.kind == "card" and f.box is not None and _center_in(f.box, det.box)
-                                   for f in findings)
+                                   for f in [*findings, *out])
                 if not number_found:
                     out.append(Finding(
                         kind="document", box=det.box, certainty=Certainty.PARTIAL,
