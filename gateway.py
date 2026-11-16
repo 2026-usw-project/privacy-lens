@@ -312,7 +312,7 @@ class Gateway:
             if r.status_code < 500:
                 self.avg_s = took if self.avg_s is None else 0.7 * self.avg_s + 0.3 * took
             self._finish(job, (r.status_code, body))
-        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.RemoteProtocolError) as exc:
+        except (httpx.NetworkError, httpx.ConnectTimeout, httpx.RemoteProtocolError) as exc:
             # 보내지도 못했거나 처리 중 엔진이 꺼졌다. 처리 전 실패만 다른 엔진에서 다시(같은 사진을 두 번 처리하지 않게)
             b.healthy = False
             b.fails += 1
@@ -324,6 +324,10 @@ class Gateway:
                 self._finish(job, (503, {"detail": "분석 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."}))
         except httpx.TimeoutException:
             self._finish(job, (504, {"detail": "분석 서버가 제때 응답하지 않았습니다. 다시 시도해 주세요."}))
+        except Exception:
+            # 여기서 끝내지 않으면 번호표가 사라져 화면이 끝없이 기다린다
+            log.exception("엔진 %s 요청 처리 중 오류", b.url)
+            self._finish(job, (502, {"detail": "분석 서버와 통신하다 문제가 생겼습니다. 다시 시도해 주세요."}))
         finally:
             b.busy = False
             self.wake.set()
