@@ -165,7 +165,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("folder", help="images/ 와 labels/ 가 있는 폴더")
     ap.add_argument("--weights", required=True, help="YOLO 가중치(best.pt)")
     ap.add_argument("--list", help="폴더 안의 목록 파일(예: test.txt). 없으면 images/ 전부")
-    ap.add_argument("--conf", type=float, help="검출 기준값(기본 PL_YOLO_CONF 또는 0.35)")
+    ap.add_argument("--conf", type=float, help="검출 기준값(기본 PL_YOLO_CONF 또는 0.6)")
     ap.add_argument("--imgsz", type=int, help="입력 크기(일상 사진 9종 모델은 640)")
     ap.add_argument("--tiles", type=int, default=0, help="큰 사진을 겹쳐 N×N 조각으로 한 번 더 검출(2 권장, 0 이면 끔)")
     a = ap.parse_args(argv)

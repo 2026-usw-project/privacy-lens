@@ -29,10 +29,11 @@ COMBINABLE = {
     frozenset({"name", "address_unit"}),
     frozenset({"name", "account"}),
     frozenset({"name", "student_id"}),
+    frozenset({"name", "birth_date"}),
 }
 
 # 결합 설명에 나올 때의 순서. 집합 순회 순서에 기대지 않는다.
-_ORDER = ["name", "student_id", "mobile", "landline", "email", "address_road", "address_unit", "account"]
+_ORDER = ["name", "birth_date", "student_id", "mobile", "landline", "email", "address_road", "address_unit", "account"]
 
 
 def _cluster(spans: list[TextSpan]) -> list[list[int]]:
