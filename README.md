@@ -550,7 +550,7 @@ python -m eval.rotation
 | `PL_TESSERACT` | 자동 탐색 | Tesseract 실행 파일 경로 |
 | `PL_YOLO_WEIGHTS` | `models`에서 자동 탐색 | 직접 지정한 경로가 우선입니다. 미설정이면 프로젝트 루트 `models` 안의 `v숫자` 폴더 중 숫자가 가장 큰 폴더의 `best.pt`를 사용합니다(`v10` > `v9`). 버전 폴더가 없으면 `models/best.pt`를 사용하며, 선택한 파일이 없으면 OCR만 실행합니다. 학습은 [vision/README.md](vision/README.md) |
 | `PL_YOLO` | `on` | `off`로 지정하면 모델 파일이 있어도 문서 검출을 끕니다. 모델 선택은 서버 재시작 시 적용됩니다. |
-| `PL_YOLO_CONF` | `0.35` | 문서 검출 기준값 |
+| `PL_YOLO_CONF` | `0.6` | 문서·일상 사진 검출 기준값. v012 기준으로 정한 값이라 v010 이하 모델에서는 놓침이 늘어납니다(v010 은 `0.35`) |
 | `PL_UNLABELED_NAMES` | `context` | 라벨 없는 이름 판단. `off`(라벨 뒤 이름만) · `context`(연락처·주소 옆, 명찰·학생증 단서, 호칭이 있을 때) · `all`(단서 없는 이름 후보도 검토 권장, 오탐 증가). [D-12](docs/DECISIONS.md#d-12-가림-기준표-확정) |
 | `PL_FACES` | `card` | 얼굴 검출(YuNet). `card`(증명사진만) · `all`(모든 얼굴 검토 권장) · `off`. 모델은 `python -m pipeline.objects download` 로 받습니다. [D-18](docs/DECISIONS.md) |
 | `PL_FACE_ROTATE` | `1` | 얼굴(증명사진)을 90·270도 돌린 사진에서도 찾습니다(얼굴 검출 시간 약 3배). `0` 이면 끔 |

@@ -17,7 +17,7 @@ YOLO 는 글자를 읽지 않고 '학생증 모양'을 찾는다. 그래서
 
   PL_YOLO_WEIGHTS  best.pt 경로. 미설정이면 models/v<최대 숫자>/best.pt,
                    버전 폴더가 없으면 models/best.pt
-  PL_YOLO_CONF     검출 기준 (기본 0.35)
+  PL_YOLO_CONF     검출 기준 (기본 0.6, 2026-11-16 v012 실사 18장으로 정함. 일상 사진 모델에도 같이 적용)
   PL_YOLO_IMGSZ    입력 크기 (기본: 가중치 옆 metrics.json 의 imgsz, 없으면 1280)
 """
 
@@ -99,7 +99,7 @@ class YoloDetector:
         # .onnx 는 클래스 정보로 작업 종류를 알 수 없어 detect 로 알려 준다
         self.model = YOLO(str(self.path), task="detect") if self.path.suffix == ".onnx" else YOLO(str(self.path))
         self.names = {int(k): v for k, v in self.model.names.items()}
-        self.conf = conf if conf is not None else float(os.environ.get("PL_YOLO_CONF", "0.35"))
+        self.conf = conf if conf is not None else float(os.environ.get("PL_YOLO_CONF", "0.6"))
         self.imgsz = imgsz or _imgsz_for(self.path)
         version = self.path.parent.name if self.path.parent.name.startswith("v") else self.path.stem
         self.family = model_family(self.model)
