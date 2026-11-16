@@ -538,6 +538,8 @@ python -m eval.rotation
 <details>
 <summary><b>환경변수</b></summary>
 
+설정은 저장소 맨 위 `.env` 파일에 모아 둘 수 있습니다(`cp .env.example .env`). `run.py`·`run_backend.py`·`run_gateway.py`·`server.py` 가 켤 때 읽고, 셸에서 준 값이 이깁니다. 다른 위치는 `PL_ENV_FILE` 로 지정합니다. `.env` 는 커밋되지 않습니다.
+
 | 변수 | 기본값 | 설명 |
 |---|---|---|
 | `PL_OCR` | `paddleocr` | OCR 엔진 선택. `tesseract` 또는 `none`으로 변경할 수 있습니다. `none`은 글자 OCR을 생략합니다. |
@@ -560,6 +562,13 @@ python -m eval.rotation
 | `PORT` | `8000` | `run.py` 게이트웨이(화면·API) 포트. `run_backend.py` 는 엔진 서버 포트. 쓰는 중이면 1 씩 올려 엽니다 |
 | `PL_ENGINE_PORT` | 게이트웨이 다음 번호 | `run.py` 가 이 PC 안에 띄우는 엔진 서버 포트. 쓰는 중이면 1 씩 올려 엽니다 |
 | `PL_GATEWAY_TOKEN` | 없음 | 게이트웨이와 엔진 사이에 쓰는 선택 비밀값(`--token`). 비어 있으면 토큰 없이 연결합니다. |
+| `PL_JUDGE_PROVIDER` | `rules` | 서버 기본 판단 모델(D-22). `openai`·`gemini`·`anthropic`·`openrouter`·`ollama`·`custom`. 판단 모델 설정을 저장한 적 없는 사용자의 화면이 이 값으로 시작합니다 |
+| `PL_JUDGE_MODEL` | 없음 | 기본 판단 모델 이름(`rules` 가 아니면 필수) |
+| `PL_JUDGE_REASONING` | `auto` | 기본 추론 정도. 공급자별 허용 값은 `.env.example` |
+| `PL_JUDGE_FAST` | `false` | 빠른 처리(요금 추가, `openai`·`anthropic`) |
+| `PL_JUDGE_API_KEY` | 없음 | 서버 API 키. 화면의 키 칸을 비우면 같은 공급자에 이 키를 씁니다. 화면으로 내려가지 않고 로그에 남지 않습니다. **모든 사용자의 OCR 원문이 그 회사로 가고 요금이 이 키로 나갑니다** |
+| `PL_JUDGE_BASE_URL` | 없음 | `ollama`(기본 `http://127.0.0.1:11434`)·`custom` 주소(엔진 서버 기준) |
+| `PL_ENV_FILE` | `.env` | 읽을 설정 파일 경로 |
 | `PL_ADMIN_KEY` | 실행마다 새로 | 화면에서 엔진을 더하고 뺄 때 쓰는 관리 키(`run_gateway.py --admin-key`). 없으면 켤 때마다 새로 만들어 콘솔에 보여 줍니다 |
 
 모델 선택과 버전별 동작은 [OCR 엔진 교체 안내](docs/DEVELOPMENT.md#ocr-엔진-교체)를 참고하세요.

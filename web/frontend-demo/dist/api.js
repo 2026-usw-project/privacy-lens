@@ -90,6 +90,10 @@
       analyze(image,{ticket,judge,signal}={}) {
         return request('/analyze',{method:'POST',body:form(image,{ticket,judge})},signal);
       },
+      // 서버 .env 의 기본 판단 모델(키·주소 값은 오지 않음). 처음 온 사용자의 판단 모델 창 시작값.
+      judgeDefault({signal}={}) {
+        return request('/judge/default',{method:'GET'},signal);
+      },
       // 판단 모델 창: 고른 공급자에서 쓸 수 있는 모델 이름. 사진은 보내지 않는다.
       models(judge,{signal}={}) {
         const body=new FormData();body.append('judge',judge);

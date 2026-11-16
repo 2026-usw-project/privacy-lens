@@ -64,6 +64,10 @@ class FakeEngine:
         async def preview(request: Request):
             return {"engine": self.name, "bytes": len(await request.body())}
 
+        @app.get("/judge/default")
+        async def judge_default():
+            return {"provider": "anthropic", "model": "m", "has_key": True}
+
         @app.get("/queue")
         async def queue(ticket: str = ""):
             return {"state": "running", "ahead": 0, "eta_s": 3.0, "progress": {"state": "running", "engine": self.name}}
@@ -316,6 +320,19 @@ def test_passthrough_alternates_between_engines():
         assert seen == {"e1", "e2"}
 
     run_with_gateway(["e1", "e2"], body)
+
+
+def test_judge_default_comes_from_engine():
+    async def body(client, gw, engines, router):
+        r = await client.get("/judge/default")
+        assert r.json() == {"provider": "anthropic", "model": "m", "has_key": True}
+        for e in engines.values():
+            e.healthy = False
+        await gw.check_all()
+        await gw.check_all()
+        assert (await client.get("/judge/default")).json() == {"provider": "rules"}
+
+    run_with_gateway(["e1"], body)
 
 
 # ------------------------------------------------------------------ 엔진 서버: 게이트웨이만 받기

@@ -1103,7 +1103,8 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     for(const [id,j] of Object.entries(JUDGES)) {
       if(id==='rules')continue;
       const p=src.providers&&typeof src.providers[id]==='object'?src.providers[id]:{};
-      providers[id]={model:field(p.model)||j.model||'',apiKey:j.key?field(p.apiKey):'',baseUrl:'url' in j?(field(p.baseUrl)||j.url):'',
+      // 주소: 저장된 값이 없을 때만 기본 주소. 일부러 비운 칸('' — 서버 .env 의 주소를 씀)은 그대로 둔다.
+      providers[id]={model:field(p.model)||j.model||'',apiKey:j.key?field(p.apiKey):'',baseUrl:'url' in j?(typeof p.baseUrl==='string'?field(p.baseUrl):j.url):'',
         reasoning:(REASONING[id]||['auto']).includes(p.reasoning)?p.reasoning:'auto',fast:FAST.includes(id)&&p.fast===true};
     }
     return {provider,providers};
@@ -1115,11 +1116,31 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     const p=s.providers[s.provider];
     return JSON.stringify({provider:s.provider,model:p.model.trim(),api_key:p.apiKey.trim(),base_url:p.baseUrl.trim(),reasoning:p.reasoning,fast:p.fast});
   }
+  // 서버 .env 의 기본 판단 모델(GET /judge/default, D-22). 키·주소 값은 오지 않고 있는지만 온다. 규칙 기반·잘못된 값이면 null.
+  function serverJudge(raw) {
+    const r=raw&&typeof raw==='object'?raw:{};
+    if(!Object.hasOwn(JUDGES,r.provider)||r.provider==='rules')return null;
+    const id=r.provider;
+    return {provider:id,model:field(r.model),reasoning:(REASONING[id]||['auto']).includes(r.reasoning)?r.reasoning:'auto',
+      fast:FAST.includes(id)&&r.fast===true,hasKey:r.has_key===true,hasUrl:r.has_url===true,sendsOutside:r.sends_outside===true};
+  }
+  // 브라우저에 저장된 설정이 없는 사용자(처음 온 사용자)의 시작값. 키는 비워 서버 키를 쓰게 하고, 서버에 주소가 있으면 주소도 비운다.
+  function withServerDefault(settings,server) {
+    const s=devSettings(settings);
+    if(!server)return s;
+    const p=s.providers[server.provider];
+    s.provider=server.provider;
+    Object.assign(p,{model:server.model||p.model,reasoning:server.reasoning,fast:server.fast,apiKey:''});
+    if(server.hasUrl)p.baseUrl='';
+    return devSettings(s);
+  }
   // 글자가 이 컴퓨터 밖으로 나가는가. 클라우드 공급자는 항상, Ollama·Custom 은 주소가 이 컴퓨터가 아닐 때.
-  function sendsOutside(settings) {
+  // 주소 칸을 비워 서버 .env 의 주소를 쓰면 서버가 알려 준 값을 따른다.
+  function sendsOutside(settings,server) {
     const s=devSettings(settings),j=JUDGES[s.provider];
     if(s.provider==='rules')return false;
     if(j.cloud)return true;
+    if(server&&server.hasUrl&&s.provider===server.provider&&!s.providers[s.provider].baseUrl.trim())return server.sendsOutside;
     try{return !['localhost','127.0.0.1','[::1]'].includes(new URL(s.providers[s.provider].baseUrl).hostname);}catch{return false;}
   }
   // 모델 목록을 물을 때 보내는 설정. 아직 모델을 고르기 전이라 model 은 비어도 된다.
@@ -1301,7 +1322,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
     return {url:String(e?.url||''),label:e?.busy?label+' · 처리 중':label,tone};
   }
 
-  globalThis.PrivacyLensCore=Object.freeze({FAST,REASONING,REASONING_LABELS,queueBadge,engineRow,TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
+  globalThis.PrivacyLensCore=Object.freeze({FAST,REASONING,REASONING_LABELS,queueBadge,engineRow,TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,serverJudge,withServerDefault,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
 })();
 
 'use strict';
@@ -1395,6 +1416,10 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
       // judge: 판단 모델 창의 LLM 설정(JSON 문자열, API 키 포함). 규칙 기반이면 undefined 라 보내지 않는다.
       analyze(image,{ticket,judge,signal}={}) {
         return request('/analyze',{method:'POST',body:form(image,{ticket,judge})},signal);
+      },
+      // 서버 .env 의 기본 판단 모델(키·주소 값은 오지 않음). 처음 온 사용자의 판단 모델 창 시작값.
+      judgeDefault({signal}={}) {
+        return request('/judge/default',{method:'GET'},signal);
       },
       // 판단 모델 창: 고른 공급자에서 쓸 수 있는 모델 이름. 사진은 보내지 않는다.
       models(judge,{signal}={}) {
@@ -1490,7 +1515,11 @@ window.PL_SAMPLE_PHOTOS={
     requestController:null, requestSerial:0, saving:false, saved:false, groupsOpen:false, saveError:'', ticket:null, previewState:'none', previewSeq:0 };
   try { const saved=localStorage.getItem('pl.maskStyle'); if(Core.STYLES.includes(saved)) state.style=saved; } catch(_) {}
   // 판단 모델 창 설정(판단 방법·모델·API 키)은 이 브라우저에만 둔다. 서버는 요청마다 받아 쓰고 저장하지 않는다.
-  try { state.dev=Core.devSettings(JSON.parse(localStorage.getItem('pl.devMode')||'null')); } catch(_) {}
+  // 저장된 설정이 없으면(처음 온 사용자) 서버 .env 의 기본 판단 모델로 시작한다(D-22). 바꾸기 전까지는 저장하지 않아
+  // 서버 기본값이 바뀌면 따라간다. 서버 키는 화면에 오지 않고, 키 칸을 비워 두면 서버가 자기 키를 쓴다.
+  let savedDev=false;
+  try { const raw=localStorage.getItem('pl.devMode'); savedDev=!!raw; state.dev=Core.devSettings(JSON.parse(raw||'null')); } catch(_) {}
+  let serverJudge=null;
   function saveDev() { try{localStorage.setItem('pl.devMode',JSON.stringify(state.dev));}catch(_){} }
 
   // 밝은 화면 / 어두운 화면. 밝은 화면이 기본이고, 사용자가 바꾼 선택만 기억한다.
@@ -2632,13 +2661,17 @@ window.PL_SAMPLE_PHOTOS={
       $('#judgeFastHint').textContent=id==='openai'?'service_tier "fast" 로 보내요. 토큰마다 요금이 더 붙고, 붐빌 때는 보통 속도로 처리될 수 있어요.'
         :'speed "fast" 로 보내요. Claude Opus 5.5·Fable 5.2 같은 지원 모델에서만 되고, 토큰마다 요금이 더 붙어요.';
       $('#judgeUrl').placeholder=j.url||'http://localhost:1234/v1';
-      $('#judgeKeyLabel').textContent=j.key==='optional'?'API 키 (필요할 때만)':'API 키';
+      const serverKey=!!serverJudge&&serverJudge.provider===id&&serverJudge.hasKey;
+      $('#judgeKeyLabel').textContent=serverKey?'API 키 (비우면 서버 키)':j.key==='optional'?'API 키 (필요할 때만)':'API 키';
+      $('#judgeKey').placeholder=serverKey?'비워 두면 서버에 저장된 키를 써요':'';
+      if(serverJudge&&serverJudge.provider===id&&serverJudge.hasUrl)$('#judgeUrl').placeholder='비워 두면 서버에 저장된 주소를 써요';
     }
     $('#judgeHint').textContent=!llm?'서버의 규칙(정규식·체크섬·주변 문구·결합)으로 판단해요. 기본값이에요.'
       :id==='ollama'?'이 컴퓨터의 Ollama 로 판단해요. 글자가 컴퓨터 밖으로 나가지 않아요. 모델을 먼저 받아 두세요(ollama pull).'
       :id==='custom'?'OpenAI 호환 API 주소를 넣어요. 서버가 이 주소 뒤에 /chat/completions 를 붙여 불러요.'
       :'모델 이름은 예시예요. 쓰는 계정에서 되는 이름으로 바꿔도 돼요. 사진 한 장마다 API 요금이 나갈 수 있어요.';
-    $('#judgeWarning').classList.toggle('hidden',!Core.sendsOutside(state.dev));
+    if(serverJudge&&serverJudge.provider===id)$('#judgeHint').textContent+=' 이 서버의 기본 판단 모델이에요'+(serverJudge.hasKey?'(서버 API 키 사용 가능).':'.');
+    $('#judgeWarning').classList.toggle('hidden',!Core.sendsOutside(state.dev,serverJudge));
     $('#judgeChipText').textContent=Core.judgeLabel(state.dev);
     $('#judgeChip').classList.toggle('llm',llm);
     $('#judgeChip').title='판단: '+(llm?Core.judgeLabel(state.dev):'규칙 기반 판단');
@@ -2675,6 +2708,12 @@ window.PL_SAMPLE_PHOTOS={
     } finally {button.disabled=false;}
   }
   $('#judgeLoadModels').addEventListener('click',loadModels);
+  // 서버 기본 판단 모델을 묻는다. 실패하면 지금 설정(규칙 기반 등) 그대로 둔다.
+  api.judgeDefault().then(data=>{
+    serverJudge=Core.serverJudge(data);
+    if(serverJudge&&!savedDev)state.dev=Core.withServerDefault(state.dev,serverJudge);
+    renderDev();renderModelList();
+  }).catch(()=>{});
   $('#judgeProvider').addEventListener('change',e=>{updateDev({provider:e.target.value});renderModelList();});
   $('#judgeModel').addEventListener('input',e=>{updateDev({model:e.target.value});renderModelList();});
   $('#judgeReasoning').addEventListener('change',e=>updateDev({reasoning:e.target.value}));

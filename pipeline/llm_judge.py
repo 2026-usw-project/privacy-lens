@@ -8,7 +8,8 @@ LLM 을 고르면 정규식·체크섬·문맥 규칙은 돌리지 않는다. �
   - **OCR 원문이 외부로 나간다.** 클라우드 공급자(ChatGPT·Gemini·Claude·OpenRouter)를
     고르면 사진 속 글자가 그 회사 서버로 간다. 판단 모델 창에서만 쓰고 실사 개인정보
     사진에는 쓰지 않는다(DECISIONS D-15).
-  - 키는 요청마다 화면에서 받아 쓰고 저장하지 않는다. 오류 문구·로그에 키와 원문을 넣지 않는다.
+  - 키는 요청마다 화면에서 받아 쓰고 저장하지 않는다. 예외로 서버 운영자가 .env(PL_JUDGE_API_KEY)에
+    둔 키는 서버가 쓰되 화면에 내려보내지 않는다(D-22). 오류 문구·로그에 키와 원문을 넣지 않는다.
   - 화면에 나가는 문장은 wording 이 만든다. LLM 이 쓴 설명은 내보내지 않는다.
   - 근거 문자열은 LLM 이 준 값이 그 조각 안에 실제로 있을 때만 쓴다. 없으면 조각 원문을 쓴다.
     못 읽은 글자(OCR 신뢰도 낮음)는 지금처럼 내용 없이 영역으로만 낸다.
@@ -17,6 +18,7 @@ LLM 을 고르면 정규식·체크섬·문맥 규칙은 돌리지 않는다. �
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import urllib.error
@@ -165,10 +167,13 @@ class JudgeConfig:
         return self.provider in CLOUD
 
 
-def parse_config(raw: str | None, *, need_model: bool = True) -> JudgeConfig | None:
+def parse_config(raw: str | None, *, need_model: bool = True,
+                 server: JudgeConfig | None = None) -> JudgeConfig | None:
     """화면이 보낸 판단 설정(JSON). 비었거나 provider 가 rules 면 None(규칙 기반).
 
     need_model=False 는 모델 목록을 물을 때다(아직 모델을 고르기 전).
+    server 는 서버 .env 의 기본 판단 모델(server_default). 화면이 같은 공급자를 고르고 키·주소를
+    비워 보내면 서버의 키·주소를 쓴다(D-22). 화면이 키를 넣으면 화면 키가 이긴다.
     """
     if raw is None or not raw.strip():
         return None
@@ -191,6 +196,9 @@ def parse_config(raw: str | None, *, need_model: bool = True) -> JudgeConfig | N
         return value.strip()
 
     model, key, url = field("model"), field("api_key"), field("base_url")
+    if server is not None and server.provider == provider:
+        key = key or server.api_key
+        url = url or server.base_url
     if not model and need_model:
         raise ValueError(wording.LLM_MODEL_MISSING)
     if provider in NEEDS_KEY and not key:
@@ -210,6 +218,52 @@ def parse_config(raw: str | None, *, need_model: bool = True) -> JudgeConfig | N
     if not isinstance(fast, bool) or (fast and provider not in FAST):
         raise ValueError(wording.LLM_CONFIG_INVALID)
     return JudgeConfig(provider, model, key, url, reasoning, fast)
+
+
+# ------------------------------------------------------------------ 서버 기본값(.env)
+
+# 서버 .env 의 기본 판단 모델(D-22). 처음 온 사용자(브라우저에 저장된 설정 없음)의 화면이 이 값으로 시작하고,
+# 같은 공급자를 고른 사용자가 키를 비워 두면 서버 키를 쓴다. 키는 화면에 내려보내지 않는다.
+ENV_FIELDS = {
+    "provider": "PL_JUDGE_PROVIDER",
+    "model": "PL_JUDGE_MODEL",
+    "reasoning": "PL_JUDGE_REASONING",
+    "fast": "PL_JUDGE_FAST",
+    "api_key": "PL_JUDGE_API_KEY",
+    "base_url": "PL_JUDGE_BASE_URL",
+}
+_TRUE = {"1", "true", "yes", "on"}
+
+
+def server_default(environ: dict | None = None) -> JudgeConfig | None:
+    """PL_JUDGE_* 환경 변수로 만든 기본 판단 모델. 없거나 rules 면 None.
+
+    값이 잘못되면 ValueError(어느 변수인지는 말하되 값은 넣지 않는다).
+    """
+    env = os.environ if environ is None else environ
+    get = lambda name: (env.get(ENV_FIELDS[name]) or "").strip()  # noqa: E731
+    provider = get("provider").lower()
+    if not provider or provider == "rules":
+        return None
+    data = {k: get(k) for k in ("model", "api_key", "base_url", "reasoning")}
+    data["provider"] = provider
+    data["fast"] = get("fast").lower() in _TRUE
+    try:
+        return parse_config(json.dumps(data))
+    except ValueError as exc:
+        names = ", ".join(v for k, v in ENV_FIELDS.items() if k != "api_key")
+        raise ValueError(f"서버 기본 판단 모델 설정({names}, PL_JUDGE_API_KEY)이 올바르지 않습니다: {exc}") from None
+
+
+def public_default(cfg: JudgeConfig | None) -> dict:
+    """화면에 알려 줄 서버 기본값. 키와 주소 값은 넣지 않고, 있는지만 알린다."""
+    if cfg is None:
+        return {"provider": "rules"}
+    host = urllib.parse.urlsplit(cfg.base_url).hostname if cfg.base_url else None
+    outside = cfg.sends_outside or (host is not None and host not in ("localhost", "127.0.0.1", "::1"))
+    return {"provider": cfg.provider, "model": cfg.model, "reasoning": cfg.reasoning, "fast": cfg.fast,
+            "has_key": bool(cfg.api_key), "has_url": bool(cfg.base_url), "sends_outside": outside,
+            "label": cfg.label}
 
 
 # ------------------------------------------------------------------ 요청

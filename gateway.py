@@ -525,6 +525,23 @@ def create_app(backends: list[str], *, token: str = "", serve_front: bool = True
     async def models(request: Request):
         return await passthrough(request, "/llm/models")
 
+    @app.get("/judge/default")
+    async def judge_default():
+        """서버 .env 의 기본 판단 모델(D-22). 엔진이 가진 값을 그대로 전한다(키는 엔진도 내려보내지 않음).
+
+        엔진이 없거나 응답이 없으면 규칙 기반으로 알린다(화면 기본값일 뿐이라 오류로 막지 않는다).
+        """
+        b = gw.any_backend() if gw.backends else None
+        if b is None:
+            return {"provider": "rules"}
+        try:
+            r = await gw.client.get(b.url + "/judge/default", timeout=HEALTH_TIMEOUT_S)
+        except httpx.HTTPError:
+            return {"provider": "rules"}
+        if r.status_code != 200:
+            return {"provider": "rules"}
+        return Response(r.content, status_code=200, media_type="application/json")
+
     # ---------------- 번호표: 배정 전에는 게이트웨이가, 배정 뒤에는 그 엔진이 답한다
     @app.get("/queue")
     async def queue_status(ticket: Optional[str] = None):

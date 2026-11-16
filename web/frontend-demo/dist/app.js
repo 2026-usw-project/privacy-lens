@@ -15,7 +15,11 @@
     requestController:null, requestSerial:0, saving:false, saved:false, groupsOpen:false, saveError:'', ticket:null, previewState:'none', previewSeq:0 };
   try { const saved=localStorage.getItem('pl.maskStyle'); if(Core.STYLES.includes(saved)) state.style=saved; } catch(_) {}
   // 판단 모델 창 설정(판단 방법·모델·API 키)은 이 브라우저에만 둔다. 서버는 요청마다 받아 쓰고 저장하지 않는다.
-  try { state.dev=Core.devSettings(JSON.parse(localStorage.getItem('pl.devMode')||'null')); } catch(_) {}
+  // 저장된 설정이 없으면(처음 온 사용자) 서버 .env 의 기본 판단 모델로 시작한다(D-22). 바꾸기 전까지는 저장하지 않아
+  // 서버 기본값이 바뀌면 따라간다. 서버 키는 화면에 오지 않고, 키 칸을 비워 두면 서버가 자기 키를 쓴다.
+  let savedDev=false;
+  try { const raw=localStorage.getItem('pl.devMode'); savedDev=!!raw; state.dev=Core.devSettings(JSON.parse(raw||'null')); } catch(_) {}
+  let serverJudge=null;
   function saveDev() { try{localStorage.setItem('pl.devMode',JSON.stringify(state.dev));}catch(_){} }
 
   // 밝은 화면 / 어두운 화면. 밝은 화면이 기본이고, 사용자가 바꾼 선택만 기억한다.
@@ -1157,13 +1161,17 @@
       $('#judgeFastHint').textContent=id==='openai'?'service_tier "fast" 로 보내요. 토큰마다 요금이 더 붙고, 붐빌 때는 보통 속도로 처리될 수 있어요.'
         :'speed "fast" 로 보내요. Claude Opus 5.5·Fable 5.2 같은 지원 모델에서만 되고, 토큰마다 요금이 더 붙어요.';
       $('#judgeUrl').placeholder=j.url||'http://localhost:1234/v1';
-      $('#judgeKeyLabel').textContent=j.key==='optional'?'API 키 (필요할 때만)':'API 키';
+      const serverKey=!!serverJudge&&serverJudge.provider===id&&serverJudge.hasKey;
+      $('#judgeKeyLabel').textContent=serverKey?'API 키 (비우면 서버 키)':j.key==='optional'?'API 키 (필요할 때만)':'API 키';
+      $('#judgeKey').placeholder=serverKey?'비워 두면 서버에 저장된 키를 써요':'';
+      if(serverJudge&&serverJudge.provider===id&&serverJudge.hasUrl)$('#judgeUrl').placeholder='비워 두면 서버에 저장된 주소를 써요';
     }
     $('#judgeHint').textContent=!llm?'서버의 규칙(정규식·체크섬·주변 문구·결합)으로 판단해요. 기본값이에요.'
       :id==='ollama'?'이 컴퓨터의 Ollama 로 판단해요. 글자가 컴퓨터 밖으로 나가지 않아요. 모델을 먼저 받아 두세요(ollama pull).'
       :id==='custom'?'OpenAI 호환 API 주소를 넣어요. 서버가 이 주소 뒤에 /chat/completions 를 붙여 불러요.'
       :'모델 이름은 예시예요. 쓰는 계정에서 되는 이름으로 바꿔도 돼요. 사진 한 장마다 API 요금이 나갈 수 있어요.';
-    $('#judgeWarning').classList.toggle('hidden',!Core.sendsOutside(state.dev));
+    if(serverJudge&&serverJudge.provider===id)$('#judgeHint').textContent+=' 이 서버의 기본 판단 모델이에요'+(serverJudge.hasKey?'(서버 API 키 사용 가능).':'.');
+    $('#judgeWarning').classList.toggle('hidden',!Core.sendsOutside(state.dev,serverJudge));
     $('#judgeChipText').textContent=Core.judgeLabel(state.dev);
     $('#judgeChip').classList.toggle('llm',llm);
     $('#judgeChip').title='판단: '+(llm?Core.judgeLabel(state.dev):'규칙 기반 판단');
@@ -1200,6 +1208,12 @@
     } finally {button.disabled=false;}
   }
   $('#judgeLoadModels').addEventListener('click',loadModels);
+  // 서버 기본 판단 모델을 묻는다. 실패하면 지금 설정(규칙 기반 등) 그대로 둔다.
+  api.judgeDefault().then(data=>{
+    serverJudge=Core.serverJudge(data);
+    if(serverJudge&&!savedDev)state.dev=Core.withServerDefault(state.dev,serverJudge);
+    renderDev();renderModelList();
+  }).catch(()=>{});
   $('#judgeProvider').addEventListener('change',e=>{updateDev({provider:e.target.value});renderModelList();});
   $('#judgeModel').addEventListener('input',e=>{updateDev({model:e.target.value});renderModelList();});
   $('#judgeReasoning').addEventListener('change',e=>updateDev({reasoning:e.target.value}));

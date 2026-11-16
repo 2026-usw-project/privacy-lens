@@ -47,6 +47,10 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
 from starlette.formparsers import MultiPartParser
 
+import envfile
+
+envfile.load()  # 저장소 맨 위 .env(또는 PL_ENV_FILE). 이미 있는 환경 변수는 덮어쓰지 않는다
+
 from jobqueue import Cancelled, QueueFull, WorkQueue
 from progress import ProgressBoard
 from timing import TimingStore, default_path
@@ -575,10 +579,34 @@ async def llm_failed(request: Request, exc: llm_judge.LlmJudgeError):
     return JSONResponse(status_code=502, content=content)
 
 
-def _judge(raw: str | None) -> llm_judge.JudgeConfig | None:
-    """판단 모델 창의 판단 설정. 비었으면 규칙 기반. 키는 이 요청에서만 쓰고 저장하지 않는다."""
+def _server_judge() -> llm_judge.JudgeConfig | None:
+    """.env 의 기본 판단 모델(PL_JUDGE_*, D-22). 잘못되면 알리고 규칙 기반으로 둔다."""
     try:
-        return llm_judge.parse_config(raw)
+        cfg = llm_judge.server_default()
+    except ValueError as exc:
+        log.warning("%s — 서버 기본 판단 모델 없이 시작합니다.", exc)
+        return None
+    if cfg is not None:
+        log.info("서버 기본 판단 모델: %s%s", cfg.label, " (서버 API 키 있음)" if cfg.api_key else "")
+    return cfg
+
+
+SERVER_JUDGE = _server_judge()
+
+
+@app.get("/judge/default")
+def judge_default():
+    """처음 온 사용자의 판단 모델 창 기본값. 키·주소 값은 내려보내지 않고 있는지만 알린다."""
+    return llm_judge.public_default(SERVER_JUDGE)
+
+
+def _judge(raw: str | None) -> llm_judge.JudgeConfig | None:
+    """판단 모델 창의 판단 설정. 비었으면 규칙 기반. 화면 키는 이 요청에서만 쓰고 저장하지 않는다.
+
+    같은 공급자에 키·주소를 비워 보내면 서버 .env 의 키·주소를 쓴다(D-22).
+    """
+    try:
+        return llm_judge.parse_config(raw, server=SERVER_JUDGE)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
 
@@ -590,7 +618,7 @@ def llm_models(judge: str = Form(...)):
     OCR 이 없어 대기열을 거치지 않는다. 사진도 원문도 보내지 않는다.
     """
     try:
-        cfg = llm_judge.parse_config(judge, need_model=False)
+        cfg = llm_judge.parse_config(judge, need_model=False, server=SERVER_JUDGE)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     if cfg is None:

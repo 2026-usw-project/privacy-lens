@@ -7,6 +7,9 @@
   `globalThis.PRIVACY_LENS_API = "https://…"` 를 빌드할 때 넣고, `api.js` 가 그 주소로 요청합니다(http(s)만).
   이때 게이트웨이는 `--cors` 에 화면 주소가 있어야 응답합니다(`run_gateway.py --no-front --cors`).
 - `GET /health` → `{"ok": true, "engine_ready": …}`. 게이트웨이가 엔진 상태를 확인할 때 씁니다.
+- `GET /judge/default` → 서버 `.env` 의 기본 판단 모델(D-22). `{"provider":"rules"}` 또는
+  `{"provider","model","reasoning","fast","has_key","has_url","sends_outside","label"}`. 키·주소 값은 오지 않습니다.
+  판단 모델 설정을 저장한 적 없는 화면이 이 값으로 시작하고, 키 칸을 비우면 서버가 같은 공급자에 자기 키를 씁니다.
 - **게이트웨이** 뒤에서 화면 쪽 규격은 엔진 서버와 같습니다. `/health` 와 `/queue` 에
   `engines: {total, alive, busy}` 와 `manage`(엔진 관리 기능이 켜져 있는지)가 더 붙고, 배정 전 번호표의 `progress` 는 `{"state":"waiting","ahead","eta_s","stages":[],"total_s":null}` 입니다.
 
