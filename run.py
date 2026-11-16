@@ -273,6 +273,10 @@ def stop(proc: subprocess.Popen) -> None:
 
 
 def main() -> int:
+    import envfile
+    loaded = envfile.load()  # .env 는 엔진 서버에도 환경 변수로 넘어간다. 값은 출력하지 않는다
+    if loaded:
+        print(f"설정 파일(.env)에서 {len(loaded)}개 항목을 읽었습니다: {', '.join(loaded)}")
     args = set(sys.argv[1:])
     code = run_checks(args)
     if code:

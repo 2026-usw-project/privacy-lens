@@ -236,6 +236,25 @@ await test('judge used by the server is shown',()=>{
   assert.equal(llm.judge,'Claude · claude-haiku-5-5');assert.equal(llm.judgeProvider,'anthropic');
   assert.equal(C.fromReport({...report,judge_provider:'??'}).judgeProvider,'rules');
 });
+await test('server default judge (.env) for first-time users',async()=>{
+  assert.equal(C.serverJudge({provider:'rules'}),null);assert.equal(C.serverJudge(null),null);assert.equal(C.serverJudge({provider:'nope'}),null);
+  const server=C.serverJudge({provider:'anthropic',model:'claude-haiku-5-5',reasoning:'low',fast:false,has_key:true,has_url:false,sends_outside:true,api_key:'should-be-ignored'});
+  assert.deepEqual(server,{provider:'anthropic',model:'claude-haiku-5-5',reasoning:'low',fast:false,hasKey:true,hasUrl:false,sendsOutside:true});
+  const d=C.withServerDefault(null,server);
+  assert.equal(d.provider,'anthropic');assert.equal(d.providers.anthropic.reasoning,'low');assert.equal(d.providers.anthropic.apiKey,'');
+  // 키는 비워 보내고 서버가 자기 키로 채운다
+  assert.deepEqual(JSON.parse(C.judgeField(d)),{provider:'anthropic',model:'claude-haiku-5-5',api_key:'',base_url:'',reasoning:'low',fast:false});
+  assert.equal(C.serverJudge({provider:'gemini',reasoning:'max'}).reasoning,'auto');
+  // 서버 주소를 쓰는 Ollama: 주소 칸이 비고, 밖으로 나가는지는 서버가 알려 준 값을 따른다
+  const remote=C.serverJudge({provider:'ollama',model:'qwen2.5:7b',has_url:true,sends_outside:true});
+  const o=C.withServerDefault(null,remote);
+  assert.equal(o.providers.ollama.baseUrl,'');assert.equal(JSON.parse(C.judgeField(o)).base_url,'');
+  assert.equal(C.sendsOutside(o,remote),true);assert.equal(C.sendsOutside(o),false);
+  assert.equal(C.devSettings(null).providers.ollama.baseUrl,'http://127.0.0.1:11434');
+  const calls=[];
+  const api=A.client('http://server.test',async(url,init)=>{calls.push([url,init.method]);return new Response(JSON.stringify({provider:'rules'}),{headers:{'content-type':'application/json'}});});
+  assert.deepEqual(await api.judgeDefault(),{provider:'rules'});assert.deepEqual(calls,[['http://server.test/judge/default','GET']]);
+});
 
 // ---------------------------------------------------------------- 남은 시간(/progress)
 const running={state:'running',current:1,remaining_s:20,stage_elapsed_s:2,overdue_s:0,elapsed_s:3,total_s:25,

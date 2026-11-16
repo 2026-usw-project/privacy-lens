@@ -43,6 +43,8 @@ def ssl_files(cert: str, key: str) -> dict:
 
 
 def main(argv=None) -> int:
+    import envfile
+    envfile.load()  # .env 의 PL_GATEWAY_TOKEN·PL_ADMIN_KEY·PL_BACKENDS 등. 이미 있는 환경 변수가 이긴다
     ap = argparse.ArgumentParser(description="Privacy Lens 게이트웨이(화면 + 대기열 + 분산)")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8000)

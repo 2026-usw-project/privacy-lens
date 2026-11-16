@@ -47,7 +47,8 @@
     for(const [id,j] of Object.entries(JUDGES)) {
       if(id==='rules')continue;
       const p=src.providers&&typeof src.providers[id]==='object'?src.providers[id]:{};
-      providers[id]={model:field(p.model)||j.model||'',apiKey:j.key?field(p.apiKey):'',baseUrl:'url' in j?(field(p.baseUrl)||j.url):'',
+      // 주소: 저장된 값이 없을 때만 기본 주소. 일부러 비운 칸('' — 서버 .env 의 주소를 씀)은 그대로 둔다.
+      providers[id]={model:field(p.model)||j.model||'',apiKey:j.key?field(p.apiKey):'',baseUrl:'url' in j?(typeof p.baseUrl==='string'?field(p.baseUrl):j.url):'',
         reasoning:(REASONING[id]||['auto']).includes(p.reasoning)?p.reasoning:'auto',fast:FAST.includes(id)&&p.fast===true};
     }
     return {provider,providers};
@@ -59,11 +60,31 @@
     const p=s.providers[s.provider];
     return JSON.stringify({provider:s.provider,model:p.model.trim(),api_key:p.apiKey.trim(),base_url:p.baseUrl.trim(),reasoning:p.reasoning,fast:p.fast});
   }
+  // 서버 .env 의 기본 판단 모델(GET /judge/default, D-22). 키·주소 값은 오지 않고 있는지만 온다. 규칙 기반·잘못된 값이면 null.
+  function serverJudge(raw) {
+    const r=raw&&typeof raw==='object'?raw:{};
+    if(!Object.hasOwn(JUDGES,r.provider)||r.provider==='rules')return null;
+    const id=r.provider;
+    return {provider:id,model:field(r.model),reasoning:(REASONING[id]||['auto']).includes(r.reasoning)?r.reasoning:'auto',
+      fast:FAST.includes(id)&&r.fast===true,hasKey:r.has_key===true,hasUrl:r.has_url===true,sendsOutside:r.sends_outside===true};
+  }
+  // 브라우저에 저장된 설정이 없는 사용자(처음 온 사용자)의 시작값. 키는 비워 서버 키를 쓰게 하고, 서버에 주소가 있으면 주소도 비운다.
+  function withServerDefault(settings,server) {
+    const s=devSettings(settings);
+    if(!server)return s;
+    const p=s.providers[server.provider];
+    s.provider=server.provider;
+    Object.assign(p,{model:server.model||p.model,reasoning:server.reasoning,fast:server.fast,apiKey:''});
+    if(server.hasUrl)p.baseUrl='';
+    return devSettings(s);
+  }
   // 글자가 이 컴퓨터 밖으로 나가는가. 클라우드 공급자는 항상, Ollama·Custom 은 주소가 이 컴퓨터가 아닐 때.
-  function sendsOutside(settings) {
+  // 주소 칸을 비워 서버 .env 의 주소를 쓰면 서버가 알려 준 값을 따른다.
+  function sendsOutside(settings,server) {
     const s=devSettings(settings),j=JUDGES[s.provider];
     if(s.provider==='rules')return false;
     if(j.cloud)return true;
+    if(server&&server.hasUrl&&s.provider===server.provider&&!s.providers[s.provider].baseUrl.trim())return server.sendsOutside;
     try{return !['localhost','127.0.0.1','[::1]'].includes(new URL(s.providers[s.provider].baseUrl).hostname);}catch{return false;}
   }
   // 모델 목록을 물을 때 보내는 설정. 아직 모델을 고르기 전이라 model 은 비어도 된다.
@@ -245,5 +266,5 @@
     return {url:String(e?.url||''),label:e?.busy?label+' · 처리 중':label,tone};
   }
 
-  globalThis.PrivacyLensCore=Object.freeze({FAST,REASONING,REASONING_LABELS,queueBadge,engineRow,TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
+  globalThis.PrivacyLensCore=Object.freeze({FAST,REASONING,REASONING_LABELS,queueBadge,engineRow,TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,serverJudge,withServerDefault,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
 })();
