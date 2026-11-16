@@ -88,3 +88,24 @@ def test_import_real_fields_only_adds_enclosing_card(tmp_path: Path):
     assert rows[1:5] == ["0.500000", "0.500000", "1.000000", "1.000000"]
     only = next((ds / "labels/train").glob("realcard_*_b.txt")).read_text().split("\n")
     assert only[0].startswith(f"{cs.NUMBER_CLASS} ")
+
+
+def test_pseudo_label_cards_only_number_only_images(tmp_path: Path):
+    """번호 줄만 있는 실물 사진에만 예측 card 를 덧붙이고, 이미 card 가 있거나 합성 사진은 건드리지 않는다. 두 번 돌지 않는다."""
+    ds = tmp_path / "ds"
+    for name, rows in (("realcard_x_a", f"{cs.NUMBER_CLASS} 0.5 0.5 0.4 0.1"),
+                       ("realcard_x_b", f"{cs.CARD_CLASS} 0.5 0.5 0.9 0.9\n{cs.NUMBER_CLASS} 0.5 0.5 0.4 0.1"),
+                       ("synthcard_c", f"{cs.NUMBER_CLASS} 0.5 0.5 0.4 0.1")):
+        (ds / "images/train").mkdir(parents=True, exist_ok=True)
+        (ds / "labels/train").mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (64, 40)).save(ds / "images/train" / f"{name}.jpg")
+        (ds / "labels/train" / f"{name}.txt").write_text(rows + "\n")
+    seen = []
+
+    def predict(paths):
+        seen.extend(paths)
+        return [[(0.5, 0.5, 0.8, 0.6)] for _ in paths]
+    got = cs.pseudo_label_cards(ds, predict)
+    assert got == {"대상 사진": 1, "card 찾은 사진": 1, "덧붙인 card": 1} and len(seen) == 1
+    assert (ds / "labels/train/realcard_x_a.txt").read_text().splitlines()[0].startswith(f"{cs.CARD_CLASS} 0.500000")
+    assert cs.pseudo_label_cards(ds, predict) == {"상태": "이미 함"}
