@@ -509,6 +509,7 @@ python -m samples.props <폴더>                # 촬영용 가상 소품 인쇄
 python -m eval.failures strip <폴더>          # 위치정보 지우기
 python -m eval.failures init <폴더>           # 정답 틀 + 정답입력도구.html
 python -m eval.failures run <폴더> --note "…" # ① 못 찾음 ② 잘못 읽음 ③ 판단 실패, 평가기록.csv 누적
+python -m eval.judges photos <폴더> --virtual --judge rules --judge gemini_decision:gemini-decision-1  # 판단 방법 비교(가상 사진만, D-23)
 ```
 
 > 아래 `PL_OCR=paddleocr python …` 처럼 환경변수를 앞에 붙인 명령은 bash 문법입니다. PowerShell에서는 `$env:PL_OCR = "paddleocr"; python …` 로 실행합니다.

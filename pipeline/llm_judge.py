@@ -629,7 +629,7 @@ def to_findings(data: dict, spans: list[TextSpan]) -> list[Finding]:
         if message is None:  # 근거가 없거나 확인되지 않음 → 형식 근거
             message = wording.found_public(kind) if sev is Severity.INFO else wording.found(kind)
         if len(idx) > 1:
-            detail["parts"] = len(idx)
+            detail.update(parts=len(idx), span_indices=idx)  # 규칙 판단(context.find_cards)과 같은 키
         out.append(Finding(kind=kind, box=box, certainty=certainty, severity=sev, message=message,
                            evidence_text=evidence, context_words=context, span_index=idx[0], detail=detail))
     return out

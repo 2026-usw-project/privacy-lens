@@ -52,6 +52,7 @@ python run_gateway.py ... --ssl-cert cert.pem --ssl-key key.pem       # 게이�
 python -m pytest tests                     # 백엔드 테스트 (OCR 불필요)
 python -m eval.judgment --check            # 판단 회귀 검사(OCR 불필요, CI 와 같음)
 python -m eval.failures run <폴더>          # 실사 실패 원인 분류(사진은 드라이브)
+python -m eval.judges scenes --judge rules --judge gemini_decision:gemini-decision-1   # 판단 방법 비교(키는 PL_JUDGE_API_KEY, D-23)
 python -m eval.stability [--quick]         # 이상한 입력·연속 30장·동시 요청 점검
 python -m eval.workers                     # OCR 작업자(엔진) 수에 따른 처리량·지연·메모리
 python -m eval.names_check                 # 라벨 없는 이름 후보 판정(따로 모은 목록)
