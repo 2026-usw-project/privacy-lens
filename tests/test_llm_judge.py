@@ -439,3 +439,16 @@ def test_user_message_is_compact():
     text = llm_judge._user_message(SPANS, 300, 200)
     assert ", " not in text and ": " not in text and "null" not in text
     assert _json.loads(text)["spans"][2]["text"] == SPANS[2].text
+
+
+def test_birth_date_kind_and_health_document_follow_rules():
+    """기준표 2026-11-16: LLM 이 낸 이름·생년월일로 진료·처방 문서를 종이째 가린다(규칙과 같은 코드)."""
+    spans = [TextSpan("처방전", Box(10, 10, 80, 20), 0.97), TextSpan("환자명", Box(10, 40, 60, 20), 0.97),
+             TextSpan("김가상", Box(80, 40, 60, 20), 0.96), TextSpan("생년월일 1990. 01. 02.", Box(10, 70, 200, 20), 0.96),
+             TextSpan("약품명 아세트아미노펜500mg", Box(10, 100, 220, 20), 0.95)]
+    out = llm_judge.evaluate(spans, CFG, width=300, height=200, transport=fake(reply([
+        {"i": [2], "kind": "name", "severity": "cover", "basis": "label", "label_i": 1},
+        {"i": [3], "kind": "birth_date", "severity": "cover", "text": "1990. 01. 02.", "basis": "label", "label_i": 3}])))
+    kinds = {f.kind for f in out}
+    assert {"name", "birth_date", "health_document"} <= kinds
+    assert "birth_date" in llm_judge.KINDS and "birth_date" in llm_judge.SYSTEM_PROMPT

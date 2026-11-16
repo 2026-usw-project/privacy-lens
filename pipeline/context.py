@@ -490,6 +490,8 @@ _C = r"[0-9OoDQIl|SsBZ]"
 _RE_CARD16 = re.compile(rf"(?<![0-9A-Za-z])(?:{_C}{{4}}[-\s.]?){{3}}{_C}{{4}}(?![0-9A-Za-z])")
 _RE_CARD15 = re.compile(rf"(?<![0-9A-Za-z]){_C}{{4}}[-\s.]{_C}{{6}}[-\s.]{_C}{{5}}(?![0-9A-Za-z])")
 _RE_EXPIRY = re.compile(r"(?<!\d)(?:0[1-9]|1[0-2])\s?/\s?\d{2}(?!\d)")
+# '1972. 02. 24.', '2027-01-31'. 구분자를 지우면 8자리라 세로 카드번호 묶음으로 잘못 쌓인다
+_RE_DATE = re.compile(r"(?:19|20)\d{2}\s?[.\-]\s?(?:0[1-9]|1[0-2])\s?[.\-]\s?(?:0[1-9]|[12]\d|3[01])\.?")
 # 카드 앞·뒷면에만 있는 낱말. 영수증에도 나오는 '카드'·'카드번호'·'카드승인'은 넣지 않는다.
 _CARD_FACE_WORDS = ["VALIDTHRU", "GOODTHRU", "VALID", "THRU", "EXPIRES", "VISA", "MASTERCARD", "MASTER",
                     "AMEX", "AMERICANEXPRESS", "JCB", "UNIONPAY", "CVC", "CVV", "DEBIT", "CREDIT", "CHECK",
@@ -507,7 +509,9 @@ def _to_digits(text: str) -> str | None:
 
 
 def _digit_group(text: str) -> str | None:
-    """'6060', '4581 2484', '9O8B' 처럼 4자리 묶음만 있는 조각이면 숫자만, 아니면 None."""
+    """'6060', '4581 2484', '9O8B' 처럼 4자리 묶음만 있는 조각이면 숫자만, 아니면 None. 날짜 모양은 뺀다."""
+    if _RE_DATE.fullmatch(kp.normalize(text).strip()):
+        return None
     d = _to_digits(kp.normalize(text))
     return d if d and len(d) % 4 == 0 and len(d) < 16 else None
 

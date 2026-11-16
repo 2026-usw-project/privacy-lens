@@ -57,8 +57,8 @@
    14
   ],
   "none|날짜": [
-   14,
-   14
+   28,
+   28
   ],
   "none|대표번호": [
    14,
@@ -101,8 +101,8 @@
    14
   ],
   "review|생년월일": [
-   14,
-   14
+   28,
+   28
   ],
   "review|운송장번호": [
    14,
@@ -119,14 +119,14 @@
  },
  "false_cover": 0,
  "summary": {
-  "items": 882,
+  "items": 910,
   "cover_total": 560,
   "cover_hit": 100.0,
   "cover_weak": 0.0,
   "cover_miss": 0.0,
-  "review_total": 70,
+  "review_total": 84,
   "review_ok": 100.0,
-  "none_total": 252,
+  "none_total": 266,
   "false_cover": 0.0,
   "false_review": 0.0
  }
