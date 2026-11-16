@@ -45,6 +45,8 @@ KIND_NOUN = {
     "account": "계좌번호로 보이는 숫자",
     "password": "비밀번호로 보이는 문자열",
     "student_id": "학번·사번으로 보이는 숫자",
+    "birth_date": "생년월일로 보이는 날짜",
+    "health_document": "진료·처방 문서",
     "qr": "QR코드",
     "barcode": "바코드",
     "gps": "촬영 위치 좌표",
@@ -175,6 +177,11 @@ def card_number_region() -> str:
 def card_number_unread() -> str:
     """결제 카드는 찾았는데 번호를 못 읽은 경우. 양각이거나 카드와 같은 색인 번호는 OCR 이 못 읽어도 사람은 읽는다."""
     return assert_safe("결제 카드로 추정되는 영역에서 카드번호를 읽지 못했습니다. 번호가 보이면 카드째 가리는 것을 권합니다")
+
+
+def health_document(words: list[str]) -> str:
+    cue = "·".join(f"'{w}'" for w in words)
+    return assert_safe(f"{cue} 같은 진료·처방 단어와 환자 정보가 함께 있어 진료·처방 문서로 보이는 영역이 있음")
 
 
 def face_photo_region() -> str:
