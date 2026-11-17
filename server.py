@@ -800,5 +800,6 @@ def _redact_turn(data: bytes, boxes: str, style: str, live: str | None) -> tuple
 if __name__ == "__main__":
     import uvicorn
 
+    # 쉬는 연결 유지 시간은 게이트웨이(httpx 기본 5초)보다 길게. 둘 다 5초면 게이트웨이가 막 끊긴 연결로 사진을 보낸다
     uvicorn.run(app, host=os.environ.get("HOST", "127.0.0.1"), port=int(os.environ.get("PORT", 8000)),
-                access_log=False)
+                access_log=False, timeout_keep_alive=30)

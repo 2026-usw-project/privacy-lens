@@ -93,6 +93,7 @@ class Router(httpx.AsyncBaseTransport):
         self.engines = engines
         self.down: set[str] = set()
         self.slow: set[str] = set()
+        self.dropped: set[str] = set()   # 요청을 받다가 연결이 끊김(쉬던 연결이 막 닫힌 경우 등)
         self.transports = {n: httpx.ASGITransport(app=e.app) for n, e in engines.items()}
 
     async def handle_async_request(self, request):
@@ -101,6 +102,8 @@ class Router(httpx.AsyncBaseTransport):
             raise httpx.ConnectError("down", request=request)
         if host in self.slow and request.url.path == "/health":
             raise httpx.ReadTimeout("slow", request=request)
+        if host in self.dropped and request.url.path != "/health":
+            raise httpx.ReadError("", request=request)
         return await self.transports[host].handle_async_request(request)
 
 
@@ -257,6 +260,16 @@ def test_connect_failure_moves_job_to_another_engine():
         assert gw.engines()["alive"] == 2
 
     run_with_gateway(["e1", "e2"], body)
+
+
+def test_dropped_connection_answers_instead_of_hanging():
+    async def body(client, gw, engines, router):
+        router.dropped.add("e1")
+        r = await asyncio.wait_for(post(client, T[0]), timeout=3)        # 예전에는 ReadError 로 끝없이 기다렸다
+        assert r.status_code == 503
+        assert gw.engines()["busy"] == 0
+
+    run_with_gateway(["e1"], body)
 
 
 def test_no_engine_alive():
