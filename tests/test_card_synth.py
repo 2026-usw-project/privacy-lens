@@ -109,3 +109,19 @@ def test_pseudo_label_cards_only_number_only_images(tmp_path: Path):
     assert got == {"대상 사진": 1, "card 찾은 사진": 1, "덧붙인 card": 1} and len(seen) == 1
     assert (ds / "labels/train/realcard_x_a.txt").read_text().splitlines()[0].startswith(f"{cs.CARD_CLASS} 0.500000")
     assert cs.pseudo_label_cards(ds, predict) == {"상태": "이미 함"}
+
+
+def test_add_ids_to_dataset_labels_id_card(tmp_path: Path):
+    """가상 학생증·신분 확인 카드를 붙이고 id_card(0) 라벨을 덧붙인다. 원래 라벨은 그대로, 두 번 돌면 건너뛴다."""
+    ds = tmp_path / "ds"
+    (ds / "images/train").mkdir(parents=True)
+    (ds / "labels/train").mkdir(parents=True)
+    Image.new("RGB", (640, 480), (120, 130, 140)).save(ds / "images/train/bg.jpg")
+    (ds / "labels/train/bg.txt").write_text("7 0.2 0.2 0.1 0.1\n")
+    got = cs.add_ids_to_dataset(ds, n=3, seed=1)
+    assert got == {"추가": 3, "이미 있음": 0}
+    for k in range(3):
+        rows = (ds / f"labels/train/{cs.ID_PREFIX}{k:05d}.txt").read_text().splitlines()
+        assert rows[0] == "7 0.2 0.2 0.1 0.1"
+        assert rows[-1].startswith(f"{cs.ID_CLASS} ")
+    assert cs.add_ids_to_dataset(ds, n=3) == {"추가": 0, "이미 있음": 3}

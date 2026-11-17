@@ -259,6 +259,68 @@ def add_to_dataset(ds: Path, n: int = 3000, split: str = "train", seed: int = 7,
     return {"추가": made, "이미 있음": have}
 
 
+# ------------------------------------------------------------------ 가상 학생증·신분 확인 카드(id_card)
+# 학습 데이터의 신분증은 해외 사진(VISPR)뿐이라 한국식 학생증을 모른다. samples/props.py 의 가상 소품
+# (학생증 가로·세로, 신분 확인용 카드)을 같은 방법으로 학습 사진에 붙인다. 모두 '견본 SAMPLE' 표시가 있고
+# 주민등록증·면허증·여권 디자인은 흉내 내지 않는다.
+ID_CLASS = 0
+ID_PREFIX = "synthid_"
+
+
+def render_id(r: random.Random) -> Image.Image:
+    """가상 학생증·신분 확인 카드 한 장(RGBA, 모서리 둥글게, 바깥 투명)."""
+    from samples import props as sp
+    from samples.fake import Fake
+
+    make = r.choice([sp.student_card, sp.student_card, sp.student_card_vertical, sp.id_card])
+    prop = make(f"P{r.randint(10, 99)}", Fake(r.randint(0, 10 ** 9)))
+    img = prop.image.convert("RGB")
+    if max(img.size) > 856:
+        img.thumbnail((856, 856))
+    mask = Image.new("L", img.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, img.width - 1, img.height - 1], int(min(img.size) * 0.06), fill=255)
+    out = img.convert("RGBA")
+    out.putalpha(mask)
+    return out
+
+
+def add_ids_to_dataset(ds: Path, n: int = 2000, split: str = "train", seed: int = 11, max_side: int = 1280) -> dict:
+    """학습 사진에 가상 학생증·신분 확인 카드 n 장을 붙여 id_card 라벨과 함께 더한다. 이미 있으면 건너뛴다."""
+    img_dir, lab_dir = ds / "images" / split, ds / "labels" / split
+    have = len(list(img_dir.glob(ID_PREFIX + "*.jpg")))
+    if have >= n:
+        return {"추가": 0, "이미 있음": have}
+    pool = sorted(p for p in img_dir.iterdir() if p.suffix.lower() in (".jpg", ".jpeg", ".png")
+                  and not p.name.startswith((PREFIX, ID_PREFIX)))
+    if not pool:
+        raise FileNotFoundError(f"배경으로 쓸 사진이 없습니다: {img_dir}")
+    r = random.Random(seed)
+    made = 0
+    for i in range(have, n):
+        src = r.choice(pool)
+        try:
+            bg = Image.open(src).convert("RGB")
+        except Exception:
+            continue
+        if min(bg.size) < 240:
+            continue
+        if max(bg.size) > max_side:
+            bg.thumbnail((max_side, max_side))
+        lab = lab_dir / (src.stem + ".txt")
+        lines = [ln for ln in lab.read_text().splitlines() if ln.strip()] if lab.exists() else []
+        avoid = [tuple(map(float, ln.split()[1:5])) for ln in lines]
+        out, (x0, y0, x1, y1) = paste_card(bg, render_id(r), r, avoid)
+        W, H = out.size
+        if x1 - x0 < 8 or y1 - y0 < 8:
+            continue
+        lines.append(f"{ID_CLASS} {(x0 + x1) / 2 / W:.6f} {(y0 + y1) / 2 / H:.6f} {(x1 - x0) / W:.6f} {(y1 - y0) / H:.6f}")
+        name = f"{ID_PREFIX}{i:05d}"
+        out.save(img_dir / (name + ".jpg"), quality=r.randint(78, 93))
+        (lab_dir / (name + ".txt")).write_text("\n".join(lines) + "\n")
+        made += 1
+    return {"추가": made, "이미 있음": have}
+
+
 # ------------------------------------------------------------------ 실물 카드 공개 데이터(Roboflow Universe)
 # 받은 zip(YOLO 형식)을 드라이브 objects/raw/cards/ 에 두면 가져온다. 출처·라이선스는 vision/README.md.
 REAL_PREFIX = "realcard_"
