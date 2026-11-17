@@ -11,9 +11,12 @@ README 에 다 담기에는 긴 내용을 여기에 둔다. 설치 세부, 설�
 
 ```bash
 pip install -r requirements.txt
-pip install paddleocr "paddlepaddle<3.3"
+pip install paddlepaddle==3.2.2 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+pip install paddleocr
 python run.py
 ```
+
+CPU 기준이다. NVIDIA GPU(CUDA 13, `paddlepaddle-gpu==3.4.0`)와 PyTorch CPU 빌드 순서 등 설치 전체는 [설치와 운영](SETUP.md#1-설치)에 있다.
 
 `run.py` 가 환경을 먼저 점검한다. 패키지·한글 폰트·선택한 OCR 엔진을
 확인하고, 없으면 운영체제에 맞는 설치 방법을 알려준 뒤 멈춘다. 샘플 이미지도
@@ -79,7 +82,7 @@ node scripts/build.mjs            # dist → privacy-lens.html
 ### OCR 엔진 교체
 
 ```bash
-pip install paddleocr "paddlepaddle<3.3"
+# PaddleOCR 설치는 SETUP.md (CPU 3.2.2 · GPU 3.4.0)
 
 # 기본: 모든 운영체제
 python run.py

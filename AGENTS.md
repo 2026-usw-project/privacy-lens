@@ -66,4 +66,4 @@ python -m vision status --root <PrivacyLens-YOLO>                    # YOLO 학�
 cd web/frontend-demo && node scripts/check.mjs && node scripts/check-contract.mjs && node scripts/build.mjs
 ```
 
-기본 OCR 은 PaddleOCR 입니다. `pip install paddleocr "paddlepaddle<3.3"` 로 설치합니다. Tesseract 를 쓰려면 `PL_OCR=tesseract` 를 지정합니다.
+기본 OCR 은 PaddleOCR 입니다. CPU 는 `paddlepaddle==3.2.2`(3.3.x 는 CPU 추론 오류), NVIDIA GPU 는 `paddlepaddle-gpu==3.4.0`(CUDA 13)과 `paddleocr` 을 설치합니다. 명령과 이유는 [docs/SETUP.md](docs/SETUP.md). Tesseract 를 쓰려면 `PL_OCR=tesseract` 를 지정합니다.
