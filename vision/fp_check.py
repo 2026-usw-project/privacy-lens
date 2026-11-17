@@ -38,8 +38,8 @@ def _labels(path: Path) -> list[tuple[int, tuple[float, float, float, float]]]:
 def source_of(stem: str) -> str:
     """파일 이름 앞부분으로 데이터 묶음을 가른다(realcard_<zip>_… 는 zip 까지)."""
     parts = stem.split("_")
-    if parts[0] == "realcard" and len(parts) > 2:
-        return "_".join(parts[:2])
+    if parts[0] == "realcard":                 # zip 이름에 _ 가 섞여 앞 네 조각까지 본다
+        return "_".join(parts[:4])
     return parts[0]
 
 
