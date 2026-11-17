@@ -34,7 +34,14 @@ _FONT_PATHS: tuple[str, str] | None = None
 def _font(px: int, bold: bool = True) -> ImageFont.FreeTypeFont:
     global _FONT_PATHS
     if _FONT_PATHS is None:
-        _FONT_PATHS = fonts.find_korean_font()
+        try:
+            _FONT_PATHS = fonts.find_korean_font()
+        except RuntimeError:
+            # 한글 폰트가 없는 곳(Colab 기본): 영문 폰트로 대신한다. 숫자·영문은 그대로, 한글 글자만 네모로 나온다
+            import matplotlib
+            d = Path(matplotlib.get_data_path()) / "fonts" / "ttf"
+            _FONT_PATHS = (str(d / "DejaVuSans.ttf"), str(d / "DejaVuSans-Bold.ttf"))
+            print("한글 폰트 없음: 카드 글자를 영문 폰트로 그립니다(apt install fonts-nanum 이면 한글도 나옴)", flush=True)
     return ImageFont.truetype(_FONT_PATHS[1 if bold else 0], max(8, int(px)))
 
 
@@ -252,6 +259,68 @@ def add_to_dataset(ds: Path, n: int = 3000, split: str = "train", seed: int = 7,
     return {"추가": made, "이미 있음": have}
 
 
+# ------------------------------------------------------------------ 가상 학생증·신분 확인 카드(id_card)
+# 학습 데이터의 신분증은 해외 사진(VISPR)뿐이라 한국식 학생증을 모른다. samples/props.py 의 가상 소품
+# (학생증 가로·세로, 신분 확인용 카드)을 같은 방법으로 학습 사진에 붙인다. 모두 '견본 SAMPLE' 표시가 있고
+# 주민등록증·면허증·여권 디자인은 흉내 내지 않는다.
+ID_CLASS = 0
+ID_PREFIX = "synthid_"
+
+
+def render_id(r: random.Random) -> Image.Image:
+    """가상 학생증·신분 확인 카드 한 장(RGBA, 모서리 둥글게, 바깥 투명)."""
+    from samples import props as sp
+    from samples.fake import Fake
+
+    make = r.choice([sp.student_card, sp.student_card, sp.student_card_vertical, sp.id_card])
+    prop = make(f"P{r.randint(10, 99)}", Fake(r.randint(0, 10 ** 9)))
+    img = prop.image.convert("RGB")
+    if max(img.size) > 856:
+        img.thumbnail((856, 856))
+    mask = Image.new("L", img.size, 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, img.width - 1, img.height - 1], int(min(img.size) * 0.06), fill=255)
+    out = img.convert("RGBA")
+    out.putalpha(mask)
+    return out
+
+
+def add_ids_to_dataset(ds: Path, n: int = 2000, split: str = "train", seed: int = 11, max_side: int = 1280) -> dict:
+    """학습 사진에 가상 학생증·신분 확인 카드 n 장을 붙여 id_card 라벨과 함께 더한다. 이미 있으면 건너뛴다."""
+    img_dir, lab_dir = ds / "images" / split, ds / "labels" / split
+    have = len(list(img_dir.glob(ID_PREFIX + "*.jpg")))
+    if have >= n:
+        return {"추가": 0, "이미 있음": have}
+    pool = sorted(p for p in img_dir.iterdir() if p.suffix.lower() in (".jpg", ".jpeg", ".png")
+                  and not p.name.startswith((PREFIX, ID_PREFIX)))
+    if not pool:
+        raise FileNotFoundError(f"배경으로 쓸 사진이 없습니다: {img_dir}")
+    r = random.Random(seed)
+    made = 0
+    for i in range(have, n):
+        src = r.choice(pool)
+        try:
+            bg = Image.open(src).convert("RGB")
+        except Exception:
+            continue
+        if min(bg.size) < 240:
+            continue
+        if max(bg.size) > max_side:
+            bg.thumbnail((max_side, max_side))
+        lab = lab_dir / (src.stem + ".txt")
+        lines = [ln for ln in lab.read_text().splitlines() if ln.strip()] if lab.exists() else []
+        avoid = [tuple(map(float, ln.split()[1:5])) for ln in lines]
+        out, (x0, y0, x1, y1) = paste_card(bg, render_id(r), r, avoid)
+        W, H = out.size
+        if x1 - x0 < 8 or y1 - y0 < 8:
+            continue
+        lines.append(f"{ID_CLASS} {(x0 + x1) / 2 / W:.6f} {(y0 + y1) / 2 / H:.6f} {(x1 - x0) / W:.6f} {(y1 - y0) / H:.6f}")
+        name = f"{ID_PREFIX}{i:05d}"
+        out.save(img_dir / (name + ".jpg"), quality=r.randint(78, 93))
+        (lab_dir / (name + ".txt")).write_text("\n".join(lines) + "\n")
+        made += 1
+    return {"추가": made, "이미 있음": have}
+
+
 # ------------------------------------------------------------------ 실물 카드 공개 데이터(Roboflow Universe)
 # 받은 zip(YOLO 형식)을 드라이브 objects/raw/cards/ 에 두면 가져온다. 출처·라이선스는 vision/README.md.
 REAL_PREFIX = "realcard_"
@@ -286,6 +355,15 @@ def _yaml_names(text: str) -> list[str]:
     return out
 
 
+def _enclosing_card(boxes: list[tuple[float, float, float, float]]) -> str:
+    """칸만 단 데이터의 card 상자. 이 데이터는 카드를 가까이 찍은 사진이라 칸 일부만 라벨이 달린 경우가 많아,
+    칸들을 둘러싼 상자보다 사진 전체가 실제 카드에 더 가깝다(직접 확인함). 칸이 사진 밖으로 나가면 그만큼 넓힌다."""
+    x0, y0 = min(0.0, *(b[0] for b in boxes)), min(0.0, *(b[1] for b in boxes))
+    x1, y1 = max(1.0, *(b[2] for b in boxes)), max(1.0, *(b[3] for b in boxes))
+    x0, y0, x1, y1 = max(0.0, x0), max(0.0, y0), min(1.0, x1), min(1.0, y1)
+    return f"{CARD_CLASS} {(x0 + x1) / 2:.6f} {(y0 + y1) / 2:.6f} {x1 - x0:.6f} {y1 - y0:.6f}"
+
+
 def import_real(ds: Path, zips: list[Path], max_side: int = 1280) -> dict:
     """Roboflow YOLO zip 들을 ds 에 더한다. train → train, valid·test → val. 이미 가져온 zip 은 건너뛴다.
     다각형 라벨은 둘러싼 상자로 바꾼다. 쓸 클래스가 하나도 없는 사진은 넣지 않는다."""
@@ -303,6 +381,9 @@ def import_real(ds: Path, zips: list[Path], max_side: int = 1280) -> dict:
             yml = next((n for n in names_in if n.endswith("data.yaml")), None)
             classes = _yaml_names(z.read(yml).decode("utf-8", "replace")) if yml else []
             mapping = {i: map_card_class(c) for i, c in enumerate(classes)}
+            # 카드 통째 클래스 없이 칸(번호·이름·유효기간·로고)만 단 데이터: card 상자를 덧붙인다(_enclosing_card).
+            # 이렇게 안 하면 사진 대부분을 차지한 카드가 '배경'으로 학습된다.
+            fields_only = CARD_CLASS not in mapping.values() and len(classes) >= 3
             count = {"train": 0, "val": 0, "card": 0, "card_number": 0}
             for n in names_in:
                 parts = n.replace("\\", "/").split("/")
@@ -315,9 +396,10 @@ def import_real(ds: Path, zips: list[Path], max_side: int = 1280) -> dict:
                 if lab_name not in names_in:
                     continue
                 rows = []
+                all_boxes = []
                 for ln in z.read(lab_name).decode("utf-8", "replace").splitlines():
                     v = ln.split()
-                    if len(v) < 5 or not v[0].isdigit() or mapping.get(int(v[0])) is None:
+                    if len(v) < 5 or not v[0].isdigit():
                         continue
                     nums = [float(t) for t in v[1:]]
                     if len(nums) == 4:
@@ -327,9 +409,15 @@ def import_real(ds: Path, zips: list[Path], max_side: int = 1280) -> dict:
                         cx, cy, w, h = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, max(xs) - min(xs), max(ys) - min(ys)
                     if w <= 0 or h <= 0:
                         continue
+                    all_boxes.append((cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2))
+                    if mapping.get(int(v[0])) is None:
+                        continue
                     cls = mapping[int(v[0])]
                     rows.append(f"{cls} {cx:.6f} {cy:.6f} {min(w, 1):.6f} {min(h, 1):.6f}")
                     count["card" if cls == CARD_CLASS else "card_number"] += 1
+                if fields_only and len(all_boxes) >= 2:
+                    rows.insert(0, _enclosing_card(all_boxes))
+                    count["card"] += 1
                 if not rows:
                     continue
                 try:
@@ -347,3 +435,47 @@ def import_real(ds: Path, zips: list[Path], max_side: int = 1280) -> dict:
         marker.write_text("ok")
         stats[zp.name] = {"클래스": {c: mapping[i] for i, c in enumerate(classes)}, **count}
     return stats
+
+
+def pseudo_label_cards(ds: Path, predict, batch: int = 32) -> dict:
+    """card_number 만 있고 card 라벨이 없는 실물 사진에, 이전 모델이 찾은 card 상자를 덧붙인다.
+
+    card-number-detecter 처럼 번호 줄만 라벨한 데이터는 카드 크기·위치가 제각각이라 사진 전체를 card 로 둘 수 없고,
+    그대로 두면 카드가 배경으로 학습된다. predict(경로 목록) → 사진마다 [(cx, cy, w, h), ...](0~1) 를 돌려주는 함수.
+    한 번만 돈다(.pseudo_cards.done)."""
+    marker = ds / ".pseudo_cards.done"
+    if marker.exists():
+        return {"상태": "이미 함"}
+    todo: list[tuple[Path, Path, list[str]]] = []
+    for split in ("train", "val"):
+        for lab in sorted((ds / "labels" / split).glob(f"{REAL_PREFIX}*.txt")):
+            rows = [r for r in lab.read_text().splitlines() if r.strip()]
+            cls = {r.split()[0] for r in rows}
+            if str(CARD_CLASS) in cls or str(NUMBER_CLASS) not in cls:
+                continue
+            img = ds / "images" / split / (lab.stem + ".jpg")
+            if img.exists():
+                todo.append((img, lab, rows))
+    added = found = 0
+    for i in range(0, len(todo), batch):
+        part = todo[i:i + batch]
+        for (img, lab, rows), boxes in zip(part, predict([str(t[0]) for t in part])):
+            if not boxes:
+                continue
+            found += 1
+            new = [f"{CARD_CLASS} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}" for cx, cy, w, h in boxes]
+            lab.write_text("\n".join(new + rows) + "\n")
+            added += len(new)
+    marker.write_text("ok")
+    return {"대상 사진": len(todo), "card 찾은 사진": found, "덧붙인 card": added}
+
+
+def yolo_card_predictor(weights: str, conf: float = 0.35, imgsz: int = 640):
+    """pseudo_label_cards 에 넘길 예측 함수(이전 일상 모델의 card 클래스만)."""
+    from ultralytics import YOLO
+    m = YOLO(weights)
+
+    def predict(paths: list[str]) -> list[list[tuple[float, float, float, float]]]:
+        res = m.predict(paths, imgsz=imgsz, conf=conf, classes=[CARD_CLASS], verbose=False)
+        return [[tuple(b) for b in r.boxes.xywhn.tolist()] for r in res]
+    return predict

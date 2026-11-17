@@ -205,7 +205,7 @@ GPU 한도가 풀리면 노트북을 위에서부터 돌린다. 칸마다 혼자
 
 | 데이터 | 사진 | 우리 클래스 | 라이선스 |
 |---|---|---|---|
-| [Card Number Detecter](https://universe.roboflow.com/test-3klwp/card-number-detecter) (Roboflow, test) | 967 · 손에 든 실물 카드 | `card_number` | CC BY 4.0 |
+| [Card Number Detecter](https://universe.roboflow.com/test-3klwp/card-number-detecter) (Roboflow, test) | v4 2,479(늘림 포함) · 실물 카드 | `card_number` | CC BY 4.0 |
 | [credit card object detection](https://universe.roboflow.com/karthik-b1wgt/credit-card-object-detection) (KARTHIK) | 218 · 카드 정면 | `card_number`(Card number), 나머지 4종은 안 씀 | CC BY 4.0 |
 | [Credit card](https://universe.roboflow.com/test-70hyp/credit-card-xk7ik) (test) | 944 · 장면 속 카드 | `card` | MIT |
 | [credit-card-detector](https://universe.roboflow.com/khaled-6hzrf/credit-card-detector-mltzy) (khaled) | 979 · 장면 속 카드 | `card` | MIT |
@@ -215,6 +215,64 @@ GPU 한도가 풀리면 노트북을 위에서부터 돌린다. 칸마다 혼자
 - 클래스 이름은 `card_synth.map_card_class` 가 옮긴다(이름에 number → `card_number`, card·credit card → `card`, 그 밖은 버림). 실행하면 zip 마다 옮긴 결과와 장수를 찍는다.
 - 사진은 저장소에 넣지 않는다(드라이브·작업 폴더에만). 공개 데이터라도 카드 사진이므로 발표 자료에 그대로 싣지 않는다.
 - 서버: `card_number` 를 찾았는데 OCR 이 그 자리에서 카드번호를 못 읽었으면 번호 줄만 가림 권장(`pipeline/detect.py`).
+- 칸만 라벨된 데이터(credit card object detection)는 카드 근접 사진이라 사진 전체를 `card` 로 덧붙인다.
+  번호 줄만 라벨된 데이터(Card Number Detecter)는 이전 모델(`daily_v002`)이 찾은 `card` 상자를 덧붙인다(`pseudo_label_cards`).
+  둘 다 안 하면 카드가 배경으로 학습된다.
+
+학습 결과 (2026-11-16, Colab T4, `daily_v002` 에서 이어 15 epoch, 마지막 가중치) → 드라이브 `objects/daily_v003/best.onnx`
+
+학습 13,650장(실물 카드 4개 + 합성 2,992장 포함), 검증 4,900장(실물 카드 검증 분할 포함). 두 모델을 **같은 검증 사진**으로 잼(재현율 · mAP50).
+
+| 클래스 | v002 | v003 |
+|---|---|---|
+| 결제 카드 `card` | 0.53 · 0.669 | **0.73 · 0.855** |
+| 카드번호 줄 `card_number` | (없음) | 0.80 · 0.841 |
+| 신분증 `id_card` | 0.80 · 0.813 | 0.78 · 0.783 |
+| 명함·명찰 `name_tag` | 0.83 · 0.876 | 0.84 · 0.890 |
+| 우편물·송장 `waybill` | 0.84 · 0.916 | 0.87 · 0.926 |
+| 영수증·고지서 `receipt` | · 0.729 | 0.70 · 0.780 |
+| 개인 서류 `document` | 0.89 · 0.911 | 0.87 · 0.928 |
+| 티켓 `ticket` | 0.60 · 0.606 | 0.64 · 0.754 |
+| 화면 `screen` | 0.76 · 0.787 | 0.76 · 0.826 |
+| 약·건강 `health_item` | 0.72 · 0.772 | 0.72 · 0.777 |
+
+- 공개 데이터 검증 숫자다. 실물 카드 검증 사진 일부는 card 상자를 v002 가 달아서 v002 쪽에 유리하게 잰 값이다. **한국 실사로 다시 잰다.**
+- 신분증만 조금 떨어졌다(0.813 → 0.783). 카드와 헷갈리는지 실사에서 본다.
+- 결과 파일: 드라이브 `objects/daily_v003_val.json`.
+
+재학습 (2026-11-17, `daily_v003` 에서 이어 15 epoch) → 드라이브 `objects/daily_v004/best.onnx`
+
+v002 가 번호 줄만 라벨된 사진 2,471장 중 709장에만 `card` 를 채워서, v003 으로 다시 채우고(939장) 이어 학습했다(재현율 · mAP50).
+
+| 클래스 | v003 | v004 |
+|---|---|---|
+| 결제 카드 `card` | 0.73 · 0.855 | **0.81 · 0.915** |
+| 카드번호 줄 `card_number` | 0.80 · 0.841 | 0.82 · 0.864 |
+| 신분증 `id_card` | 0.78 · 0.783 | 0.78 · 0.802 (정밀도 0.89 → 0.81) |
+| 티켓 `ticket` | 0.64 · 0.754 | 0.56 · 0.696 |
+| 전체 mAP50 | 0.836 | 0.851 |
+
+- **두 열의 검증 라벨이 다르다**: v004 열은 v003 이 채운 `card` 라벨이 검증 사진에도 들어가 있어(대상 5,822 → 5,876개) card 숫자가 v004 쪽에 유리하다. 같은 라벨로 다시 재지 않았다.
+- 티켓이 내려갔고 신분증 정밀도도 내려갔다. 나머지 클래스는 조금씩 올랐다(`objects/daily_v004_val.json`).
+- 번호 줄만 라벨된 사진 약 1,530장은 여전히 `card` 라벨이 없다. 공개 데이터 숫자이므로 **한국 실사로 다시 잰다.**
+
+신분증 보강 (2026-11-17, 가상 학생증·신분 확인 카드 1,998장 합성 + `daily_v004` 에서 이어 15 epoch) → 드라이브 `objects/daily_v005/best.onnx`
+
+세 모델을 **같은 검증 라벨, 서버 기준 0.6** 으로 다시 잼(정밀도 · 재현율). 신분증 오탐 출처는 `python -m vision.fp_check`.
+
+| 클래스 | v003 | v004 | v005 |
+|---|---|---|---|
+| 신분증 `id_card` | 0.90 · 0.78 | 0.82 · 0.78 | 0.85 · 0.78 |
+| 결제 카드 `card` | 0.96 · 0.68 | 0.94 · 0.80 | 0.94 · 0.80 |
+| 카드번호 줄 `card_number` | 0.76 · 0.77 | 0.76 · 0.81 | 0.78 · 0.80 |
+| 티켓 `ticket` | 0.85 · 0.57 | 0.84 · 0.56 | 0.90 · 0.52 |
+| 영수증 `receipt` | 0.87 · 0.68 | 0.94 · 0.68 | 0.93 · 0.74 |
+| 개인 서류 `document` | 0.90 · 0.84 | 0.93 · 0.88 | 0.93 · 0.91 |
+
+- 검증 신분증은 81개뿐이고 모두 해외 사진(VISPR)이다. 맞음 63·64·63, 오탐 7·10·10, 놓침 18·17·18 로 세 모델 차이는 상자 몇 개다.
+  신분증 오탐은 배경·티켓·송장 위에서 나왔고, 결제 카드를 신분증으로 잡은 경우는 세 모델 모두 없었다.
+- 가상 학생증은 학습에만 넣어 이 표로는 한국 학생증 효과를 알 수 없다. **한국 실물 학생증으로 다시 잰다.**
+- 티켓 재현율은 v003 보다 낮다(0.57 → 0.52).
 
 새 클래스 후보 — 서명(OCR 이 못 읽는 개인 식별 정보):
 

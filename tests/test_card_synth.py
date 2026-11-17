@@ -65,3 +65,63 @@ def test_import_real_maps_classes_and_polygons(tmp_path: Path):
     assert rows[0].startswith(f"{cs.NUMBER_CLASS} 0.5") and rows[1] == f"{cs.CARD_CLASS} 0.500000 0.500000 0.800000 0.800000"
     assert cs.import_real(ds, [zp])[zp.name] == "이미 가져옴"
     assert cs.map_card_class("Expiry date") is None and cs.map_card_class("valid-credit-card") == cs.CARD_CLASS
+
+
+def test_import_real_fields_only_adds_enclosing_card(tmp_path: Path):
+    """카드 통째 라벨 없이 칸만 단 데이터(번호·이름·유효기간·로고)는 카드 근접 사진이라 사진 전체를 card 로 덧붙인다."""
+    import io
+    import zipfile
+    zp = tmp_path / "credit card object detection.v1i.yolov8.zip"
+    buf = io.BytesIO()
+    Image.new("RGB", (640, 400), "gray").save(buf, "JPEG")
+    with zipfile.ZipFile(zp, "w") as z:
+        z.writestr("data.yaml", "nc: 5\nnames: ['Card issuer', 'Card number', 'Cardholder', 'Expiry date', 'Payment network']\n")
+        z.writestr("train/images/a.jpg", buf.getvalue())
+        z.writestr("train/labels/a.txt", "0 0.2 0.15 0.2 0.1\n1 0.5 0.55 0.6 0.1\n2 0.3 0.8 0.3 0.05\n")
+        z.writestr("train/images/b.jpg", buf.getvalue())
+        z.writestr("train/labels/b.txt", "1 0.5 0.55 0.6 0.1\n")                # 칸 하나뿐이면 card 를 지어내지 않는다
+    ds = tmp_path / "ds"
+    got = cs.import_real(ds, [zp])[zp.name]
+    assert (got["train"], got["card"], got["card_number"]) == (2, 1, 2)
+    rows = next((ds / "labels/train").glob("realcard_*_a.txt")).read_text().split()
+    assert rows[0] == str(cs.CARD_CLASS)
+    assert rows[1:5] == ["0.500000", "0.500000", "1.000000", "1.000000"]
+    only = next((ds / "labels/train").glob("realcard_*_b.txt")).read_text().split("\n")
+    assert only[0].startswith(f"{cs.NUMBER_CLASS} ")
+
+
+def test_pseudo_label_cards_only_number_only_images(tmp_path: Path):
+    """번호 줄만 있는 실물 사진에만 예측 card 를 덧붙이고, 이미 card 가 있거나 합성 사진은 건드리지 않는다. 두 번 돌지 않는다."""
+    ds = tmp_path / "ds"
+    for name, rows in (("realcard_x_a", f"{cs.NUMBER_CLASS} 0.5 0.5 0.4 0.1"),
+                       ("realcard_x_b", f"{cs.CARD_CLASS} 0.5 0.5 0.9 0.9\n{cs.NUMBER_CLASS} 0.5 0.5 0.4 0.1"),
+                       ("synthcard_c", f"{cs.NUMBER_CLASS} 0.5 0.5 0.4 0.1")):
+        (ds / "images/train").mkdir(parents=True, exist_ok=True)
+        (ds / "labels/train").mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (64, 40)).save(ds / "images/train" / f"{name}.jpg")
+        (ds / "labels/train" / f"{name}.txt").write_text(rows + "\n")
+    seen = []
+
+    def predict(paths):
+        seen.extend(paths)
+        return [[(0.5, 0.5, 0.8, 0.6)] for _ in paths]
+    got = cs.pseudo_label_cards(ds, predict)
+    assert got == {"대상 사진": 1, "card 찾은 사진": 1, "덧붙인 card": 1} and len(seen) == 1
+    assert (ds / "labels/train/realcard_x_a.txt").read_text().splitlines()[0].startswith(f"{cs.CARD_CLASS} 0.500000")
+    assert cs.pseudo_label_cards(ds, predict) == {"상태": "이미 함"}
+
+
+def test_add_ids_to_dataset_labels_id_card(tmp_path: Path):
+    """가상 학생증·신분 확인 카드를 붙이고 id_card(0) 라벨을 덧붙인다. 원래 라벨은 그대로, 두 번 돌면 건너뛴다."""
+    ds = tmp_path / "ds"
+    (ds / "images/train").mkdir(parents=True)
+    (ds / "labels/train").mkdir(parents=True)
+    Image.new("RGB", (640, 480), (120, 130, 140)).save(ds / "images/train/bg.jpg")
+    (ds / "labels/train/bg.txt").write_text("7 0.2 0.2 0.1 0.1\n")
+    got = cs.add_ids_to_dataset(ds, n=3, seed=1)
+    assert got == {"추가": 3, "이미 있음": 0}
+    for k in range(3):
+        rows = (ds / f"labels/train/{cs.ID_PREFIX}{k:05d}.txt").read_text().splitlines()
+        assert rows[0] == "7 0.2 0.2 0.1 0.1"
+        assert rows[-1].startswith(f"{cs.ID_CLASS} ")
+    assert cs.add_ids_to_dataset(ds, n=3) == {"추가": 0, "이미 있음": 3}

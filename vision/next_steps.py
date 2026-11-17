@@ -362,7 +362,7 @@ def _unpack_daily() -> None:
             "".join(f"  {i}: {n}\n" for i, n in enumerate(dd.CLASSES)))
 
 
-def train_cards(*, n: int = 3000, epochs: int = 15, run: str = "daily_objects_cards") -> Path:
+def train_cards(*, n: int = 3000, ids: int = 0, epochs: int = 15, run: str = "daily_objects_cards") -> Path:
     """가상 결제 카드를 학습 사진에 합성해 더한 뒤, 가장 최근 9종 모델에서 이어 학습한다(→ 다음 daily_vNNN).
 
     양각·카드와 같은 색 번호처럼 OCR 이 못 읽는 카드도 물건으로는 찾게 하려는 것(vision/card_synth.py).
@@ -376,7 +376,14 @@ def train_cards(*, n: int = 3000, epochs: int = 15, run: str = "daily_objects_ca
     zips = sorted((OUT / "raw" / "cards").glob("*.zip"))
     print("실물 카드 데이터:", json.dumps(cs.import_real(DAILY_DS, zips), ensure_ascii=False, indent=1) if zips
           else f"없음({OUT / 'raw' / 'cards'} 에 zip 을 두면 함께 학습)", flush=True)
+    done = sorted(OUT.glob("daily_v[0-9][0-9][0-9]/best.pt"))
+    base = str(done[-1]) if done else "yolo26n.pt"
+    # 번호 줄만 라벨된 실물 사진에는 이전 모델이 찾은 card 상자를 덧붙인다(없으면 카드가 배경으로 학습됨)
+    if done:
+        print("card 보충 라벨:", cs.pseudo_label_cards(DAILY_DS, cs.yolo_card_predictor(base)), flush=True)
     print("카드 합성:", cs.add_to_dataset(DAILY_DS, n=n, split="train"), flush=True)
+    if ids:   # 한국식 가상 학생증·신분 확인 카드(id_card). 해외 신분증 사진만으로는 한국 학생증을 모른다
+        print("신분증 합성:", cs.add_ids_to_dataset(DAILY_DS, n=ids, split="train"), flush=True)
     # 10번째 클래스 card_number(번호 줄)를 더한 이름표로 바꾼다
     names = list(dd.CLASSES) + ["card_number"]
     (DAILY_DS / "data.yaml").write_text(
@@ -384,8 +391,6 @@ def train_cards(*, n: int = 3000, epochs: int = 15, run: str = "daily_objects_ca
         "".join(f"  {i}: {c}\n" for i, c in enumerate(names)))
     for cache in (DAILY_DS / "labels").glob("*.cache"):   # 사진이 늘었으니 라벨 캐시를 다시 만든다
         cache.unlink()
-    done = sorted(OUT.glob("daily_v[0-9][0-9][0-9]/best.pt"))
-    base = str(done[-1]) if done else "yolo26n.pt"
     print("시작 모델:", base, flush=True)
     return train_daily(epochs=epochs, base=base, run=run)
 
