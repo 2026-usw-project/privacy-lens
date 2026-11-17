@@ -7,10 +7,10 @@
 일상 사진에 나도 모르게 작게 찍힌 택배 송장, 신분증, 카드, 모니터 화면을 찾아<br>
 위치와 이유를 보여 주고, 물건째 가린 사본을 만듭니다.
 
-![Python](https://img.shields.io/badge/Python-3.10%E2%80%933.13-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
-![PaddleOCR](https://img.shields.io/badge/OCR-PaddleOCR-0062B0?style=for-the-badge)
-![YOLO26](https://img.shields.io/badge/Detection-YOLO26%20%7C%20YuNet-111F68?style=for-the-badge)
+![Python](https://img.shields.io/badge/Python-3.10%E2%80%933.13-3776AB?style=flat-square&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white)
+![PaddleOCR](https://img.shields.io/badge/OCR-PaddleOCR-0062B0?style=flat-square)
+![YOLO26](https://img.shields.io/badge/Detection-YOLO26%20%7C%20YuNet-111F68?style=flat-square)
 
 [주요 기능](#주요-기능) · [빠른 시작](#빠른-시작) · [작동 방식](#작동-방식) · [개발](#개발) · [문서](#문서)
 
