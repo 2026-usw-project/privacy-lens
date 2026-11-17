@@ -8,9 +8,9 @@
 @font-face{font-family:"Pretendard";font-weight:700;font-style:normal;font-display:swap;src:url(fonts/Pretendard-Bold.subset.woff2) format("woff2")}
 :root{
   /* 밝은 화면이 기본이다. 어두운 화면은 아래 [data-theme="dark"] 에서 같은 이름의 값만 바꾼다. */
-  --bg:#f2f4f6;--surface:#fff;--surface-2:#f2f4f6;--surface-3:#e5e8eb;
+  --bg:#f2f4f6;--surface:#fff;--surface-2:rgb(30 45 80/.055);--surface-3:rgb(30 45 80/.095);
   --line:#eceff2;--line-strong:#d1d6db;
-  --ink:#191f28;--ink-2:#4e5968;--muted:#5f6b7a;
+  --ink:#191f28;--ink-2:#4e5968;--muted:#56616f;
   /* primary = 누르는 것·고른 것·진행. accent = 위험 표시(가림 권장, 탐지 박스). */
   --primary:#3182f6;--primary-solid:#1f6feb;--primary-hover:#1a5fd0;--primary-ink:#1b64da;--primary-tint:#e8f3ff;--primary-wash:#f3f8ff;--primary-line:#c9e2ff;
   --accent:#f04452;--accent-solid:#d92d3b;--accent-hover:#bf2431;--accent-ink:#c42231;--accent-tint:#fff0f1;--accent-wash:#fff7f7;--accent-line:#ffd0d4;
@@ -24,7 +24,7 @@
   /* 부드러운 입체: 빛은 위에서 온다. 새 색이 아니라 기존 값을 섞어 만든다.
      윗면 하이라이트 1px(--hi), 아랫면 두께 2px(--lip), 넓고 옅은 바닥 그림자(--drop). 누르면 내려앉고 놓으면 튕겨 돌아온다(--spring). */
   --lip:color-mix(in srgb,var(--primary-solid) 72%,#0a2a66);--hi:rgb(255 255 255/.3);--hi-soft:rgb(255 255 255/.9);
-  --drop:rgb(25 31 40/.07);--drop-blue:color-mix(in srgb,var(--primary-solid) 26%,transparent);--tile-top:#fff;
+  --drop:rgb(25 31 40/.07);--drop-blue:color-mix(in srgb,var(--primary-solid) 26%,transparent);--tile-top:rgb(255 255 255/.85);
   --duo-tint:color-mix(in srgb,var(--primary) 20%,transparent);--spring:cubic-bezier(.34,1.56,.64,1);
   --raise-primary:inset 0 1px 0 var(--hi),inset 0 -1px 0 rgb(0 0 0/.12),0 2px 0 var(--lip),0 8px 18px -4px var(--drop-blue);
   --raise-primary-hover:inset 0 1px 0 var(--hi),inset 0 -1px 0 rgb(0 0 0/.12),0 3px 0 var(--lip),0 12px 22px -6px var(--drop-blue);
@@ -40,7 +40,7 @@
   -webkit-font-smoothing:antialiased;font-synthesis:none;color-scheme:light;accent-color:var(--primary);caret-color:var(--primary);
 }
 :root[data-theme="dark"]{
-  --bg:#17171c;--surface:#202027;--surface-2:#2b2b34;--surface-3:#383843;
+  --bg:#17171c;--surface:#202027;--surface-2:rgb(255 255 255/.06);--surface-3:rgb(255 255 255/.1);
   --line:#2b2b34;--line-strong:#454552;
   --ink:#f2f4f6;--ink-2:#c3c9d1;--muted:#98a2ae;
   --primary:#4593fc;--primary-solid:#1f6feb;--primary-hover:#1a5fd0;--primary-ink:#79b0ff;--primary-tint:#1b2a44;--primary-wash:#18233a;--primary-line:#2c4a7a;
@@ -49,12 +49,30 @@
   --stage:#121217;--stage-line:#2b2b34;--stage-ink:#c3c9d1;--stage-dim:#98a2ae;--stage-fg:#f2f4f6;
   --photo-shadow:0 0 0 1px #ffffff1a,0 14px 36px #00000066;
   --toast-bg:#e5e8eb;--toast-ink:#191f28;--toast-icon:#137a4c;
-  --lip:#0e3a85;--hi:rgb(255 255 255/.16);--hi-soft:rgb(255 255 255/.06);--drop:rgb(0 0 0/.35);--drop-blue:rgb(0 0 0/.4);--tile-top:#383843;
+  --lip:#0e3a85;--hi:rgb(255 255 255/.16);--hi-soft:rgb(255 255 255/.06);--drop:rgb(0 0 0/.35);--drop-blue:rgb(0 0 0/.4);--tile-top:rgb(255 255 255/.09);
+  --glow-1:rgb(31 111 235/.30);--glow-2:rgb(106 92 240/.22);--glow-3:rgb(26 167 184/.16);--glow-4:rgb(59 130 246/.14);
+  --glass:rgb(32 32 39/.62);--glass-hi:rgb(255 255 255/.07);--glass-floor:rgb(23 23 28/.22);--veil:rgb(32 32 39/.6);--glass-edge:rgb(255 255 255/.06);--glass-drop:rgb(0 0 0/.5);
   color-scheme:dark;
 }
+/* 전체 바탕: 회색 바닥 위로 파랑·남보라·청록 빛이 아주 천천히 번진다(빨강은 위험 표시 전용이라 쓰지 않는다).
+   화면에 고정된 층이라 스크롤해도 따라오지 않고, 동작 줄이기 설정이면 멈춘 그림이 된다. */
+:root{--glow-1:rgb(49 130 246/.42);--glow-2:rgb(124 108 242/.30);--glow-3:rgb(46 196 214/.28);--glow-4:rgb(156 199 255/.55);
+  /* 빛 위에 놓인 반투명 유리 면. 큰 면 → 버튼·물건 → 점 바닥 순으로 옅다. 대화상자·펼침 메뉴·입력칸은 읽기 쉽게 불투명 흰색(--surface)을 쓴다. */
+  --glass:rgb(255 255 255/.64);--glass-hi:rgb(255 255 255/.72);--glass-floor:rgb(255 255 255/.34);--veil:rgb(255 255 255/.55);--glass-edge:rgb(255 255 255/.7);--glass-drop:rgb(40 70 160/.32)}
+.editor,.side-pane,.private-card{box-shadow:inset 0 0 0 1px var(--glass-edge),0 24px 56px -30px var(--glass-drop)}
+.backdrop{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;background:var(--bg)}
+.backdrop i{position:absolute;width:var(--s);height:var(--s);border-radius:50%;background:radial-gradient(circle closest-side,var(--c),transparent);
+  will-change:transform;animation:glow-drift var(--d) ease-in-out infinite alternate}
+.backdrop i:nth-child(1){--s:64vmax;--c:var(--glow-1);--d:34s;left:-16vmax;top:-26vmax}
+.backdrop i:nth-child(2){--s:56vmax;--c:var(--glow-2);--d:41s;right:-20vmax;top:-12vmax;animation-delay:-14s;animation-direction:alternate-reverse}
+.backdrop i:nth-child(3){--s:60vmax;--c:var(--glow-3);--d:38s;left:14vw;bottom:-34vmax;animation-delay:-22s}
+.backdrop i:nth-child(4){--s:42vmax;--c:var(--glow-4);--d:29s;right:2vw;bottom:-14vmax;animation-delay:-7s;animation-direction:alternate-reverse}
+@keyframes glow-drift{0%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(7vmax,5vmax,0) scale(1.1)}100%{transform:translate3d(-5vmax,8vmax,0) scale(.94)}}
+/* 사진을 놓는 바닥: 흰 면에 옅은 점. 첫 화면(업로드 칸 + 샘플)과 분석 화면(사진 칸)이 같은 바닥을 쓴다. 점 격자는 바닥 왼쪽 위에 맞춘다. */
+#emptyState,#imageState{background:radial-gradient(circle,var(--line-strong) 1px,transparent 1.6px) 0 0/16px 16px,var(--glass-floor)}
 ::selection{background:var(--primary-tint);color:var(--ink)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);min-height:100vh;word-break:keep-all;overflow-wrap:break-word}
+body{margin:0;background:none;min-height:100vh;word-break:keep-all;overflow-wrap:break-word}
 h1,h2,h3,p,dl,dd{margin:0}
 button,input,select{font:inherit;color:inherit}
 button{border:0;background:none;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -91,7 +109,7 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke
 .text-button{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 6px;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap}
 .text-button:hover:not(:disabled){color:var(--primary-ink);background:var(--primary-wash)}
 .text-button svg{width:15px;height:15px}
-.chip-button{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 13px;border-radius:12px;background:var(--surface);font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap;
+.chip-button{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 13px;border-radius:12px;background:var(--glass-hi);font-size:13px;font-weight:600;color:var(--ink-2);white-space:nowrap;
   box-shadow:inset 0 1px 0 var(--hi-soft),0 1px 0 var(--line-strong),0 4px 10px -6px var(--drop);transition:background .15s,transform .22s var(--spring),box-shadow .15s}
 .chip-button:active:not(:disabled){transform:translateY(1px);transition-duration:.06s;box-shadow:inset 0 1px 3px var(--drop)}
 /* 바꾼 뒤의 모습을 아이콘으로 보여 준다. 밝은 화면에서는 달, 어두운 화면에서는 해. */
@@ -106,7 +124,7 @@ select{background:var(--surface);border:0;border-radius:10px;padding:8px 12px;fo
 input[type=range]{accent-color:var(--primary);cursor:pointer}
 
 /* Sidebar */
-.sidebar{position:fixed;inset:0 auto 0 0;width:var(--sidebar);display:flex;flex-direction:column;padding:16px 12px;background:var(--bg);z-index:20}
+.sidebar{position:fixed;inset:0 auto 0 0;width:var(--sidebar);display:flex;flex-direction:column;padding:16px 12px;background:none;z-index:20}
 .brand{display:flex;align-items:center;gap:10px;height:40px;padding:0 8px;margin-bottom:20px}
 /* 로고: 유광 렌즈. 위쪽 반사광은 :before 한 겹이고, 렌즈 안은 흰빛으로 옅게 채운다. */
 .brand-mark{position:relative;overflow:hidden;width:32px;height:32px;border-radius:10px;color:#fff;display:grid;place-items:center;
@@ -124,7 +142,7 @@ input[type=range]{accent-color:var(--primary);cursor:pointer}
 .nav-item.active{background:var(--primary-tint);color:var(--primary-ink)}
 .nav-count{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted)}
 .sidebar-bottom{margin-top:auto;display:grid;gap:12px}
-.private-card{display:flex;gap:12px;padding:16px;border-radius:16px;background:var(--surface)}
+.private-card{display:flex;gap:12px;padding:16px;border-radius:16px;background:var(--glass)}
 .private-card>svg{color:var(--primary);margin-top:1px}
 .private-card strong{display:block;font-size:14px;font-weight:700}
 .private-card p{font-size:13px;line-height:1.6;color:var(--ink-2);margin-top:3px;word-break:keep-all}
@@ -132,7 +150,7 @@ input[type=range]{accent-color:var(--primary);cursor:pointer}
 
 /* Top bar */
 .app-shell{margin-left:var(--sidebar);min-height:100vh}
-.topbar{position:sticky;top:0;z-index:15;height:var(--topbar);display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;background:var(--bg)}
+.topbar{position:sticky;top:0;z-index:15;height:var(--topbar);display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;background:none;-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px)}
 .steps{display:flex;align-items:center;gap:0;list-style:none;margin:0;padding:0;min-width:0}
 .steps li{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap}
 .steps li+li:before{content:"";width:28px;height:2px;border-radius:2px;background:var(--line-strong);margin:0 12px}
@@ -168,28 +186,30 @@ main{padding:8px 24px 16px}
 
 /* Workspace: 회색 바닥 위에 흰 면 둘. 사진 면과 결과 면이 서로 떨어져 있다. */
 .workspace{position:relative;display:grid;grid-template-columns:minmax(0,1fr) var(--side);gap:16px;align-items:start}
-.editor{min-width:0;display:flex;flex-direction:column;border-radius:var(--radius);background:var(--surface);overflow:hidden;container:editor/inline-size}
+.editor{min-width:0;display:flex;flex-direction:column;border-radius:var(--radius);background:var(--glass);overflow:hidden;container:editor/inline-size}
 .pane-head{display:flex;align-items:center;gap:12px;height:60px;padding:0 24px}
 .pane-title{display:flex;align-items:center;gap:10px;min-width:0;flex:1}
 .pane-title svg{color:var(--muted)}
 .pane-title h1{font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* Empty state: 큰 글씨 한 줄, 누를 곳 하나. 장식은 뒤에서 배경을 훑는 렌즈 하나뿐이다. */
-.dropzone{position:relative;padding:64px 24px 48px;min-height:380px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;text-align:center;background:var(--surface);cursor:pointer;transition:background .15s,box-shadow .15s}
+.dropzone{position:relative;padding:64px 24px 48px;min-height:380px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;text-align:center;background:none;cursor:pointer;transition:background .15s,box-shadow .15s}
 .dropzone.dragover{background:var(--primary-wash);box-shadow:inset 0 0 0 2px var(--primary)}
 .dropzone>:not(.lens-field){position:relative}
 /* 렌즈: 점 바닥 위에 흐릿한 물건(카드·화면·송장·명찰)이 놓여 있고, 렌즈 안에서만 찾은 모습(파란 점, 빨간 탐지 상자)이 보인다.
    위치·크기는 app.js 가 정한다. 스크립트가 없으면 렌즈 없이 흐릿한 바닥만 남는다. */
 .lens-field{position:absolute;inset:0;overflow:hidden;pointer-events:none}
-.lens-layer{position:absolute;inset:0;--mark:var(--line-strong);background-image:radial-gradient(circle,var(--mark) 1px,transparent 1.6px);background-size:16px 16px;background-position:center;
+/* 제목 뒤는 점을 흰 면으로 덮어 글자가 또렷하게 읽힌다. */
+.lens-field::before{content:"";position:absolute;inset:0;background:radial-gradient(ellipse 48% 44% at 50% 46%,var(--veil) 40%,transparent 100%)}
+.lens-layer{position:absolute;inset:0;--mark:var(--line-strong);
   -webkit-mask-image:radial-gradient(ellipse 48% 44% at 50% 46%,transparent 40%,#000 100%);mask-image:radial-gradient(ellipse 48% 44% at 50% 46%,transparent 40%,#000 100%)}
-.lens-layer.hot{--mark:var(--primary);clip-path:circle(0 at 50% 50%)}
-.lens-item{position:absolute;display:flex;flex-direction:column;justify-content:center;gap:5px;padding:8px 10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface)}
+.lens-layer.hot{--mark:var(--primary);background:radial-gradient(circle,var(--primary) 1.2px,transparent 1.7px) 0 0/16px 16px;clip-path:circle(0 at 50% 50%)}
+.lens-item{position:absolute;display:flex;flex-direction:column;justify-content:center;gap:5px;padding:8px 10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--glass-hi)}
 .lens-item i{display:block;height:4px;border-radius:2px;background:var(--mark)}
 .lens-item i:nth-child(2){width:72%}.lens-item i:nth-child(3){width:48%}.lens-item i:nth-child(4){width:62%}
-.li-card{left:3%;top:6%;width:96px;height:60px;padding-left:40px;rotate:-6deg}
+.li-card{left:3%;top:34%;width:96px;height:60px;padding-left:40px;rotate:-6deg}
 .li-card::before{content:"";position:absolute;left:10px;top:12px;width:22px;height:28px;border-radius:3px;background:var(--mark)}
-.li-screen{right:6%;top:10%;width:120px;height:74px;border-top-width:7px;border-radius:6px;rotate:-2deg}
+.li-screen{right:3%;top:27%;width:120px;height:74px;border-top-width:7px;border-radius:6px;rotate:-2deg}
 .li-label{right:5%;bottom:12%;width:104px;height:72px;rotate:4deg}
 .li-label::after{content:"";height:12px;margin-top:2px;background:repeating-linear-gradient(90deg,var(--mark) 0 2px,transparent 2px 4px,var(--mark) 4px 5px,transparent 5px 8px)}
 .li-tag{left:9%;bottom:15%;width:80px;height:34px;border-radius:17px;padding:0 14px;rotate:5deg}
@@ -201,10 +221,7 @@ main{padding:8px 24px 16px}
   .lens-item{scale:.8}
   .li-card{left:-3%;top:2%}.li-screen{right:-4%;top:1%}.li-label{right:-4%;bottom:3%}.li-tag{left:-2%;bottom:5%}
 }
-@container editor (max-width:480px){
-  .li-card,.li-tag{display:none}
-  .li-screen{right:-12%;top:-2%}.li-label{right:-12%;bottom:0}
-}
+@container editor (max-width:480px){.lens-item{display:none}}   /* 휴대폰 폭: 글자가 칸을 채우니 렌즈와 점만 남긴다 */
 .lens-ring::after{content:"";position:absolute;left:85%;top:85%;width:32%;height:5px;border-radius:3px;background:color-mix(in srgb,var(--primary) 75%,transparent);transform-origin:0 50%;rotate:45deg}
 .drop-copy{position:relative}
 .drop-copy h2{font-size:clamp(30px,4.2vw,46px);font-weight:800;letter-spacing:-.045em;line-height:1.25;color:var(--ink);text-wrap:balance}
@@ -216,7 +233,7 @@ main{padding:8px 24px 16px}
 .dropzone:hover .drop-action{transform:translateY(-1px);box-shadow:var(--raise-primary-hover)}
 .drop-bar>svg{color:var(--muted)}
 .drop-hint{flex:1;text-align:left;font-size:14px;font-weight:500;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.samples{padding:4px 28px 32px;background:var(--surface)}
+.samples{padding:4px 28px 32px}
 .samples-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:14px}
 .samples-head h2{font-size:18px;font-weight:700;letter-spacing:-.02em;color:var(--ink)}
 .sample-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
@@ -252,7 +269,7 @@ main{padding:8px 24px 16px}
 .zoom-controls output{min-width:48px;text-align:center;font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ink)}
 #zoomFit{font-size:13px;white-space:nowrap}
 /* 사진과 목록의 스크롤 끝에서는 바깥 페이지로 스크롤을 이어 준다. */
-.canvas-stage{display:block;height:clamp(340px,calc(100dvh - 268px - var(--guide)),1100px);overflow:auto;touch-action:pan-x pan-y;margin:0 16px;padding:16px;border-radius:16px;background:var(--stage);scrollbar-color:var(--stage-line) transparent}
+.canvas-stage{display:block;height:clamp(340px,calc(100dvh - 268px - var(--guide)),1100px);overflow:auto;touch-action:pan-x pan-y;margin:0 16px;padding:16px;border-radius:16px;background:none;scrollbar-color:var(--stage-line) transparent}
 /* 상태 문구가 아랫줄로 내려간 만큼(약 28px) 사진 판을 줄여 페이지가 넘치지 않게 한다.
    좁은 화면(820px 이하)의 사진 판 높이는 아래 미디어 쿼리가 정한다. */
 @container editor (max-width:720px){
@@ -332,7 +349,7 @@ main{padding:8px 24px 16px}
 .image-meta .net svg{width:13px;height:13px}
 
 /* Side pane: sticky, its own scroll, save button pinned at the bottom */
-.side-pane{position:sticky;top:calc(var(--topbar) + 8px);align-self:start;min-width:0;max-height:calc(100dvh - var(--topbar) - 24px - var(--guide));display:flex;flex-direction:column;border-radius:var(--radius);background:var(--surface);overflow:hidden}
+.side-pane{position:sticky;top:calc(var(--topbar) + 8px);align-self:start;min-width:0;max-height:calc(100dvh - var(--topbar) - 24px - var(--guide));display:flex;flex-direction:column;border-radius:var(--radius);background:var(--glass);overflow:hidden}
 .pane-body,.review{animation:rise .38s cubic-bezier(.16,1,.3,1)}
 .pane-body{padding:28px 24px 26px;overflow:auto}
 .pane-heading{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 10px;font-size:24px;font-weight:800;letter-spacing:-.035em;line-height:1.35}
@@ -434,7 +451,7 @@ main{padding:8px 24px 16px}
 .empty-regions{display:grid;justify-items:center;gap:8px;margin:16px 24px;padding:24px;border-radius:14px;background:var(--surface-2);text-align:center;font-size:13px;line-height:1.7;color:var(--muted)}
 .empty-regions svg{color:var(--primary)}
 /* 긴 안내 문구가 저장 영역의 그리드 최소 너비를 늘리지 않도록 제한한다. */
-.review-foot{position:sticky;bottom:0;z-index:2;margin-top:auto;display:grid;grid-template-columns:minmax(0,1fr);min-width:0;gap:14px;padding:16px 24px 24px;border-top:1px solid var(--line);background:var(--surface)}
+.review-foot{position:sticky;bottom:0;z-index:2;margin-top:auto;display:grid;grid-template-columns:minmax(0,1fr);min-width:0;gap:14px;padding:16px 24px 24px;border-top:1px solid var(--line);background:var(--glass-hi);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
 .redaction-settings{display:grid;grid-template-columns:minmax(0,1fr);min-width:0;gap:8px}
 .style-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 /* 가림 방식: 고른 것은 '눌려 들어간' 키. 색을 구분하지 못해도 모양으로 어느 쪽인지 안다. */
@@ -572,7 +589,7 @@ dialog[open]{animation:reveal .22s cubic-bezier(.16,1,.3,1)}
 .region-box.unselected.sev-review>span{background:#8a5a0c}
 .queue-badge{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 6px;border-radius:10px}
 .queue-badge:disabled{opacity:1;cursor:default}
-.queue-badge.linked{padding:0 12px;border-radius:12px;background:var(--surface);color:var(--ink-2);font-weight:600;
+.queue-badge.linked{padding:0 12px;border-radius:12px;background:var(--glass-hi);color:var(--ink-2);font-weight:600;
   box-shadow:inset 0 1px 0 var(--hi-soft),0 1px 0 var(--line-strong),0 4px 10px -6px var(--drop);transition:background .15s,transform .22s var(--spring),box-shadow .15s}
 .queue-badge.linked:hover{background:var(--surface-3);color:var(--ink)}
 .queue-badge.linked:active{transform:translateY(1px);transition-duration:.06s;box-shadow:inset 0 1px 3px var(--drop)}
