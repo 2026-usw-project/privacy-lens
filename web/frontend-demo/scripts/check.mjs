@@ -51,6 +51,10 @@ for(const key of ['parcel','student','mixed']) {
   check('Sample '+key+' is an embedded JPEG (no network)',photo.src.startsWith('data:image/jpeg;base64,/9j/'));
   check('Sample '+key+' has no predefined results (real analysis)',!('regions' in f));
 }
+// 편집 모드: 평소에는 사진 위 영역을 옮기거나 지울 수 없고, 편집 모드에서만 된다.
+check('Region moves only in edit mode',/if\(!state\.editMode\)return;\s*\/\/ 잠긴 영역/.test(app));
+check('Delete only in edit mode',/data-action'\]?.*'delete' && state\.editMode|action==='delete' && state\.editMode/.test(app)&&/if\(!state\.editMode\)return;\s*\n\s*if\(event\.key==='Delete'/.test(app));
+check('Edit bar and brush tool exist',['editToggle','editBar','editDone','toolBrush','brushSize','brushPreview'].every(id=>ids.includes(id)));
 check('Responsive breakpoints included',css.includes('@media(max-width:580px)')&&css.includes('@media(max-width:820px)'));
 check('Reduced motion honored',css.includes('prefers-reduced-motion:reduce'));
 check('Severity styles defined',['.risk-tag.sev-review','.region-box.sev-review','.region-box.poly polygon','.queue-badge'].every(s=>css.includes(s)));

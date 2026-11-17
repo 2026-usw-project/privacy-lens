@@ -9,7 +9,7 @@
   const escapeHTML = text => String(text).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const clone = value => JSON.parse(JSON.stringify(value));
   const Core=PrivacyLensCore, Api=PrivacyLensAPI, api=Api.client();
-  const state = { source:null, file:null, phase:'empty', rawOcr:null, rawOcrNote:'', showRawOcr:false, rawFocused:null, regions:[], focused:null, editing:null, history:[], mode:'original', style:'blur', compare:50, drawing:false,
+  const state = { source:null, file:null, phase:'empty', rawOcr:null, rawOcrNote:'', showRawOcr:false, rawFocused:null, regions:[], focused:null, editing:null, history:[], mode:'original', style:'blur', compare:50, drawing:false, editMode:false, brushing:false, brushSize:4,
     sample:false, sampleKey:null, width:0, height:0, name:'', bytes:0, serverImage:false, dev:Core.devSettings(null), analyzedJudge:'', analysisStatus:'idle', groups:[], gps:[], issues:[],
     backend:'', elapsedMs:0, zoom:1, loadToken:0, exportToken:0, nextId:1, toastTimer:null,
     requestController:null, requestSerial:0, saving:false, saved:false, groupsOpen:false, saveError:'', ticket:null, previewState:'none', previewSeq:0 };
@@ -108,7 +108,7 @@
   function reset() {
     cancelRequests();state.zoom=1;state.analysisStatus='idle';state.issues=[];state.groups=[];state.gps=[];state.backend='';
     state.loadToken++;state.exportToken++;releaseExport();
-    Object.assign(state,{source:null,file:null,phase:'empty',rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,drawing:false,sample:false,sampleKey:null,serverImage:false,nextId:1,mode:'original',previewState:'none'});
+    Object.assign(state,{source:null,file:null,phase:'empty',rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,drawing:false,editMode:false,brushing:false,sample:false,sampleKey:null,serverImage:false,nextId:1,mode:'original',previewState:'none'});
     gesture = null;
     canvas.width = canvas.height = 1;
     protectedCanvas.width = protectedCanvas.height = 1;
@@ -143,9 +143,61 @@
     render();
     notify('가릴 영역을 추가했어요. 테두리를 끌어 위치를 조절할 수 있어요.');
   }
-  // 영역을 옮기면 기울어진 외곽선도 같이 옮긴다. 크기를 바꾸면 외곽선은 의미가 없어 사각형이 된다.
+  // 편집 모드. 분석이 끝나면 사진 위 영역은 잠겨 있다(눌러서 목록에서 보기, 가릴지 고르기만 된다).
+  // 옮기기·크기 바꾸기·추가·삭제·붓으로 칠하기는 '편집 모드'를 눌렀을 때만 한다. 실수로 끌어서 영역이 밀리지 않게.
+  function setEditMode(on, quiet=false) {
+    if (on && (!state.source || state.phase !== 'review')) return;
+    state.editMode = on; state.drawing = false; state.brushing = false; gesture = null;
+    if (on) { state.mode = 'original'; state.showRawOcr = false; }
+    else state.editing = null;
+    syncDrawing(); render();
+    if (!quiet) notify(on ? '편집 모드예요. 영역을 옮기거나 크기를 바꾸고, 추가·삭제하거나 붓으로 칠해 가릴 수 있어요.' : '편집을 마쳤어요. 사진 위 영역이 다시 잠겼어요.');
+  }
+  function setTool(tool) {
+    if (!state.editMode) return;
+    state.drawing = tool === 'rect'; state.brushing = tool === 'brush';
+    syncDrawing();
+  }
+  // 붓 반지름(원본 픽셀). 굵기 1~12 는 사진 짧은 변에 대한 지름 %.
+  function brushRadius() { return state.brushSize / 100 * Math.min(state.width, state.height) / 2; }
+  function strokePath(points) {
+    const xy = points.map(([x, y]) => (x * state.width).toFixed(1) + ' ' + (y * state.height).toFixed(1));
+    if (xy.length === 1) xy.push((points[0][0] * state.width + .01).toFixed(2) + ' ' + (points[0][1] * state.height).toFixed(1));
+    return 'M' + xy.join(' L');
+  }
+  // 붓 자국 하나가 영역 하나다. 저장할 때 서버는 이 자국을 짧은 기울어진 사각형 여러 개로 받아 같은 방식(블러·검정)으로 가린다.
+  function addBrush(points) {
+    if (!state.source || state.phase !== 'review' || !points.length) return;
+    const R = brushRadius(), rx = R / state.width, ry = R / state.height;
+    const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+    const x0 = clamp(Math.min(...xs) - rx, 0, 1), y0 = clamp(Math.min(...ys) - ry, 0, 1);
+    const x1 = clamp(Math.max(...xs) + rx, 0, 1), y1 = clamp(Math.max(...ys) + ry, 0, 1);
+    const number = state.nextId;
+    const region = normalizeRegion({ id: 'brush-' + number, x: x0, y: y0, w: x1 - x0, h: y1 - y0, label: '직접 칠한 곳 ' + number, reason: '붓으로 칠한 자리예요. 저장할 때 칠한 모양대로 가려요.', text: '', kind: 'brush', type: 'CUSTOM', poly: null, stroke: points, radius: R, enabled: true });
+    if (Core.boxes({ ...state, regions: [...state.regions, region] }).length > Core.MAX_BOXES) {
+      notify('가릴 곳이 너무 많아요. 칠한 곳 몇 개를 지우거나 사각형 영역으로 넓게 지정해 주세요.', true); return;
+    }
+    pushHistory(); state.nextId++;
+    state.regions.push(region); state.focused = region.id;
+    invalidate(); render();
+  }
+  function drawBrushPreview(points) {
+    const svg = $('#brushPreview'), path = $('path', svg);
+    svg.setAttribute('viewBox', '0 0 ' + state.width + ' ' + state.height);
+    path.setAttribute('d', strokePath(points)); path.setAttribute('stroke-width', String(2 * brushRadius()));
+    svg.classList.remove('hidden');
+  }
+  function placeBrushCursor(event) {
+    const cursor = $('#brushCursor');
+    if (!state.brushing || gesture && gesture.type !== 'brush' || event.pointerType === 'touch') { cursor.classList.add('hidden'); return; }
+    const p = point(event), size = 2 * brushRadius() / state.width * 100;
+    Object.assign(cursor.style, { left: p.x * 100 + '%', top: p.y * 100 + '%', width: size + '%', aspectRatio: '1' });
+    cursor.classList.remove('hidden');
+  }
+  // 영역을 옮기면 기울어진 외곽선(붓 자국)도 같이 옮긴다. 크기를 바꾸면 외곽선은 의미가 없어 사각형이 된다.
   function shiftPoly(region, dx, dy) {
     if (region.poly && (dx || dy)) region.poly = region.poly.map(([x, y]) => [x + dx, y + dy]);
+    if (region.stroke && (dx || dy)) region.stroke = region.stroke.map(([x, y]) => [x + dx, y + dy]);
   }
 
   // HEIC 안내 그림에 쓰는 글자 그리기.
@@ -281,7 +333,7 @@
       const serverImage=!frozen;
       if(serverImage) frozen=placeholder();
       Object.assign(state,{source:frozen,file,width:frozen.logicalWidth||frozen.width,height:frozen.logicalHeight||frozen.height,name:file.name,bytes:file.size,sample:false,sampleKey:null,serverImage,
-        rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,nextId:1,mode:'original',phase:'ready',drawing:false,zoom:1,analysisStatus:'idle',issues:[],groups:[],gps:[],backend:'',previewState:'none'});
+        rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,nextId:1,mode:'original',phase:'ready',drawing:false,editMode:false,brushing:false,zoom:1,analysisStatus:'idle',issues:[],groups:[],gps:[],backend:'',previewState:'none'});
       releaseExport();showImage();render();layoutCanvas(false);
       // 고르거나 찍으면 바로 검사한다(버튼을 한 번 더 누르지 않게). 결과 쪽을 보여 준다.
       notify(serverImage?'HEIC 사진이에요. 검사하면서 서버가 만든 미리보기로 바꿔요.':'사진을 받았어요. 바로 검사할게요.');
@@ -304,7 +356,7 @@
     state.loadToken++;cancelRequests();releaseExport();
     Object.assign(state,{source:fixture.image,file:null,width:fixture.image.width,height:fixture.image.height,
       name:{parcel:'sample_headphones.png',student:'sample_cafe.png',mixed:'sample_desk.png'}[key],bytes:0,sample:true,sampleKey:key,serverImage:false,
-      rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,nextId:1,mode:'original',drawing:false,phase:'ready',analysisStatus:'idle',issues:[],groups:[],gps:[],backend:'',zoom:1,previewState:'none'});
+      rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,nextId:1,mode:'original',drawing:false,editMode:false,brushing:false,phase:'ready',analysisStatus:'idle',issues:[],groups:[],gps:[],backend:'',zoom:1,previewState:'none'});
     showImage();render();layoutCanvas(false);
     beginAnalysis();
   }
@@ -386,13 +438,23 @@
   }
   function renderBoxes() {
     const layer=$('#regionLayer');layer.replaceChildren();
+    // 붓 자국은 사진 전체 크기의 SVG 한 장에 그린다(굵기가 원본 픽셀 기준이라 확대해도 비율이 맞는다)
+    const brushes=state.regions.filter(r=>r.kind==='brush'&&r.stroke);
+    if(brushes.length) {
+      const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');
+      svg.setAttribute('class','brush-layer');svg.setAttribute('viewBox','0 0 '+state.width+' '+state.height);svg.setAttribute('preserveAspectRatio','none');svg.setAttribute('aria-hidden','true');
+      brushes.forEach(r=>{const path=document.createElementNS(ns,'path');path.setAttribute('d',strokePath(r.stroke));path.setAttribute('stroke-width',String(2*r.radius));
+        path.setAttribute('class',(r.enabled?'':'unselected ')+(state.focused===r.id?'focused':''));svg.append(path);});
+      layer.append(svg);
+    }
     state.regions.forEach((r,i)=>{
       const box=document.createElement('button');
       box.className='region-box'+(!r.enabled?' unselected':'')+(state.focused===r.id?' focused':'')+(r.severity?' sev-'+r.severity:'')+(r.certainty&&r.certainty!=='read'?' cert-'+r.certainty:'')+(r.poly?' poly':'');
       box.dataset.id=r.id;box.style.setProperty('--i',Math.min(i,8));
       box.setAttribute('aria-pressed',String(state.focused===r.id));
-      box.setAttribute('aria-label',r.label+' 영역. 방향키로 이동, Alt와 방향키로 크기 조절');
-      box.title=r.label+' · 끌어서 이동, 모서리를 끌어 크기 조절';
+      const brush=r.kind==='brush';if(brush)box.classList.add('brush');
+      box.setAttribute('aria-label',r.label+(state.editMode?' 영역. 방향키로 이동'+(brush?'':', Alt와 방향키로 크기 조절')+', Delete로 삭제':' 영역. 눌러서 목록에서 보기'));
+      box.title=r.label+(state.editMode?' · 끌어서 이동'+(brush?'':', 모서리를 끌어 크기 조절'):' · 고치려면 편집 모드');
       box.style.left=(r.x*100)+'%';box.style.top=(r.y*100)+'%';box.style.width=(r.w*100)+'%';box.style.height=(r.h*100)+'%';
       if(r.poly) {
         // 기울어진 글자는 실제 외곽선을 그린다. 가릴 때도 이 모양을 쓴다.
@@ -402,7 +464,7 @@
         svg.append(poly);box.append(svg);
       }
       const label=document.createElement('span'),num=document.createElement('b'),name=document.createElement('span');num.textContent=String(i+1).padStart(2,'0');name.className='name';name.textContent=r.label;label.append(num,name);box.append(label);
-      const handle=document.createElement('i');handle.className='resize-handle';handle.dataset.resize='true';box.append(handle);
+      if(state.editMode&&!brush){const handle=document.createElement('i');handle.className='resize-handle';handle.dataset.resize='true';box.append(handle);}
       layer.append(box);
     });
     declutterTags();
@@ -430,6 +492,7 @@
   }
   function severityTag(r) {
     if(r.kind==='manual') return '<span class="risk-tag manual">직접 추가</span>';
+    if(r.kind==='brush') return '<span class="risk-tag manual">직접 칠함</span>';
     return '<span class="risk-tag sev-'+escapeHTML(r.severity)+'">'+escapeHTML(Core.SEVERITY[r.severity]||'검토 권장')+'</span>';
   }
   function renderList() {
@@ -439,13 +502,14 @@
       list.innerHTML='<div class="empty-regions">'+icon('scan')+'<p>'+(state.analysisStatus==='empty'?'탐지된 영역이 없어요.<br>안전하다는 뜻은 아니에요. 사진을 확인하고<br>놓친 부분은 직접 추가해 주세요.':'현재 지정한 영역이 없어요.<br>‘영역 추가’로 가릴 부분을 선택해 주세요.')+'</p></div>';return;
     }
     list.innerHTML=state.regions.map((r,index)=>{
-      const focused=state.focused===r.id,detail=state.editing===r.id,title=escapeHTML(r.label),px=Core.toPixels(r,state.width,state.height);
+      const focused=state.focused===r.id,detail=state.editMode&&state.editing===r.id&&r.kind!=='brush',title=escapeHTML(r.label),px=Core.toPixels(r,state.width,state.height);
+      const actions=state.editMode?'<span class="region-actions">'+(r.kind==='brush'?'':'<button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'수정')+'</button>')+'<button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span>':'';
       // 내용을 다 읽은 항목은 인식된 문자열이 그 증거라 따로 쓰지 않는다. 박스 선 모양에도 드러난다.
       const cert=r.kind!=='manual'&&r.certainty&&r.certainty!=='read'?'<span class="cert-label">'+escapeHTML(r.certaintyLabel||'')+'</span>':'';
       return '<div class="region-item'+(focused?' selected-detail':'')+(detail?' editing':'')+'" data-region="'+escapeHTML(r.id)+'" style="--i:'+Math.min(index,8)+'">'+
         '<div class="region-item-top"><input type="checkbox" data-action="toggle" '+(r.enabled?'checked ':'')+'aria-label="'+title+' 가리기"><button class="region-item-name" data-action="focus" aria-pressed="'+focused+'"><span class="row-number">'+String(index+1).padStart(2,'0')+'</span>'+title+'</button>'+cert+severityTag(r)+'</div>'+
         // 작게 찍혀 사진에서 잘 안 보이는 것을 바로 알아보게, 그 자리를 잘라 크게 보여 준다(D-21)
-        '<div class="region-item-body"><canvas class="region-thumb" data-action="focus" data-thumb="'+escapeHTML(r.id)+'" width="240" height="136" aria-hidden="true"></canvas><p class="region-item-description">'+escapeHTML(r.reason)+'</p></div><div class="region-item-meta">'+(r.text?'<code>'+escapeHTML(r.text)+'</code>':'<span></span>')+'<span class="region-actions"><button class="text-button" data-action="edit" aria-expanded="'+detail+'">'+(detail?'수정 닫기':'수정')+'</button><button class="region-delete" data-action="delete" aria-label="'+title+' 삭제">'+icon('trash')+'</button></span></div>'+
+        '<div class="region-item-body"><canvas class="region-thumb" data-action="focus" data-thumb="'+escapeHTML(r.id)+'" width="240" height="136" aria-hidden="true"></canvas><p class="region-item-description">'+escapeHTML(r.reason)+'</p></div><div class="region-item-meta">'+(r.text?'<code>'+escapeHTML(r.text)+'</code>':'<span></span>')+actions+'</div>'+
         (detail?'<div class="region-detail"><label class="type-label">개인정보 유형<select data-region-type="true" aria-label="'+title+' 개인정보 유형">'+Object.entries(Core.TYPES).map(([key,label])=>'<option value="'+key+'" '+(r.type===key?'selected':'')+'>'+label+'</option>').join('')+'</select></label><div class="coordinate-title">원본 좌표 <span>'+state.width+' × '+state.height+' px'+(r.poly?' · 기울어진 외곽선':'')+'</span></div><div class="coordinate-editor" aria-label="원본 픽셀 좌표">'+[['x','왼쪽',px.x],['y','위쪽',px.y],['w','너비',px.width],['h','높이',px.height]].map(([key,label,value])=>'<label>'+label+'<input type="number" min="'+(['w','h'].includes(key)?1:0)+'" max="'+(['x','w'].includes(key)?state.width:state.height)+'" step="1" value="'+value+'" data-coordinate="'+key+'" aria-label="'+title+' '+label+' 픽셀">px</label>').join('')+'</div></div>':'')+'</div>';
     }).join('');
     drawThumbs(list);
@@ -473,8 +537,14 @@
       const dw=(x1-x0)*scale,dh=(y1-y0)*scale,dx=(cw-dw)/2,dy=(ch-dh)/2;
       ctx.clearRect(0,0,cw,ch);
       ctx.drawImage(state.source,x0*kx,y0*ky,(x1-x0)*kx,(y1-y0)*ky,dx,dy,dw,dh);
-      ctx.strokeStyle='#e5484d';ctx.lineWidth=3;
-      ctx.strokeRect(dx+(p.x-x0)*scale,dy+(p.y-y0)*scale,p.width*scale,p.height*scale);
+      if(r.kind==='brush'&&r.stroke) {
+        ctx.save();ctx.strokeStyle='rgba(229,72,77,.45)';ctx.lineCap=ctx.lineJoin='round';ctx.lineWidth=Math.max(2,2*r.radius*scale);ctx.beginPath();
+        r.stroke.forEach(([x,y],i)=>{const sx=dx+(x*state.width-x0)*scale,sy=dy+(y*state.height-y0)*scale;if(i)ctx.lineTo(sx,sy);else{ctx.moveTo(sx,sy);ctx.lineTo(sx+.01,sy);}});
+        ctx.stroke();ctx.restore();
+      } else {
+        ctx.strokeStyle='#e5484d';ctx.lineWidth=3;
+        ctx.strokeRect(dx+(p.x-x0)*scale,dy+(p.y-y0)*scale,p.width*scale,p.height*scale);
+      }
     });
   }
 
@@ -538,15 +608,22 @@
   }
 
   function syncDrawing() {
-    $('#canvasWrap').classList.toggle('drawing',state.drawing);
+    const wrap=$('#canvasWrap');
+    wrap.classList.toggle('drawing',state.drawing);wrap.classList.toggle('brushing',state.brushing);wrap.classList.toggle('editing',state.editMode);
     $('#drawHint').classList.toggle('hidden',!state.drawing);
-    $('#drawPreview').classList.add('hidden');
-    $('#addRegion').setAttribute('aria-pressed',String(state.drawing));
-    if(state.drawing) {
+    $('#drawPreview').classList.add('hidden');$('#brushPreview').classList.add('hidden');$('#brushCursor').classList.add('hidden');
+    $('#editBar').classList.toggle('hidden',!state.editMode);
+    $('#editToggle').classList.toggle('hidden',state.editMode);
+    const tool=state.drawing?'rect':state.brushing?'brush':'select';
+    $$('[data-tool]').forEach(button=>{const on=button.dataset.tool===tool;button.classList.toggle('selected',on);button.setAttribute('aria-pressed',String(on));});
+    $('#brushSizeField').classList.toggle('hidden',!state.brushing);
+    if(state.drawing||state.brushing) {
       state.showRawOcr=false;renderRawOcr();
       state.mode='original';renderImage();
-      $('#toolHint').textContent='사진을 드래그해서 가릴 부분을 선택하세요.';
-    } else $('#toolHint').textContent='놓친 곳은 직접 추가할 수 있어요.';
+    }
+    const hint=state.drawing?'사진을 드래그해서 가릴 부분을 선택하세요.':state.brushing?'가릴 곳을 붓으로 칠하세요. 손가락으로도 돼요.':'영역을 끌어 옮기고, 모서리를 끌어 크기를 바꿔요. 목록에서 지울 수 있어요.';
+    $('#editHint').textContent=hint;
+    $('#toolHint').textContent=state.editMode?hint:'영역을 고치거나 직접 가리려면 편집 모드를 눌러요.';
   }
   function point(event) { return Core.screenPoint(event.clientX,event.clientY,$('#canvasWrap').getBoundingClientRect()); }
 
@@ -556,6 +633,11 @@
       const v=$('#canvasStage');v.scrollLeft=gesture.left-(event.clientX-gesture.x);v.scrollTop=gesture.top-(event.clientY-gesture.y);return;
     }
     const p=point(event);
+    if(gesture.type==='brush') {
+      const last=gesture.points[gesture.points.length-1];
+      if(Math.hypot((p.x-last[0])*state.width,(p.y-last[1])*state.height)>=Math.max(1,brushRadius()*.08)){gesture.points.push([p.x,p.y]);drawBrushPreview(gesture.points);}
+      placeBrushCursor(event);return;
+    }
     if(gesture.type==='draw') {
       const rect={x:Math.min(gesture.start.x,p.x),y:Math.min(gesture.start.y,p.y),w:Math.abs(p.x-gesture.start.x),h:Math.abs(p.y-gesture.start.y)};
       gesture.rect=rect;
@@ -575,8 +657,9 @@
     if(!gesture || event.pointerId!==gesture.pointerId)return;
     const g=gesture;gesture=null;
     const wrap=$('#canvasWrap');if(wrap.hasPointerCapture(event.pointerId))wrap.releasePointerCapture(event.pointerId);
-    $('#drawPreview').classList.add('hidden');
+    $('#drawPreview').classList.add('hidden');$('#brushPreview').classList.add('hidden');
     if(g.type==='pan') {wrap.classList.remove('panning');return;}
+    if(g.type==='brush') {if(!cancelled)addBrush(g.points);return;}
     if(g.type==='draw') {
       if(!cancelled && g.rect && g.rect.w>.008 && g.rect.h>.008) addRegion(g.rect);
       else if(!cancelled)notify('조금 더 넓은 영역을 드래그해 주세요.');
@@ -856,6 +939,8 @@
     syncDemo();
     $('#scanOverlay').classList.toggle('hidden',phase!=='scanning');
     $('#addRegion').disabled=phase!=='review';
+    $('#editToggle').disabled=phase!=='review'||state.saving;$('#editBar').inert=state.saving;
+    if(state.editMode&&phase!=='review'){state.editMode=state.drawing=state.brushing=false;syncDrawing();}
     $('#saveButton').disabled=phase!=='review'||state.saving;
     $('#imageState').inert=state.saving;
     $('#regionList').inert=state.saving;$('.redaction-settings').inert=state.saving;
@@ -875,12 +960,12 @@
   }
   function startManual() {
     cancelRequests();state.phase='review';state.analysisStatus='manual';state.issues=[];state.groups=[];state.mode='original';
-    invalidate();render();setStep(2);notify('직접 편집 모드예요. 가릴 부분을 추가해 주세요.');
+    invalidate();setEditMode(true,true);setStep(2);notify('편집 모드예요. 가릴 곳을 영역으로 추가하거나 붓으로 칠해 주세요.');
   }
   async function beginAnalysis() {
     if(!state.source||state.saving)return;
     cancelRequests();releaseExport();
-    Object.assign(state,{rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,issues:[],groups:[],gps:[],mode:'original',phase:'scanning',analysisStatus:'running',drawing:false,previewState:'none'});
+    Object.assign(state,{rawOcr:null,rawOcrNote:'',showRawOcr:false,rawFocused:null,regions:[],history:[],focused:null,editing:null,issues:[],groups:[],gps:[],mode:'original',phase:'scanning',analysisStatus:'running',drawing:false,editMode:false,brushing:false,previewState:'none'});
     syncDrawing();render();
     $('#scanningPanel').classList.add('server-analysis');
     const judge=Core.judgeField(state.dev);state.analyzedJudge=judge||'';  // 실패해도 같은 설정으로 다시 돌리지 않게
@@ -931,6 +1016,11 @@
     declutterTags();
   }
   function zoomTo(value) {state.zoom=clamp(value,.5,4);layoutCanvas();}
+  function deleteRegion(id) {
+    if(!state.regions.some(r=>r.id===id))return;
+    pushHistory();state.regions=state.regions.filter(r=>r.id!==id);if(state.focused===id)state.focused=null;if(state.editing===id)state.editing=null;
+    invalidate();render();notify('영역을 삭제했어요. 되돌리기로 복원할 수 있어요.');
+  }
   function focusRegion(id,origin='list') {
     const r=state.regions.find(r=>r.id===id);if(!r)return;
     state.focused=id;state.mode='original';render();
@@ -1088,14 +1178,14 @@
   document.addEventListener('drop',event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault();});
   $$('[data-sample]').forEach(button=>button.addEventListener('click',()=>loadSample(button.dataset.sample)));
   $('#cancelScan').addEventListener('click',()=>{cancelRequests();state.phase='ready';state.analysisStatus='idle';render();notify('분석 요청을 취소했어요. 다시 시작할 수 있어요.');});
-  $$('[data-view]').forEach(button=>button.addEventListener('click',()=>{state.mode=button.dataset.view;state.drawing=false;syncDrawing();renderImage();if(state.mode!=='original'&&state.previewState!=='ready'&&state.previewState!=='loading')schedulePreview();}));
+  $$('[data-view]').forEach(button=>button.addEventListener('click',()=>{state.mode=button.dataset.view;state.drawing=state.brushing=false;syncDrawing();renderImage();if(state.mode!=='original'&&state.previewState!=='ready'&&state.previewState!=='loading')schedulePreview();}));
   // 개발자 도구 메뉴: 바깥을 누르거나 Esc 로 닫는다. OCR 원문은 패널에서도 끌 수 있다.
   document.addEventListener('click',event=>{const menu=$('#devMenu');if(menu.open&&!menu.contains(event.target))menu.open=false;});
   $('#devMenu').addEventListener('keydown',event=>{if(event.key==='Escape'){$('#devMenu').open=false;$('#devMenu summary').focus();}});
   $('#rawOcrClose').addEventListener('click',()=>{const toggle=$('#rawOcrToggle');toggle.checked=false;toggle.dispatchEvent(new Event('change'));});
   $('#rawOcrToggle').addEventListener('change',event=>{
     state.showRawOcr=event.target.checked;
-    if(state.showRawOcr){state.mode='original';state.drawing=false;syncDrawing();}
+    if(state.showRawOcr){state.mode='original';state.drawing=state.brushing=false;syncDrawing();}
     renderImage();renderRawOcr();
   });
   $('#rawOcrList').addEventListener('click',event=>{
@@ -1106,15 +1196,15 @@
   $('#compareSlider').addEventListener('input',event=>{state.compare=Number(event.target.value);renderImage();});
   $$('[data-style]').forEach(button=>button.addEventListener('click',()=>{
     state.style=button.dataset.style;try{localStorage.setItem('pl.maskStyle',state.style);}catch(_){}
-    state.mode='protected';state.drawing=false;syncDrawing();invalidate();render();
+    state.mode='protected';state.drawing=state.brushing=false;syncDrawing();invalidate();render();
   }));
   $('#selectAll').addEventListener('click',()=>{if(!state.regions.length)return;pushHistory();const all=state.regions.every(r=>r.enabled);state.regions.forEach(r=>r.enabled=!all);invalidate();render();});
   $('#regionList').addEventListener('click',event=>{
     const control=event.target.closest('[data-action]');if(!control || control.dataset.action==='toggle')return;
     const row=control.closest('[data-region]');const region=state.regions.find(r=>r.id===row.dataset.region);if(!region)return;
-    if(control.dataset.action==='delete') {pushHistory();state.regions=state.regions.filter(r=>r.id!==region.id);if(state.focused===region.id)state.focused=null;invalidate();render();notify('영역을 삭제했어요. 되돌리기로 복원할 수 있어요.');}
+    if(control.dataset.action==='delete' && state.editMode) deleteRegion(region.id);
     if(control.dataset.action==='focus') focusRegion(region.id);
-    if(control.dataset.action==='edit') {state.editing=state.editing===region.id?null:region.id;focusRegion(region.id);}
+    if(control.dataset.action==='edit' && state.editMode) {state.editing=state.editing===region.id?null:region.id;focusRegion(region.id);}
   });
   $('#regionList').addEventListener('change',event=>{
     const row=event.target.closest('[data-region]');if(!row)return;
@@ -1124,8 +1214,11 @@
     if(event.target.dataset.coordinate)applyCoordinateInput(event.target,true);
   });
   $('#regionList').addEventListener('input',event=>{if(event.target.dataset.coordinate)applyCoordinateInput(event.target);});
-  $('#addRegion').addEventListener('click',()=>{state.drawing=!state.drawing;syncDrawing();});
-  $('#cancelDraw').addEventListener('click',()=>{state.drawing=false;syncDrawing();});
+  $$('[data-tool]').forEach(button=>button.addEventListener('click',()=>setTool(button.dataset.tool)));
+  $('#editToggle').addEventListener('click',()=>setEditMode(true));
+  $('#editDone').addEventListener('click',()=>setEditMode(false));
+  $('#brushSize').addEventListener('input',event=>{state.brushSize=clamp(Number(event.target.value)||4,1,12);$('#brushSizeValue').textContent=String(state.brushSize);});
+  $('#cancelDraw').addEventListener('click',()=>setTool('select'));
   $('#centerRegion').addEventListener('click',()=>addRegion({x:.35,y:.4,w:.3,h:.2}));
   $('#undoButton').addEventListener('click',()=>{if(!state.history.length)return;state.regions=state.history.pop();if(!state.regions.some(r=>r.id===state.focused))state.focused=null;invalidate();render();notify('이전 영역 설정으로 되돌렸어요.');});
   $('#canvasWrap').addEventListener('pointerdown',event=>{
@@ -1133,7 +1226,7 @@
     if(gesture || !state.source || event.button!==0)return;
     const wrap=$('#canvasWrap');
     // 마우스로 사진(상자 밖)을 잡고 끌면 이동. 손가락 한 개는 브라우저 스크롤이 그대로 움직인다
-    if(!state.drawing && event.pointerType!=='touch' && !event.target.closest('.region-box')) {
+    if(!state.drawing && !state.brushing && event.pointerType!=='touch' && !event.target.closest('.region-box')) {
       event.preventDefault();
       const v=$('#canvasStage');
       gesture={type:'pan',pointerId:event.pointerId,x:event.clientX,y:event.clientY,left:v.scrollLeft,top:v.scrollTop};
@@ -1142,7 +1235,9 @@
     if(state.phase!=='review' || state.mode!=='original')return;
     const p=point(event);
     if(state.drawing) {event.preventDefault();gesture={type:'draw',start:p,pointerId:event.pointerId};wrap.setPointerCapture(event.pointerId);return;}
+    if(state.brushing) {event.preventDefault();gesture={type:'brush',points:[[p.x,p.y]],pointerId:event.pointerId};wrap.setPointerCapture(event.pointerId);drawBrushPreview(gesture.points);return;}
     const box=event.target.closest('.region-box');if(!box)return;
+    if(!state.editMode)return;   // 잠긴 영역: 누르면 click 으로 목록에서 보여 주기만 한다
     event.preventDefault();
     const region=state.regions.find(r=>r.id===box.dataset.id);if(!region)return;
     state.focused=region.id;renderReview();
@@ -1150,21 +1245,25 @@
     gesture={type:event.target.dataset.resize?'resize':'move',id:region.id,start:p,original:clone(region),changed:false,pointerId:event.pointerId};
     wrap.setPointerCapture(event.pointerId);
   });
-  $('#canvasWrap').addEventListener('pointermove',moveGesture);
+  $('#canvasWrap').addEventListener('pointermove',event=>{moveGesture(event);if(!gesture)placeBrushCursor(event);});
+  $('#canvasWrap').addEventListener('pointerleave',()=>$('#brushCursor').classList.add('hidden'));
+  $('#regionLayer').addEventListener('click',event=>{if(state.editMode)return;const box=event.target.closest('.region-box');if(box)focusRegion(box.dataset.id,'photo');});
   $('#canvasWrap').addEventListener('pointerup',event=>endGesture(event));
   $('#canvasWrap').addEventListener('pointercancel',event=>endGesture(event,true));
   $('#regionLayer').addEventListener('keydown',event=>{
     const box=event.target.closest('.region-box');if(!box)return;
     const r=state.regions.find(r=>r.id===box.dataset.id);if(!r)return;
     if(event.key==='Enter' || event.key===' '){event.preventDefault();focusRegion(r.id,'photo');return;}
+    if(!state.editMode)return;
+    if(event.key==='Delete' || event.key==='Backspace'){event.preventDefault();deleteRegion(r.id);return;}
     if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;
     event.preventDefault();pushHistory();
     const amount = event.shiftKey ? .001 : .01;
-    if(event.altKey){if(event.key==='ArrowLeft')r.w-=amount;if(event.key==='ArrowRight')r.w+=amount;if(event.key==='ArrowUp')r.h-=amount;if(event.key==='ArrowDown')r.h+=amount;r.w=clamp(r.w,.008,1-r.x);r.h=clamp(r.h,.008,1-r.y);r.poly=null;}
+    if(event.altKey){if(r.kind==='brush')return;if(event.key==='ArrowLeft')r.w-=amount;if(event.key==='ArrowRight')r.w+=amount;if(event.key==='ArrowUp')r.h-=amount;if(event.key==='ArrowDown')r.h+=amount;r.w=clamp(r.w,.008,1-r.x);r.h=clamp(r.h,.008,1-r.y);r.poly=null;}
     else{const bx=r.x,by=r.y;if(event.key==='ArrowLeft')r.x-=amount;if(event.key==='ArrowRight')r.x+=amount;if(event.key==='ArrowUp')r.y-=amount;if(event.key==='ArrowDown')r.y+=amount;r.x=clamp(r.x,0,1-r.w);r.y=clamp(r.y,0,1-r.h);shiftPoly(r,r.x-bx,r.y-by);}
     state.focused=r.id;invalidate();render();$$('.region-box').find(el=>el.dataset.id===r.id)?.focus({preventScroll:true});
   });
-  document.addEventListener('keydown',event=>{if(event.key==='Escape' && state.drawing){state.drawing=false;gesture=null;syncDrawing();}});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape' && (state.drawing||state.brushing)){state.drawing=state.brushing=false;gesture=null;syncDrawing();}});
   $('#saveButton').addEventListener('click',prepareExport);
   $('#shareButton').addEventListener('click',share);
   // 서버가 실제로 찾는 항목(pipeline/kr_patterns.py, metadata.py)

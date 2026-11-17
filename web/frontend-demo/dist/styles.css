@@ -297,6 +297,25 @@ main{padding:8px 24px 16px}
 .region-box .resize-handle{position:absolute;right:-6px;bottom:-6px;width:12px;height:12px;border:2px solid var(--primary);border-radius:3px;background:#fff;cursor:nwse-resize;pointer-events:auto;opacity:0;transition:opacity .12s}
 .region-box:hover .resize-handle,.region-box.focused .resize-handle{opacity:1}
 .region-box .resize-handle:before{content:"";position:absolute;inset:-9px}
+/* 편집 모드: 평소에는 사진 위 영역이 잠겨 있다(누르면 목록에서 보여 주기만). 편집 모드에서만 옮기기·크기·붓 칠하기 */
+.canvas-wrap:not(.editing) .region-box{cursor:pointer;touch-action:pan-x pan-y}
+.canvas-wrap.brushing,.canvas-wrap.brushing canvas{cursor:none;touch-action:none}
+.canvas-wrap.brushing .region-layer{pointer-events:none}
+.brush-layer,.brush-preview{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.brush-layer path,.brush-preview path{fill:none;stroke-linecap:round;stroke-linejoin:round;stroke:color-mix(in srgb,var(--accent) 36%,transparent)}
+.brush-layer path.focused{stroke:color-mix(in srgb,var(--accent) 52%,transparent)}
+.brush-layer path.unselected{stroke:color-mix(in srgb,var(--stage-dim) 28%,transparent)}
+.brush-preview path{stroke:color-mix(in srgb,var(--primary) 45%,transparent)}
+.region-box.brush,.region-box.brush:hover,.region-box.brush.focused{background:transparent;border:1px dashed transparent;box-shadow:none}
+.canvas-wrap.editing .region-box.brush:hover,.canvas-wrap.editing .region-box.brush.focused{border-color:color-mix(in srgb,var(--hud) 60%,transparent)}
+.brush-cursor{position:absolute;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px #0009,inset 0 0 0 1px #0009;pointer-events:none;transform:translate(-50%,-50%);z-index:4}
+.edit-bar{display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;margin:12px 16px 0;padding:10px 12px;border-radius:14px;background:var(--primary-wash);color:var(--primary-ink)}
+.edit-bar .segmented{flex-wrap:wrap}
+.edit-hint{flex:1 1 220px;font-size:13px;line-height:1.5}
+.brush-size{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+.brush-size input{width:120px;accent-color:var(--primary)}
+.brush-size output{min-width:2ch;font-family:var(--mono);font-size:12px}
+#editDone{margin-left:auto}
 .draw-preview{position:absolute;border:2px solid var(--primary);border-radius:3px;background:color-mix(in srgb,var(--primary) 14%,transparent);pointer-events:none}
 .scan-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none;background:color-mix(in srgb,var(--surface) 22%,transparent)}
 .scan-line{position:absolute;left:0;right:0;top:0;height:2px;background:var(--primary);box-shadow:0 0 14px color-mix(in srgb,var(--primary) 60%,transparent);animation:scan 2s cubic-bezier(.45,0,.55,1) infinite}

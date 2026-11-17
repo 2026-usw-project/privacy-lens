@@ -136,11 +136,17 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
             <div id="analysisNotice" class="status-line" role="status"><span class="status-dot"></span><span id="analysisNoticeText"></span></div>
             <div class="zoom-controls" role="group" aria-label="사진 확대 축소"><button id="zoomOut" aria-label="사진 축소"><svg><use href="#i-minus"/></svg></button><output id="zoomValue">100%</output><button id="zoomIn" aria-label="사진 확대"><svg><use href="#i-plus"/></svg></button><button id="zoomFit">맞춤</button></div>
           </div>
-          <div class="canvas-stage" id="canvasStage" tabindex="0" role="region" aria-label="스크롤 가능한 사진 작업 화면"><div id="canvasSizer" class="canvas-sizer"><div class="canvas-wrap" id="canvasWrap"><canvas id="photoCanvas" aria-label="선택한 사진. 영역 추가 후 드래그하여 가릴 영역을 지정하세요."></canvas><div id="regionLayer" class="region-layer" aria-label="개인정보 영역"></div><svg id="rawOcrLayer" class="raw-ocr-layer hidden" aria-hidden="true" preserveAspectRatio="none"></svg><div id="drawPreview" class="draw-preview hidden"></div><div class="scan-overlay hidden" id="scanOverlay"><div class="scan-line"></div></div></div></div></div>
+          <div class="canvas-stage" id="canvasStage" tabindex="0" role="region" aria-label="스크롤 가능한 사진 작업 화면"><div id="canvasSizer" class="canvas-sizer"><div class="canvas-wrap" id="canvasWrap"><canvas id="photoCanvas" aria-label="선택한 사진. 편집 모드에서 영역을 추가하거나 붓으로 칠해 가릴 곳을 지정하세요."></canvas><div id="regionLayer" class="region-layer" aria-label="개인정보 영역"></div><svg id="rawOcrLayer" class="raw-ocr-layer hidden" aria-hidden="true" preserveAspectRatio="none"></svg><div id="drawPreview" class="draw-preview hidden"></div><svg id="brushPreview" class="brush-preview hidden" aria-hidden="true" preserveAspectRatio="none"><path/></svg><div id="brushCursor" class="brush-cursor hidden" aria-hidden="true"></div><div class="scan-overlay hidden" id="scanOverlay"><div class="scan-line"></div></div></div></div></div>
           <div class="compare-control hidden" id="compareControl"><span>원본</span><input type="range" min="0" max="100" value="50" id="compareSlider" aria-label="전후 비교 위치"><span>가림 결과</span></div>
           <p class="manual-hint hidden" id="drawHint">사진 위를 드래그해 가릴 영역을 그리세요. 터치도 돼요. <button class="text-button" id="centerRegion">중앙에 영역 추가</button><button class="text-button" id="cancelDraw">취소</button></p>
+          <div class="edit-bar hidden" id="editBar" role="toolbar" aria-label="편집 도구">
+            <div class="segmented" aria-label="편집 도구"><button data-tool="select" id="toolSelect" class="selected" aria-pressed="true">옮기기·크기</button><button data-tool="rect" id="addRegion" aria-pressed="false">영역 추가</button><button data-tool="brush" id="toolBrush" aria-pressed="false">붓으로 가리기</button></div>
+            <label class="brush-size hidden" id="brushSizeField">붓 굵기 <input type="range" id="brushSize" min="1" max="12" step="1" value="4" aria-label="붓 굵기"><output id="brushSizeValue">4</output></label>
+            <span class="edit-hint" id="editHint"></span>
+            <button class="button primary small" id="editDone"><svg><use href="#i-check"/></svg>편집 끝내기</button>
+          </div>
           <div class="editor-tools">
-            <button class="button ghost small" id="addRegion"><svg><use href="#i-plus"/></svg>영역 추가</button>
+            <button class="button ghost small" id="editToggle"><svg><use href="#i-grip"/></svg>편집 모드</button>
             <button class="text-button" id="undoButton" disabled><svg><use href="#i-reset"/></svg>되돌리기</button>
             <details class="dev-menu" id="devMenu"><summary class="text-button"><svg><use href="#i-code"/></svg>개발자 도구</summary>
               <div class="dev-menu-body" role="group" aria-label="개발자 도구">
