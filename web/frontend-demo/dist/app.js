@@ -1054,6 +1054,36 @@
   ['dragenter','dragover'].forEach(name=>$('#dropzone').addEventListener(name,event=>{event.preventDefault();$('#dropzone').classList.add('dragover');}));
   $('#dropzone').addEventListener('dragleave',event=>{if(!$('#dropzone').contains(event.relatedTarget))$('#dropzone').classList.remove('dragover');});
   $('#dropzone').addEventListener('drop',event=>{event.preventDefault();$('#dropzone').classList.remove('dragover');if(event.dataTransfer.files.length>1)notify('한 번에 한 장씩 편집해요. 첫 번째 사진을 불러올게요.');loadFile(event.dataTransfer.files[0]);});
+  // 업로드 칸 뒤의 렌즈: 바닥을 천천히 돌며 훑고, 마우스를 따라오고, 사진을 끌어오면 가운데로 모여 커진다.
+  // 업로드 칸이 안 보이면(사진을 연 뒤, 화면 밖) 멈춘다. 움직임을 줄인 기기에서는 한 자리에 서 있다.
+  (()=>{
+    const field=$('#lensField'),ring=$('#lensRing'),zone=$('#dropzone');
+    const hot=$('#lensBase').cloneNode(true);hot.removeAttribute('id');hot.classList.add('hot');field.insertBefore(hot,ring);
+    let x=null,y=null,r=0,pointer=null,frame=0;
+    const baseRadius=w=>Math.max(44,Math.min(76,w*.09));
+    const place=()=>{
+      hot.style.clipPath='circle('+r+'px at '+x+'px '+y+'px)';
+      ring.style.width=ring.style.height=2*r+'px';ring.style.transform='translate('+(x-r)+'px,'+(y-r)+'px)';
+    };
+    if(calmMotion()){
+      const still=()=>{const w=field.clientWidth,h=field.clientHeight;if(!w)return;r=baseRadius(w);x=w*.84;y=h*.24;place();};
+      new ResizeObserver(still).observe(field);
+      return;
+    }
+    const step=t=>{
+      const w=field.clientWidth,h=field.clientHeight,a=t/7000;
+      let tx=w*(.5+.41*Math.cos(a)),ty=h*(.5+.36*Math.sin(a)+.04*Math.sin(a*3.1)),tr=baseRadius(w);   // 글자 둘레를 도는 타원
+      if(zone.classList.contains('dragover')){tx=w/2;ty=h/2;tr=Math.hypot(w,h)/2+12;}   // 놓기 직전: 렌즈가 칸 전체로 커져 모든 물건을 찾은 모습이 된다
+      else if(pointer)[tx,ty]=pointer;
+      if(x===null){x=tx;y=ty;r=tr;}
+      x+=(tx-x)*.06;y+=(ty-y)*.06;r+=(tr-r)*.1;
+      place();frame=requestAnimationFrame(step);
+    };
+    const run=on=>{cancelAnimationFrame(frame);frame=on?requestAnimationFrame(step):0;};
+    zone.addEventListener('pointermove',event=>{if(event.pointerType!=='mouse')return;const box=field.getBoundingClientRect();pointer=[event.clientX-box.left,event.clientY-box.top];});
+    zone.addEventListener('pointerleave',()=>{pointer=null;});
+    new IntersectionObserver(([entry])=>run(entry.isIntersecting)).observe(zone);
+  })();
   document.addEventListener('dragover',event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault();});
   document.addEventListener('drop',event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault();});
   $$('[data-sample]').forEach(button=>button.addEventListener('click',()=>loadSample(button.dataset.sample)));

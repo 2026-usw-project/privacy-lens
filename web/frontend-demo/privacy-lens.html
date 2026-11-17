@@ -184,9 +184,38 @@ main{padding:8px 24px 16px}
 .pane-title svg{color:var(--muted)}
 .pane-title h1{font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* Empty state: 큰 글씨 한 줄, 누를 곳 하나. 장식은 두지 않는다. */
+/* Empty state: 큰 글씨 한 줄, 누를 곳 하나. 장식은 뒤에서 배경을 훑는 렌즈 하나뿐이다. */
 .dropzone{position:relative;padding:64px 24px 48px;min-height:380px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;text-align:center;background:var(--surface);cursor:pointer;transition:background .15s,box-shadow .15s}
 .dropzone.dragover{background:var(--primary-wash);box-shadow:inset 0 0 0 2px var(--primary)}
+.dropzone>:not(.lens-field){position:relative}
+/* 렌즈: 점 바닥 위에 흐릿한 물건(카드·화면·송장·명찰)이 놓여 있고, 렌즈 안에서만 찾은 모습(파란 점, 빨간 탐지 상자)이 보인다.
+   위치·크기는 app.js 가 정한다. 스크립트가 없으면 렌즈 없이 흐릿한 바닥만 남는다. */
+.lens-field{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.lens-layer{position:absolute;inset:0;--mark:var(--line-strong);background-image:radial-gradient(circle,var(--mark) 1px,transparent 1.6px);background-size:16px 16px;background-position:center;
+  -webkit-mask-image:radial-gradient(ellipse 48% 44% at 50% 46%,transparent 40%,#000 100%);mask-image:radial-gradient(ellipse 48% 44% at 50% 46%,transparent 40%,#000 100%)}
+.lens-layer.hot{--mark:var(--primary);clip-path:circle(0 at 50% 50%)}
+.lens-item{position:absolute;display:flex;flex-direction:column;justify-content:center;gap:5px;padding:8px 10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface)}
+.lens-item i{display:block;height:4px;border-radius:2px;background:var(--mark)}
+.lens-item i:nth-child(2){width:72%}.lens-item i:nth-child(3){width:48%}.lens-item i:nth-child(4){width:62%}
+.li-card{left:3%;top:6%;width:96px;height:60px;padding-left:40px;rotate:-6deg}
+.li-card::before{content:"";position:absolute;left:10px;top:12px;width:22px;height:28px;border-radius:3px;background:var(--mark)}
+.li-screen{right:6%;top:10%;width:120px;height:74px;border-top-width:7px;border-radius:6px;rotate:-2deg}
+.li-label{right:5%;bottom:12%;width:104px;height:72px;rotate:4deg}
+.li-label::after{content:"";height:12px;margin-top:2px;background:repeating-linear-gradient(90deg,var(--mark) 0 2px,transparent 2px 4px,var(--mark) 4px 5px,transparent 5px 8px)}
+.li-tag{left:9%;bottom:15%;width:80px;height:34px;border-radius:17px;padding:0 14px;rotate:5deg}
+.hot .lens-item{--mark:color-mix(in srgb,var(--accent) 45%,transparent);border-color:var(--accent-line);background:var(--accent-wash);outline:1.5px solid var(--accent);outline-offset:5px}
+.lens-ring{position:absolute;left:0;top:0;width:0;height:0;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--primary) 75%,transparent);
+  box-shadow:inset 0 0 0 5px color-mix(in srgb,var(--primary) 7%,transparent),0 10px 24px -10px var(--drop-blue)}
+/* 사진 면이 좁으면 제목이 넓게 퍼지니 물건을 작게 줄여 모서리 밖으로 반쯤 뺀다. */
+@container editor (max-width:720px){
+  .lens-item{scale:.8}
+  .li-card{left:-3%;top:2%}.li-screen{right:-4%;top:1%}.li-label{right:-4%;bottom:3%}.li-tag{left:-2%;bottom:5%}
+}
+@container editor (max-width:480px){
+  .li-card,.li-tag{display:none}
+  .li-screen{right:-12%;top:-2%}.li-label{right:-12%;bottom:0}
+}
+.lens-ring::after{content:"";position:absolute;left:85%;top:85%;width:32%;height:5px;border-radius:3px;background:color-mix(in srgb,var(--primary) 75%,transparent);transform-origin:0 50%;rotate:45deg}
 .drop-copy{position:relative}
 .drop-copy h2{font-size:clamp(30px,4.2vw,46px);font-weight:800;letter-spacing:-.045em;line-height:1.25;color:var(--ink);text-wrap:balance}
 .drop-copy em{font-style:normal;color:var(--primary)}
@@ -886,6 +915,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
         <div id="emptyState">
           <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="사진 업로드. Enter 키로 사진 선택">
+            <div class="lens-field" id="lensField" aria-hidden="true">
+              <div class="lens-layer" id="lensBase">
+                <span class="lens-item li-card"><i></i><i></i><i></i></span>
+                <span class="lens-item li-screen"><i></i><i></i><i></i><i></i></span>
+                <span class="lens-item li-label"><i></i><i></i><i></i></span>
+                <span class="lens-item li-tag"><i></i><i></i></span>
+              </div>
+              <span class="lens-ring" id="lensRing"></span>
+            </div>
             <div class="drop-copy">
               <h2>공유하기 전에, <em>배경까지</em> 한 번 더.</h2>
               <p>송장·학생증·모니터처럼 사진 뒤쪽에 찍힌 개인정보를 찾아 위치와 이유를 보여 드려요.</p>
@@ -2557,6 +2595,36 @@ window.PL_SAMPLE_PHOTOS={
   ['dragenter','dragover'].forEach(name=>$('#dropzone').addEventListener(name,event=>{event.preventDefault();$('#dropzone').classList.add('dragover');}));
   $('#dropzone').addEventListener('dragleave',event=>{if(!$('#dropzone').contains(event.relatedTarget))$('#dropzone').classList.remove('dragover');});
   $('#dropzone').addEventListener('drop',event=>{event.preventDefault();$('#dropzone').classList.remove('dragover');if(event.dataTransfer.files.length>1)notify('한 번에 한 장씩 편집해요. 첫 번째 사진을 불러올게요.');loadFile(event.dataTransfer.files[0]);});
+  // 업로드 칸 뒤의 렌즈: 바닥을 천천히 돌며 훑고, 마우스를 따라오고, 사진을 끌어오면 가운데로 모여 커진다.
+  // 업로드 칸이 안 보이면(사진을 연 뒤, 화면 밖) 멈춘다. 움직임을 줄인 기기에서는 한 자리에 서 있다.
+  (()=>{
+    const field=$('#lensField'),ring=$('#lensRing'),zone=$('#dropzone');
+    const hot=$('#lensBase').cloneNode(true);hot.removeAttribute('id');hot.classList.add('hot');field.insertBefore(hot,ring);
+    let x=null,y=null,r=0,pointer=null,frame=0;
+    const baseRadius=w=>Math.max(44,Math.min(76,w*.09));
+    const place=()=>{
+      hot.style.clipPath='circle('+r+'px at '+x+'px '+y+'px)';
+      ring.style.width=ring.style.height=2*r+'px';ring.style.transform='translate('+(x-r)+'px,'+(y-r)+'px)';
+    };
+    if(calmMotion()){
+      const still=()=>{const w=field.clientWidth,h=field.clientHeight;if(!w)return;r=baseRadius(w);x=w*.84;y=h*.24;place();};
+      new ResizeObserver(still).observe(field);
+      return;
+    }
+    const step=t=>{
+      const w=field.clientWidth,h=field.clientHeight,a=t/7000;
+      let tx=w*(.5+.41*Math.cos(a)),ty=h*(.5+.36*Math.sin(a)+.04*Math.sin(a*3.1)),tr=baseRadius(w);   // 글자 둘레를 도는 타원
+      if(zone.classList.contains('dragover')){tx=w/2;ty=h/2;tr=Math.hypot(w,h)/2+12;}   // 놓기 직전: 렌즈가 칸 전체로 커져 모든 물건을 찾은 모습이 된다
+      else if(pointer)[tx,ty]=pointer;
+      if(x===null){x=tx;y=ty;r=tr;}
+      x+=(tx-x)*.06;y+=(ty-y)*.06;r+=(tr-r)*.1;
+      place();frame=requestAnimationFrame(step);
+    };
+    const run=on=>{cancelAnimationFrame(frame);frame=on?requestAnimationFrame(step):0;};
+    zone.addEventListener('pointermove',event=>{if(event.pointerType!=='mouse')return;const box=field.getBoundingClientRect();pointer=[event.clientX-box.left,event.clientY-box.top];});
+    zone.addEventListener('pointerleave',()=>{pointer=null;});
+    new IntersectionObserver(([entry])=>run(entry.isIntersecting)).observe(zone);
+  })();
   document.addEventListener('dragover',event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault();});
   document.addEventListener('drop',event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault();});
   $$('[data-sample]').forEach(button=>button.addEventListener('click',()=>loadSample(button.dataset.sample)));
