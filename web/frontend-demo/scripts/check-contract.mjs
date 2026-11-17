@@ -63,6 +63,30 @@ const state={width:400,height:320,style:'blur',regions:result.regions.map(r=>({.
 await test('only selected regions are sent',()=>{assert.deepEqual(C.boxes(state),[]);state.regions[0].enabled=true;assert.equal(C.boxes(state).length,1);});
 await test('box in original pixels as x,y,w,h',()=>{const b=C.boxes({...state,regions:[{...byKind('name'),enabled:true}]})[0];assert.deepEqual({x:b.x,y:b.y,w:b.w,h:b.h},{x:105,y:77,w:79,h:35});assert.equal(b.poly,undefined);});
 await test('tilted outline sent back in pixels',()=>{const b=C.boxes({...state,regions:[{...byKind('mobile'),enabled:true}]})[0];assert.deepEqual(b.poly,[[20,126],[280,130],[279,154],[19,150]]);});
+// 붓으로 칠한 자리: 네 점 외곽선 상자 여러 개로 바뀌어 서버 계약(상자 300개, 외곽선 16점 이하)을 지킨다.
+const inside=(pt,poly)=>{let c=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const [xi,yi]=poly[i],[xj,yj]=poly[j];if((yi>pt[1])!==(yj>pt[1])&&pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi)c=!c;}return c;};
+const brushStroke=Array.from({length:120},(_,i)=>[.1+.7*i/119,.5+.25*Math.sin(i/12)]);
+await test('brush stroke becomes tilted four-point boxes',()=>{
+  const b=C.strokeBoxes(brushStroke,20,1000,800);
+  assert.ok(b.length>1&&b.length<=60);
+  assert.ok(b.every(x=>x.poly.length===4&&x.w>0&&x.h>0&&x.poly.every(([px,py])=>px>=x.x-.1&&px<=x.x+x.w+.1&&py>=x.y-.1&&py<=x.y+x.h+.1)));
+});
+await test('brush boxes cover the whole painted band',()=>{
+  const b=C.strokeBoxes(brushStroke,20,1000,800),pts=brushStroke.map(([x,y])=>[x*1000,y*800]);
+  for(let i=1;i<pts.length;i++)for(const t of [0,.5]){
+    const a=pts[i-1],c=pts[i],x=a[0]+(c[0]-a[0])*t,y=a[1]+(c[1]-a[1])*t,L=Math.hypot(c[0]-a[0],c[1]-a[1])||1,nx=-(c[1]-a[1])/L,ny=(c[0]-a[0])/L;
+    for(const k of [-.9,0,.9])assert.ok(b.some(q=>inside([x+nx*20*k,y+ny*20*k],q.poly)),'not covered at '+i);
+  }
+});
+await test('single brush dab is one square',()=>{const b=C.strokeBoxes([[.5,.5]],10,200,100);assert.equal(b.length,1);assert.deepEqual({x:b[0].x,y:b[0].y,w:b[0].w,h:b[0].h},{x:90,y:40,w:20,h:20});});
+await test('long brush stroke stays within the per-stroke limit',()=>{const long=Array.from({length:5000},(_,i)=>[(i%100)/100,Math.floor(i/100)/50]);assert.ok(C.strokeBoxes(long,3,4000,3000).length<=60);});
+await test('only enabled brush regions are sent, as their boxes',()=>{
+  const brush={id:'brush-1',kind:'brush',stroke:brushStroke,radius:20,x:0,y:0,w:1,h:1,enabled:true};
+  const s={...state,width:1000,height:800,regions:[brush]};
+  assert.deepEqual(C.boxes(s),C.strokeBoxes(brushStroke,20,1000,800));
+  assert.deepEqual(C.boxes({...s,regions:[{...brush,enabled:false}]}),[]);
+  assert.ok(C.MAX_BOXES===300);
+});
 await test('payload has style and no recognized text',()=>{const p=C.payload(state);assert.equal(p.style,'blur');assert.ok(!JSON.stringify(p).includes('010-5179'));assert.equal(C.payload({...state,style:'pixel'}).style,'blur');});
 
 // ---------------------------------------------------------------- 통신

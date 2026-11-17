@@ -177,14 +177,53 @@
       partial:regions.some(r=>r.certainty!=='read')};
   }
 
+  // 붓으로 칠한 자리 → 서버가 받는 상자 여러 개. 서버는 사각형·네 점 외곽선만 받으므로
+  // 붓 자국을 마디로 나눠, 마디마다 붓 굵기만큼 넓힌 기울어진 사각형(네 점)을 만든다.
+  // 마디는 Douglas-Peucker 로 줄인다: 원래 자국이 마디에서 tol 이상 벗어나지 않으므로, 굵기와 마디 끝을
+  // 반지름 + tol 로 잡으면 칠한 띠 전체가 덮인다(조금 더 넓게 가리는 쪽). 붓 한 번은 상자 MAX_STROKE_BOXES 개 이하.
+  const MAX_BOXES=300,MAX_STROKE_BOXES=60;
+  function simplify(pts,tol) {
+    const keep=new Uint8Array(pts.length);keep[0]=keep[pts.length-1]=1;
+    const stack=[[0,pts.length-1]];
+    while(stack.length){
+      const [i,j]=stack.pop(),[ax,ay]=pts[i],[bx,by]=pts[j],L=Math.hypot(bx-ax,by-ay);
+      let worst=-1,far=tol;
+      for(let k=i+1;k<j;k++){
+        const [px,py]=pts[k],d=L?Math.abs((bx-ax)*(ay-py)-(ax-px)*(by-ay))/L:Math.hypot(px-ax,py-ay);
+        if(d>far){far=d;worst=k;}
+      }
+      if(worst>0){keep[worst]=1;stack.push([i,worst],[worst,j]);}
+    }
+    return pts.filter((_,k)=>keep[k]);
+  }
+  function strokeBoxes(stroke,radius,width,height) {
+    const R=Math.max(1,Number(radius)||1);
+    const raw=(stroke||[]).map(([x,y])=>[x*width,y*height]).filter(([x,y])=>Number.isFinite(x)&&Number.isFinite(y));
+    if(!raw.length)return [];
+    const pts=[raw[0]];
+    for(const p of raw.slice(1))if(Math.hypot(p[0]-pts[pts.length-1][0],p[1]-pts[pts.length-1][1])>R*.15)pts.push(p);
+    let tol=R*.2,keep=pts.length>1?simplify(pts,tol):pts;
+    while(keep.length-1>MAX_STROKE_BOXES){tol*=1.6;keep=simplify(pts,tol);}
+    const round=v=>Math.round(v*10)/10;
+    const box=poly=>{const xs=poly.map(p=>p[0]),ys=poly.map(p=>p[1]),x=Math.floor(Math.min(...xs)),y=Math.floor(Math.min(...ys));
+      return {x,y,w:Math.ceil(Math.max(...xs))-x,h:Math.ceil(Math.max(...ys))-y,poly:poly.map(([a,b])=>[round(a),round(b)])};};
+    if(keep.length===1){const [cx,cy]=keep[0];return [box([[cx-R,cy-R],[cx+R,cy-R],[cx+R,cy+R],[cx-R,cy+R]])];}
+    const W=R+tol,out=[];
+    for(let i=1;i<keep.length;i++){
+      const a=keep[i-1],b=keep[i],L=Math.hypot(b[0]-a[0],b[1]-a[1])||1,dx=(b[0]-a[0])/L,dy=(b[1]-a[1])/L,nx=-dy*W,ny=dx*W,ex=dx*W,ey=dy*W;
+      out.push(box([[a[0]-ex+nx,a[1]-ey+ny],[b[0]+ex+nx,b[1]+ey+ny],[b[0]+ex-nx,b[1]+ey-ny],[a[0]-ex-nx,a[1]-ey-ny]]));
+    }
+    return out;
+  }
   // 화면에서 고른 영역 → 서버 /redact 의 boxes. 기울어진 외곽선이 남아 있으면 같이 보낸다.
   function boxes(state) {
     dimensions(state.width,state.height);
-    return state.regions.filter(r=>r.enabled).map(r=>{
+    return state.regions.filter(r=>r.enabled).flatMap(r=>{
+      if(r.kind==='brush'&&r.stroke)return strokeBoxes(r.stroke,r.radius,state.width,state.height);
       const p=toPixels(r,state.width,state.height);
       const out={x:p.x,y:p.y,w:p.width,h:p.height};
       if(r.poly)out.poly=r.poly.map(([x,y])=>[Math.round(x*state.width*10)/10,Math.round(y*state.height*10)/10]);
-      return out;
+      return [out];
     });
   }
   function payload(state) {
@@ -269,5 +308,5 @@
     return {url:String(e?.url||''),label:e?.busy?label+' · 처리 중':label,tone};
   }
 
-  globalThis.PrivacyLensCore=Object.freeze({FAST,REASONING,REASONING_LABELS,queueBadge,engineRow,TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,serverJudge,withServerDefault,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,progressView,hms});
+  globalThis.PrivacyLensCore=Object.freeze({FAST,REASONING,REASONING_LABELS,queueBadge,engineRow,TYPES,KINDS,SEVERITY,JUDGES,STYLES,devSettings,serverJudge,withServerDefault,judgeField,judgeLabel,sendsOutside,modelQuery,toPixels,fromPixels,screenPoint,fromReport,boxes,payload,strokeBoxes,MAX_BOXES,progressView,hms});
 })();
