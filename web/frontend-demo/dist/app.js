@@ -432,7 +432,7 @@
       ctx.save();ctx.beginPath();ctx.rect(0,0,split,state.height);ctx.clip();ctx.drawImage(state.source,0,0,state.width,state.height);ctx.restore();
       ctx.fillStyle='#fff';ctx.fillRect(split-1.5,0,3,state.height);
       ctx.beginPath();ctx.arc(split,state.height/2,Math.max(10,state.width*.018),0,Math.PI*2);ctx.fill();
-      const s=Math.max(4,state.width*.004);ctx.strokeStyle='#1f6feb';ctx.lineWidth=Math.max(2,state.width*.0012);
+      const s=Math.max(4,state.width*.004);ctx.strokeStyle='#2449e8';ctx.lineWidth=Math.max(2,state.width*.0012);
       ctx.beginPath();ctx.moveTo(split-s,state.height/2-s);ctx.lineTo(split-s,state.height/2+s);ctx.moveTo(split+s,state.height/2-s);ctx.lineTo(split+s,state.height/2+s);ctx.stroke();
     }
     const waiting=state.mode!=='original'&&state.previewState!=='ready';

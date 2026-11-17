@@ -8,22 +8,22 @@
 @font-face{font-family:"Pretendard";font-weight:700;font-style:normal;font-display:swap;src:url(fonts/Pretendard-Bold.subset.woff2) format("woff2")}
 :root{
   /* 밝은 화면이 기본이다. 어두운 화면은 아래 [data-theme="dark"] 에서 같은 이름의 값만 바꾼다. */
-  --bg:#f2f4f6;--surface:#fff;--surface-2:rgb(30 45 80/.055);--surface-3:rgb(30 45 80/.095);
+  --bg:#f1f3f8;--surface:#fff;--surface-2:rgb(28 40 96/.055);--surface-3:rgb(28 40 96/.095);
   --line:#eceff2;--line-strong:#d1d6db;
   --ink:#191f28;--ink-2:#4e5968;--muted:#56616f;
   /* primary = 누르는 것·고른 것·진행. accent = 위험 표시(가림 권장, 탐지 박스). */
-  --primary:#3182f6;--primary-solid:#1f6feb;--primary-hover:#1a5fd0;--primary-ink:#1b64da;--primary-tint:#e8f3ff;--primary-wash:#f3f8ff;--primary-line:#c9e2ff;
+  --primary:#2f5bff;--primary-solid:#2449e8;--primary-hover:#1d3bcc;--primary-ink:#1f3fd1;--primary-tint:#eaefff;--primary-wash:#f5f7ff;--primary-line:#cdd7ff;
   --accent:#f04452;--accent-solid:#d92d3b;--accent-hover:#bf2431;--accent-ink:#c42231;--accent-tint:#fff0f1;--accent-wash:#fff7f7;--accent-line:#ffd0d4;
   --ok:#137a4c;--warn:#a95a05;--warn-bg:#fff6e5;--warn-line:#ffe0a3;--error:#d92d3b;
   --side:380px;--sidebar:232px;--topbar:60px;--guide:0px;
   --radius:20px;--radius-sm:12px;
   /* 사진이 올라가는 바닥. 흰 면 안의 옅은 회색 판이다. */
-  --stage:#f2f4f6;--stage-line:#e5e8eb;--stage-ink:#4e5968;--stage-dim:#5f6b7a;--stage-fg:#191f28;--tag-dim:#5f6b7a;
+  --stage:#f1f3f8;--stage-line:#e3e7f0;--stage-ink:#4e5968;--stage-dim:#5f6b7a;--stage-fg:#191f28;--tag-dim:#5f6b7a;
   --photo-shadow:0 1px 2px #0000000f,0 10px 28px #00000014;
   --toast-bg:#191f28;--toast-ink:#fff;--toast-icon:#5ee0a0;
   /* 부드러운 입체: 빛은 위에서 온다. 새 색이 아니라 기존 값을 섞어 만든다.
      윗면 하이라이트 1px(--hi), 아랫면 두께 2px(--lip), 넓고 옅은 바닥 그림자(--drop). 누르면 내려앉고 놓으면 튕겨 돌아온다(--spring). */
-  --lip:color-mix(in srgb,var(--primary-solid) 72%,#0a2a66);--hi:rgb(255 255 255/.3);--hi-soft:rgb(255 255 255/.9);
+  --lip:color-mix(in srgb,var(--primary-solid) 72%,#0b1766);--hi:rgb(255 255 255/.3);--hi-soft:rgb(255 255 255/.9);
   --drop:rgb(25 31 40/.07);--drop-blue:color-mix(in srgb,var(--primary-solid) 26%,transparent);--tile-top:rgb(255 255 255/.85);
   --duo-tint:color-mix(in srgb,var(--primary) 20%,transparent);--spring:cubic-bezier(.34,1.56,.64,1);
   --raise-primary:inset 0 1px 0 var(--hi),inset 0 -1px 0 rgb(0 0 0/.12),0 2px 0 var(--lip),0 8px 18px -4px var(--drop-blue);
@@ -43,22 +43,22 @@
   --bg:#17171c;--surface:#202027;--surface-2:rgb(255 255 255/.06);--surface-3:rgb(255 255 255/.1);
   --line:#2b2b34;--line-strong:#454552;
   --ink:#f2f4f6;--ink-2:#c3c9d1;--muted:#98a2ae;
-  --primary:#4593fc;--primary-solid:#1f6feb;--primary-hover:#1a5fd0;--primary-ink:#79b0ff;--primary-tint:#1b2a44;--primary-wash:#18233a;--primary-line:#2c4a7a;
+  --primary:#6b8aff;--primary-solid:#2449e8;--primary-hover:#1d3bcc;--primary-ink:#a3b7ff;--primary-tint:#1b2149;--primary-wash:#171c38;--primary-line:#33448f;
   --accent:#f6606c;--accent-solid:#d92d3b;--accent-hover:#bf2431;--accent-ink:#ff8d96;--accent-tint:#3b1f25;--accent-wash:#2c1b20;--accent-line:#6a2e38;
   --ok:#56c08a;--warn:#f0b54a;--warn-bg:#2d2616;--warn-line:#5a4720;--error:#f6606c;
   --stage:#121217;--stage-line:#2b2b34;--stage-ink:#c3c9d1;--stage-dim:#98a2ae;--stage-fg:#f2f4f6;
   --photo-shadow:0 0 0 1px #ffffff1a,0 14px 36px #00000066;
   --toast-bg:#e5e8eb;--toast-ink:#191f28;--toast-icon:#137a4c;
-  --lip:#0e3a85;--hi:rgb(255 255 255/.16);--hi-soft:rgb(255 255 255/.06);--drop:rgb(0 0 0/.35);--drop-blue:rgb(0 0 0/.4);--tile-top:rgb(255 255 255/.09);
-  --glow-1:rgb(31 111 235/.30);--glow-2:rgb(106 92 240/.22);--glow-3:rgb(26 167 184/.16);--glow-4:rgb(59 130 246/.14);
+  --lip:#101f85;--hi:rgb(255 255 255/.16);--hi-soft:rgb(255 255 255/.06);--drop:rgb(0 0 0/.35);--drop-blue:rgb(0 0 0/.4);--tile-top:rgb(255 255 255/.09);
+  --glow-1:rgb(36 73 232/.32);--glow-2:rgb(112 88 255/.24);--glow-3:rgb(24 150 230/.14);--glow-4:rgb(80 110 255/.16);
   --glass:rgb(32 32 39/.62);--glass-hi:rgb(255 255 255/.07);--glass-floor:rgb(23 23 28/.22);--veil:rgb(32 32 39/.6);--glass-edge:rgb(255 255 255/.06);--glass-drop:rgb(0 0 0/.5);
   color-scheme:dark;
 }
-/* 전체 바탕: 회색 바닥 위로 파랑·남보라·청록 빛이 아주 천천히 번진다(빨강은 위험 표시 전용이라 쓰지 않는다).
+/* 전체 바탕: 회색 바닥 위로 코발트·남보라·하늘 빛이 아주 천천히 번진다(빨강은 위험 표시 전용이라 쓰지 않는다).
    화면에 고정된 층이라 스크롤해도 따라오지 않고, 동작 줄이기 설정이면 멈춘 그림이 된다. */
-:root{--glow-1:rgb(49 130 246/.42);--glow-2:rgb(124 108 242/.30);--glow-3:rgb(46 196 214/.28);--glow-4:rgb(156 199 255/.55);
+:root{--glow-1:rgb(47 91 255/.36);--glow-2:rgb(124 96 255/.28);--glow-3:rgb(64 170 255/.26);--glow-4:rgb(176 190 255/.55);
   /* 빛 위에 놓인 반투명 유리 면. 큰 면 → 버튼·물건 → 점 바닥 순으로 옅다. 대화상자·펼침 메뉴·입력칸은 읽기 쉽게 불투명 흰색(--surface)을 쓴다. */
-  --glass:rgb(255 255 255/.64);--glass-hi:rgb(255 255 255/.72);--glass-floor:rgb(255 255 255/.34);--veil:rgb(255 255 255/.55);--glass-edge:rgb(255 255 255/.7);--glass-drop:rgb(40 70 160/.32)}
+  --glass:rgb(255 255 255/.64);--glass-hi:rgb(255 255 255/.72);--glass-floor:rgb(255 255 255/.34);--veil:rgb(255 255 255/.55);--glass-edge:rgb(255 255 255/.7);--glass-drop:rgb(36 58 190/.30)}
 .editor,.side-pane,.private-card{box-shadow:inset 0 0 0 1px var(--glass-edge),0 24px 56px -30px var(--glass-drop)}
 .backdrop{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;background:var(--bg)}
 .backdrop i{position:absolute;width:var(--s);height:var(--s);border-radius:50%;background:radial-gradient(circle closest-side,var(--c),transparent);
