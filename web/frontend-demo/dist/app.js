@@ -265,15 +265,22 @@
     const targets=[$('#regionList'),$('#regionLayer')];targets.forEach(el=>el.classList.add('reveal'));
     setTimeout(()=>targets.forEach(el=>el.classList.remove('reveal')),1500);
   }
+  // 샘플 카드 그림은 보이는 크기 × 화소 비율로 그린다. 320×190 캔버스를 카드 폭(넓은 화면에서 600px 안팎)으로
+  // 늘려 보이면 흐리고 깨져 보였다. 카드 폭이 바뀌면 다시 그리고, 원본보다 크게는 그리지 않는다.
   function initializeThumbnails() {
     ['parcel','student','mixed'].forEach(key => {
       const fixture = makeFixture(key);
       const thumb = $('#thumb-' + key);
-      fixture.ready.then(() => {
-        const { width: w, height: h } = fixture.image, scale = Math.max(thumb.width / w, thumb.height / h);
-        const sw = thumb.width / scale, sh = thumb.height / scale;
-        thumb.getContext('2d').drawImage(fixture.image, (w - sw) / 2, (h - sh) / 2, sw, sh, 0, 0, thumb.width, thumb.height);
-      }).catch(() => {});
+      const draw = () => {
+        const { width: w, height: h } = fixture.image, cssWidth = thumb.clientWidth;
+        if (!cssWidth || !w) return;   // 안 보일 때는 보일 때 그린다
+        const tw = Math.round(Math.min(cssWidth * (window.devicePixelRatio || 1), w)), th = Math.round(tw * 190 / 320);
+        if (thumb.width !== tw || thumb.height !== th) { thumb.width = tw; thumb.height = th; }
+        const scale = Math.max(tw / w, th / h), sw = tw / scale, sh = th / scale, ctx = thumb.getContext('2d');
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(fixture.image, (w - sw) / 2, (h - sh) / 2, sw, sh, 0, 0, tw, th);
+      };
+      fixture.ready.then(() => { draw(); new ResizeObserver(draw).observe(thumb); }).catch(() => {});
     });
   }
 
