@@ -1,6 +1,6 @@
 # 아키텍처
 
-- 기준: 2026-10-04, 백엔드를 Privacy Lens 2 로 교체한 뒤. 구현이 바뀌면 이 문서도 함께 고쳐 주세요.
+- 기준: 2026-11-17(백엔드는 2026-10-04 에 Privacy Lens 2 로 교체). 구현이 바뀌면 이 문서도 함께 고쳐 주세요.
 - 설계 원칙·측정·한계의 자세한 설명은 [DEVELOPMENT.md](DEVELOPMENT.md)에 있습니다. 이 문서는 전체 그림입니다.
 - 이전 구조(YOLO·SAHI 발표안, `schema/` v0.1.0, EasyOCR 데모)는 git 기록에 있습니다.
 
@@ -19,12 +19,17 @@
        ├─ timing.py        단계별 걸린 시간 기록·추정 (~/.privacy-lens/timing.json, 숫자만)
        ├─ progress.py      번호표별 단계 계획·남은 시간 (메모리) → /progress SSE
        └─ pipeline/
+            analyze.py     파이프라인 조립 (단계 순서·단계별 시간 알림)
             ocr.py         Tesseract / PaddleOCR (외곽선 poly 포함)
-            detect.py      (선택) YOLO 문서 검출 → 확대 재판독 · 못 읽은 문서 영역 경고
+            detect.py      (선택) YOLO 문서·일상 물건 검출 → 확대 재판독 · 못 읽은 물건 영역 경고
+            objects.py     (선택) 얼굴·증명사진(YuNet, 증명사진 YOLO) · 번호판(YOLO), 돌려 찾기
+            ultra.py       Ultralytics 안전하게 불러오기 (Image.open 바꿔치기 되돌림·자동 설치 끔, Windows 에서 PyTorch 먼저)
             worker.py      서버 OCR 생성·추론을 단일 전용 스레드에 고정
             kr_patterns.py 한국 패턴·체크섬·OCR 잡음 정규화
             layout.py      글줄 좌표계 (기울어진 문서의 같은 줄·왼쪽·윗줄·거리)
-            context.py     주변 문구로 심각도 판정, 라벨 뒤 이름, 운송장번호
+            context.py     규칙 판단: 주변 문구로 심각도, 라벨 뒤 이름, 운송장번호, 카드번호 묶기, 생년월일·진료 문서
+            llm_judge.py   (선택) 판단 모델 창의 LLM 판단 (OCR 원문이 공급자로 감, D-15·D-22)
+            decision_judge.py (선택) Gemini Decision 판단 (D-23)
             grouping.py    문서 단위 군집 → '함께 노출됨'
             metadata.py    EXIF GPS · QR(내용 재검사) · 바코드
             redact.py      흐리게(정보 없음)·검은색 가림, 메타데이터 제거
@@ -45,7 +50,7 @@
 - 연결 실패(처리 전)는 그 엔진을 빼고 줄 맨 앞에 다시 세운다(최대 3번). 처리 중 끊기면 다시 보내지 않고 503.
 - 같은 번호표·같은 요청의 재시도는 결과를 30초 동안 메모리에서 다시 준다(엔진의 규칙과 같다).
 - 엔진 주소 없이도 게이트웨이와 화면을 시작할 수 있다. 등록된 엔진이 없으면 사진 처리 요청은 503으로 응답한다.
-- 엔진 목록 관리: `GET /admin/engines`, `POST /admin/engines {url}`, `POST /admin/engines/remove {url}`. `X-PL-Admin`(관리 키)가 맞을 때만.
+- 엔진 목록 관리: `GET /admin/engines`, `POST /admin/engines {url}`, `POST /admin/engines/remove {url}`, `POST /admin/engines/order`(맨 위 엔진이 먼저 맡음). `X-PL-Admin`(관리 키)가 맞을 때만.
   바꾼 목록은 메모리에만 있다. 게이트웨이는 `X-PL-Gateway`(이름)를 보내고, 엔진은 처음 연결·30초 넘게 조용함(끊김)·비밀값 거절을 콘솔에 적는다.
 - https 는 게이트웨이 앞에서만 끝낸다: Caddy(`deploy/Caddyfile`) 또는 `run_gateway.py --ssl-cert/--ssl-key`. 게이트웨이 → 엔진은 내부망에서 연결하고, 공유 토큰은 선택 사항이다.
 
@@ -57,9 +62,9 @@ DB 는 없습니다. 사진은 요청 처리 함수 안에서만 존재하고, �
 1. **업로드** — 화면이 원본 파일을 보낸다. 서버가 EXIF 방향을 화소에 반영한다(`exif_transpose`). 이후 좌표는 이 기준의 원본 픽셀.
 2. **대기열** — OCR은 한 번에 하나씩 FIFO로 처리한다. 엔진 생성과 추론은 같은 전용 스레드에서 실행한다. 화면은 '앞에 N건 · 약 N초'를 조회한다. 대기열 초과와 OCR 처리 실패는 HTTP 503으로 응답하며, 추론 실패 후 다음 요청에서 엔진을 다시 만든다.
 3. **OCR** — 글자와 상자(기울어진 외곽선 포함). PaddleOCR 권장.
-3-1. **문서 검출(선택, `PL_YOLO_WEIGHTS`)** — YOLO 로 송장·학생증·명찰·화면·증명사진·바코드 위치를 찾는다. 문서 안에서 확실히 읽은 글자가 적거나 글자가 작으면 그 영역을 잘라 최대 3배 확대해 OCR 을 다시 돌리고, 더 많이 읽힌 쪽을 쓴다(사진당 최대 4곳). 그래도 못 읽은 문서는 '○○로 추정되는 영역이 있으나 내용을 확인하지 못했습니다'를 낸다(학생증·명찰은 가림 권장, 그 밖은 검토 권장). 가중치는 `PL_YOLO_WEIGHTS`가 우선이며, 미설정이면 프로젝트 `models`의 숫자가 가장 큰 `v숫자` 폴더 안 `best.pt`를 쓴다. 버전 폴더가 없으면 `models/best.pt`를 쓴다. 선택한 가중치가 없거나 `PL_YOLO=off`이면 이 단계를 건너뛴다.
+3-1. **문서 검출(선택, `PL_YOLO_WEIGHTS`)** — YOLO 로 송장·학생증·명찰·화면·증명사진·바코드 위치를 찾는다. 문서 안에서 확실히 읽은 글자가 적거나 글자가 작으면 그 영역을 잘라 최대 3배 확대해 OCR 을 다시 돌리고, 더 많이 읽힌 쪽을 쓴다(사진당 최대 4곳). 그래도 못 읽은 문서는 '○○로 추정되는 영역이 있으나 내용을 확인하지 못했습니다'를 낸다(학생증·명찰은 가림 권장, 그 밖은 검토 권장). 가중치는 `PL_YOLO_WEIGHTS`가 우선이며, 미설정이면 프로젝트 `models`의 숫자가 가장 큰 `v숫자` 폴더 안 `best.pt`를 쓴다. 버전 폴더가 없으면 `models/best.pt`를 쓴다. 선택한 가중치가 없거나 `PL_YOLO=off`이면 이 단계를 건너뛴다. 일상 사진 물건 모델(`models/daily.onnx`, `PL_DAILY_MODEL`)이 있으면 신분증·결제 카드·카드번호 줄·영수증·티켓·개인 서류·약 등을 함께 찾고, 번호를 못 읽은 결제 카드는 카드째 가림 권장으로 올린다.
 3-2. **이미지 객체(`pipeline/objects.py`)** — 글자가 아닌 것을 찾는다. 얼굴은 OpenCV YuNet(`python -m pipeline.objects download`), 카드 단서(문서 검출의 학생증·명찰 상자, 근처 '학생증·성명' 글자, 이름·주민번호·학번 항목)가 있으면 `face_photo`(가림 권장), `PL_FACES=all` 이면 나머지 얼굴도 `face`(검토 권장). 번호판은 `models/plate.onnx`(또는 `PL_PLATE_MODEL`)가 있으면 YOLO 로 찾고, OCR 이 이미 차량번호로 읽은 곳은 빼고 `plate` 영역(검토 권장)으로 낸다. 둘 다 사진을 90·270도로 돌려서도 찾는다(`PL_FACE_ROTATE`·`PL_PLATE_ROTATE`, 기본 켬).
-4. **판정** — 패턴(체크섬 포함)으로 후보를 찾고, 같은 줄 왼쪽 라벨 → 윗줄 라벨 이어받기 → 반경 안 단어 거리 순으로 가림 권장·검토 권장·참고를 정한다. 글줄 좌표계로 재서 기울어져도 같은 판단. 못 읽은 글자는 '내용 확인 불가'로 두고 내용을 지어내지 않는다.
+4. **판정** — 패턴(체크섬 포함)으로 후보를 찾고, 같은 줄 왼쪽 라벨 → 윗줄 라벨 이어받기 → 반경 안 단어 거리 순으로 가림 권장·검토 권장·참고를 정한다. 글줄 좌표계로 재서 기울어져도 같은 판단. 못 읽은 글자는 '내용 확인 불가'로 두고 내용을 지어내지 않는다. 판단 모델 창에서 LLM·Gemini Decision 을 고르면 이 단계만 그 모델이 맡는다(`llm_judge.py`·`decision_judge.py`, 기본값은 서버 `.env`, D-22·D-23).
 5. **묶기** — 같은 종이(글자 군집) 안의 항목만 '함께 노출됨'으로 설명한다.
 6. **확인·편집** — 사용자가 고르고, 놓친 곳을 그리고, 미리보기(`/redact/preview`)로 확인한다. '가림 권장'만 미리 고르고 나머지는 해제(D-13 제안). `Raw OCR` 스위치를 켜면 판정 전 원문·OCR 신뢰도·위치를 확인한다. 최초 인식과 문서 확대 재판독을 모두 포함하며 가림 선택에는 영향을 주지 않는다.
 7. **저장** — 서버가 가리고(외곽선 모양대로), 메타데이터를 지워 JPEG로 인코딩해 반환한다. 저장 요청의 진행 단계는 사진 열기, 가리기, 파일 만들기다.
@@ -76,6 +81,9 @@ DB 는 없습니다. 사진은 요청 처리 함수 안에서만 존재하고, �
 | GET | `/queue` | 대기열 상태. `ticket` 을 주면 내 차례와 진행 상태(`progress`) |
 | GET | `/progress` | 번호표의 단계별 진행·남은 시간(SSE). 끝나면 `done` 을 보내고 닫음 |
 | POST | `/queue/cancel` | 기다리던 요청 빼기 |
+| GET | `/health` | 살아 있는지 · 엔진 준비 여부 |
+| GET | `/judge/default` | 서버 `.env` 의 기본 판단 모델(키 값은 내려보내지 않고 `has_key` 만, D-22) |
+| GET · POST | `/admin/engines`, `/admin/engines/remove`, `/admin/engines/order` | 게이트웨이 엔진 목록 보기·추가·제거·순서(관리 키 `X-PL-Admin`) |
 
 자세한 필드는 [web/frontend-demo/API_CONTRACT.md](../web/frontend-demo/API_CONTRACT.md). 오류는 `{"detail": …}` 로 400·409·413·503.
 
@@ -84,8 +92,8 @@ DB 는 없습니다. 사진은 요청 처리 함수 안에서만 존재하고, �
 | 영역 | 기술 |
 |---|---|
 | 백엔드 | FastAPI, Pillow, NumPy, OpenCV(QR·바코드), pillow-heif(선택) |
-| OCR | PaddleOCR 3.7(`PP-OCRv6_medium_det` + `korean_PP-OCRv5_mobile_rec`, `paddlepaddle<3.3`) 또는 Tesseract 5 |
-| 판정 | 정규식·체크섬(주민번호·카드 Luhn·사업자번호) + 문맥 규칙. NER 없음 |
+| OCR | PaddleOCR 3.7(`PP-OCRv6_medium_det` + `korean_PP-OCRv5_mobile_rec`, PaddlePaddle CPU 3.2.2 · GPU 3.4.0) 또는 Tesseract 5 |
+| 판정 | 정규식·체크섬(주민번호·카드 Luhn·사업자번호) + 문맥 규칙. NER 없음. 선택: LLM(ChatGPT·Gemini·Claude·OpenRouter·Ollama·OpenAI 호환)·Gemini Decision |
 | 문서·이미지 객체 검출(선택) | Ultralytics YOLO26n(2026-11-02 YOLO11n 에서 전환), 팀 공유 폴더에서 지속 학습(`vision/`). 역할은 이미지 객체 위주로 전환 중(D-16) |
 | 화면 | 의존성 없는 HTML/CSS/JS, Canvas(표시·편집만, 가림은 서버) |
 | 검사 | pytest(백엔드), Node 스크립트(화면 정적·계약 검사) |

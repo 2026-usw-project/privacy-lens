@@ -38,8 +38,9 @@
 1. 얼굴: `python -m pipeline.objects download` (YuNet, SHA-256 확인).
 2. 번호판: 팀 드라이브 `PrivacyLens-YOLO/objects/plate_v003/best.onnx`(2026-11-03 기준 추천) 를 받아 저장소의 `models/plate.onnx` 로 둔다
    (`*.onnx` 는 git 무시). 다른 경로면 `PL_PLATE_MODEL=<경로>`, 끄려면 `PL_PLATE_MODEL=off`.
-3. 일상 사진 9종(D-19): 드라이브 `objects/daily_v002/best.onnx`(2026-11-08, 공개 데이터 검증 mAP50 0.824, 아래 '학습 결과')를
-   `models/daily.onnx` 로 둔다. 문서 모델(`models/v<N>/best.pt`)이 있으면 둘을 함께 돌리고 같은 클래스가 겹치면 확신도 높은 쪽만 남긴다.
+3. 일상 사진 물건(D-19): 드라이브 `objects/daily_vNNN/best.onnx` 를 `models/daily.onnx` 로 둔다.
+   처음 연결한 것은 `daily_v002`(2026-11-08, 9종, 공개 데이터 검증 mAP50 0.824)이고, `daily_v003` 부터 `card_number` 를 더한 10종이다(최신 `daily_v005`).
+   버전별 비교는 아래 '학습 결과'·'신분증 보강' 표를 보고 고른다(시연 서버에 둘 버전은 미정). 문서 모델(`models/v<N>/best.pt`)이 있으면 둘을 함께 돌리고 같은 클래스가 겹치면 확신도 높은 쪽만 남긴다.
    다른 경로면 `PL_DAILY_MODEL=<경로>`, 끄려면 `PL_DAILY_MODEL=off`. 입력 크기는 학습과 같은 640(`PL_DAILY_IMGSZ`).
    작게 찍힌 물건용 조각 검출(PLAN 16): `PL_DAILY_TILES=2` 면 긴 변 1280px 이상 사진을 20% 겹친 2×2 조각으로 한 번 더 본다(기본 꺼짐, 팀 실사로 효과를 잰 뒤 켠다).
    비교: `PL_OCR=paddleocr python -m eval.detector <폴더> --weights models/daily.onnx --imgsz 640 [--tiles 2]`.

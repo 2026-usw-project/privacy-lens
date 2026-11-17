@@ -23,8 +23,9 @@ qrcode>=7.4
 pytest>=8.0
 httpx>=0.27
 
-# 기본 OCR: 별도 설치
-#   pip install paddleocr "paddlepaddle<3.3"
-#   paddlepaddle 3.3.x 는 CPU(oneDNN) 추론이 NotImplementedError
-#   (ConvertPirAttribute2RuntimeAttribute) 로 죽는다. 3.2.2 에서 확인함.
-#   python server.py (PaddleOCR 기본, Tesseract 는 PL_OCR=tesseract)
+# 기본 OCR: 별도 설치(명령은 docs/SETUP.md)
+#   CPU: paddlepaddle==3.2.2 (공식 CPU 인덱스) + paddleocr
+#        paddlepaddle 3.3.x 는 CPU(oneDNN) 추론이 NotImplementedError
+#        (ConvertPirAttribute2RuntimeAttribute) 로 죽는다. 3.2.2 에서 확인함.
+#   GPU: paddlepaddle-gpu==3.4.0 (CUDA 13, cu130 인덱스) + paddleocr
+#   실행: python run.py (PaddleOCR 기본, Tesseract 는 PL_OCR=tesseract)
