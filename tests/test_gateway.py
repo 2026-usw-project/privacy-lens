@@ -30,6 +30,7 @@ class FakeEngine:
         self.tokens: set[str] = set()
         self.healthy = True
         self.reject = False                 # 비밀값이 달라 403 으로 거절하는 엔진
+        self.judge = {"provider": "anthropic", "model": "m", "has_key": True}   # 엔진 .env 기본 판단 모델
         app = FastAPI()
 
         @app.middleware("http")
@@ -66,7 +67,12 @@ class FakeEngine:
 
         @app.get("/judge/default")
         async def judge_default():
-            return {"provider": "anthropic", "model": "m", "has_key": True}
+            return self.judge
+
+        @app.post("/llm/models")
+        async def models(request: Request):
+            await request.form()
+            return {"engine": self.name}
 
         @app.get("/queue")
         async def queue(ticket: str = ""):
@@ -344,6 +350,54 @@ def test_judge_default_comes_from_engine():
         await gw.check_all()
         await gw.check_all()
         assert (await client.get("/judge/default")).json() == {"provider": "rules"}
+
+    run_with_gateway(["e1"], body)
+
+
+DECISION = {"provider": "gemini_decision", "model": "gemini-decision-1", "has_key": True}
+KEYLESS = json.dumps({"provider": "gemini_decision", "model": "gemini-decision-1", "api_key": ""})
+
+
+def test_judge_needs_only_for_keyless_model_settings():
+    assert gateway.judge_needs(KEYLESS) == "gemini_decision"
+    assert gateway.judge_needs(json.dumps({"provider": "OpenAI", "model": "m"})) == "openai"
+    assert gateway.judge_needs(json.dumps({"provider": "openai", "model": "m", "api_key": "k"})) is None
+    for raw in (None, "", "{", "[]", json.dumps({"provider": "rules"})):
+        assert gateway.judge_needs(raw) is None
+
+
+def test_keyless_judge_goes_only_to_engine_with_server_key():
+    """엔진마다 .env 가 다를 때: 키를 비운 판단은 그 키가 있는 엔진만 맡는다(바쁘면 기다린다)."""
+    async def body(client, gw, engines, router):
+        engines["e1"].judge = {"provider": "rules"}
+        engines["e2"].judge = DECISION
+        await gw.check_all()
+        first = asyncio.create_task(post(client, T[0], judge=KEYLESS))
+        await until(lambda: T[0] in engines["e2"].seen)          # 우선순위는 e1 이지만 키가 있는 e2 로
+        second = asyncio.create_task(post(client, T[1], judge=KEYLESS))
+        third = asyncio.create_task(post(client, T[2]))          # 규칙 기반은 아무 엔진이나
+        await until(lambda: T[2] in engines["e1"].seen)          # 뒤 요청이 빈 e1 을 먼저 쓴다
+        assert T[1] not in engines["e1"].seen and len(gw.queue) == 1
+        engines["e2"].gate.set()
+        engines["e1"].gate.set()
+        results = [r.json() for r in await asyncio.gather(first, second, third)]
+        assert [r["engine"] for r in results] == ["e2", "e2", "e1"]
+        # 화면 기본값은 번갈아 바뀌지 않고 판단 모델을 둔 엔진의 값
+        for _ in range(3):
+            assert (await client.get("/judge/default")).json() == DECISION
+        # 모델 목록도 키를 비우면 서버 키가 있는 엔진에 묻는다
+        for _ in range(3):
+            r = await client.post("/llm/models", data={"judge": KEYLESS})
+            assert r.json()["engine"] == "e2"
+
+    run_with_gateway(["e1", "e2"], body)
+
+
+def test_keyless_judge_without_any_matching_engine_still_runs():
+    async def body(client, gw, engines, router):
+        engines["e1"].gate.set()
+        r = await post(client, T[0], judge=KEYLESS)               # 맡을 엔진이 없으면 막지 않는다(엔진이 키 없음을 알린다)
+        assert r.json()["engine"] == "e1"
 
     run_with_gateway(["e1"], body)
 
