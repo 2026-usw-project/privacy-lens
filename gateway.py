@@ -7,6 +7,9 @@
 - **번호표마다 엔진을 고정한다.** /analyze 를 엔진 2 에 보냈으면 그 번호표의 /queue·/progress·/queue/cancel 도
   엔진 2 로 보낸다. 아직 배정 전이면 게이트웨이가 '대기 N건 · 약 N초'를 직접 답한다.
 - **줄을 서지 않는 요청**(/redact/preview, /llm/models)은 살아 있는 엔진에 번갈아 보낸다.
+- **서버 키를 쓰는 판단은 그 키가 있는 엔진으로.** 판단 모델 창에서 키를 비워 두면 엔진의 .env 키를 쓴다(D-22).
+  엔진마다 .env 가 다를 수 있어서, 상태 확인 때 엔진마다 기본 판단 모델(/judge/default)을 받아 두고
+  키를 비운 요청은 같은 공급자를 .env 에 둔 엔진에만 보낸다(그런 엔진이 바쁘면 기다린다, 하나도 없으면 아무 엔진에).
 - **상태 확인**: 엔진마다 /health 를 주기적으로 묻고, 안 되는 엔진은 빼고 살아나면 다시 넣는다.
   보내다가 연결이 안 되면(처리 전) 그 엔진을 빼고 같은 요청을 줄 맨 앞에 다시 세운다.
 - **엔진 토큰은 선택 사항이다.** 공유 비밀값(PL_GATEWAY_TOKEN)이 설정되면 X-PL-Token 헤더로 보낸다.
@@ -74,6 +77,22 @@ def backend_url(raw: str) -> str:
     return f"{p.scheme}://{p.netloc}{p.path.rstrip('/')}"
 
 
+def judge_needs(raw: Optional[str]) -> Optional[str]:
+    """판단 설정(폼 칸 judge)이 키를 비운 판단 모델이면 그 공급자. 엔진 .env 의 키를 써야 하는 요청이다(D-22).
+    규칙 기반·키를 넣은 설정·읽을 수 없는 값은 None(아무 엔진이나, 잘못된 값은 엔진이 알린다)."""
+    try:
+        data = json.loads(raw) if raw else None
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    provider = str(data.get("provider") or "rules").strip().lower()
+    key = data.get("api_key")
+    if provider == "rules" or (isinstance(key, str) and key.strip()):
+        return None
+    return provider
+
+
 def gateway_name() -> str:
     return re.sub(r"[^\w.-]", "", socket.gethostname())[:64] or "gateway"
 
@@ -88,6 +107,11 @@ class Backend:
     checked: float = 0.0
     rejected: bool = False          # 엔진이 403(비밀값이 다름)으로 거절했다
     seen: bool = False              # 한 번이라도 연결된 적이 있다(로그 문구용)
+    judge: Optional[dict] = None    # 엔진 .env 의 기본 판단 모델(/judge/default, 키 값은 없음). 모르면 None
+
+    def serves(self, needs: Optional[str]) -> bool:
+        """키를 비운 판단 요청(needs = 공급자)을 이 엔진이 .env 키로 처리할 수 있는가."""
+        return needs is None or (self.judge or {}).get("provider") == needs
 
     def state(self) -> str:
         if self.rejected:
@@ -107,6 +131,7 @@ class Job:
     fingerprint: str
     files: dict                     # {"image": (이름, 바이트, 형식)}
     fields: dict                    # 폼 칸(문자열)
+    needs: Optional[str] = None     # 키를 비운 판단 공급자: 그 공급자를 .env 에 둔 엔진만 맡는다
     future: asyncio.Future = field(default=None)  # type: ignore[assignment]
     backend: Optional[Backend] = None
     attempts: int = 0
@@ -179,6 +204,7 @@ class Gateway:
             elif ready and not b.engine_ready:
                 log.info("엔진 %s OCR 준비 완료", b.url)
             b.healthy, b.engine_ready, b.fails, b.rejected, b.seen = True, ready, 0, False, True
+            await self._read_judge(b)
             self.wake.set()
             return
         b.fails += 1
@@ -191,6 +217,20 @@ class Gateway:
             log.warning("엔진 %s 연결이 끊겼습니다(%s) — 목록에서 잠시 빼 둡니다", b.url,
                         "연결 거부" if refused else "응답 없음")
             b.healthy = False
+
+    async def _read_judge(self, b: Backend) -> None:
+        """엔진 .env 의 기본 판단 모델을 받아 둔다. 답이 없으면(예전 엔진 등) 규칙 기반으로 본다."""
+        try:
+            r = await self.client.get(b.url + "/judge/default", timeout=HEALTH_TIMEOUT_S)
+            data = r.json() if r.status_code == 200 else None
+        except Exception:  # 상태 확인을 막지 않는다
+            return
+        b.judge = data if isinstance(data, dict) else {"provider": "rules"}
+
+    def judge_default(self) -> dict:
+        """화면 기본값. 엔진마다 다르면 우선순위가 높은(목록 위) 엔진 가운데 판단 모델을 둔 엔진의 값."""
+        known = [b.judge for b in self.backends if b.healthy and b.judge]
+        return next((j for j in known if j.get("provider", "rules") != "rules"), {"provider": "rules"})
 
     # ------------------------------------------------------------ 엔진 목록 관리(관리 키)
 
@@ -239,14 +279,21 @@ class Gateway:
             await asyncio.sleep(HEALTH_EVERY_S)
             await self.check_all()
 
-    def free_backend(self) -> Optional[Backend]:
-        free = [b for b in self.backends if b.healthy and not b.busy]
+    def _able(self, needs: Optional[str]) -> list[Backend]:
+        """살아 있는 엔진 가운데 이 요청을 맡을 수 있는 엔진. needs 를 맡을 엔진이 하나도 없으면 모두
+        (어느 엔진이든 같은 '키를 입력해 주세요'로 답하므로 막지 않는다)."""
+        alive = [b for b in self.backends if b.healthy]
+        able = [b for b in alive if b.serves(needs)]
+        return able or alive
+
+    def free_backend(self, needs: Optional[str] = None) -> Optional[Backend]:
+        free = [b for b in self._able(needs) if not b.busy]
         # 엔진이 준비된 곳 먼저(서버를 켠 직후 엔진을 만드는 중인 곳은 뒤로)
         free.sort(key=lambda b: not b.engine_ready)
         return free[0] if free else None
 
-    def any_backend(self) -> Optional[Backend]:
-        alive = [b for b in self.backends if b.healthy]
+    def any_backend(self, needs: Optional[str] = None) -> Optional[Backend]:
+        alive = self._able(needs)
         if not alive:
             return None
         self._rr = (self._rr + 1) % len(alive)
@@ -292,10 +339,13 @@ class Gateway:
             await self.wake.wait()
             self.wake.clear()
             while self.queue:
-                b = self.free_backend()
-                if b is None:
+                # 줄 앞에서부터, 지금 빈 엔진이 맡을 수 있는 첫 요청. 서버 키가 있는 엔진만 맡을 수 있는 요청은
+                # 그 엔진이 빌 때까지 기다리고, 그동안 다른 엔진은 뒤 요청을 맡는다
+                pick = next(((j, b) for j in self.queue if (b := self.free_backend(j.needs))), None)
+                if pick is None:
                     break
-                job = self.queue.popleft()
+                job, b = pick
+                self.queue.remove(job)
                 b.busy, job.backend, job.started_at = True, b, time.monotonic()
                 job.attempts += 1
                 asyncio.create_task(self._run(job, b))
@@ -486,7 +536,8 @@ def create_app(backends: list[str], *, token: str = "", serve_front: bool = True
         for k in sorted(fields):
             h.update(f"\0{k}={fields[k]}".encode())
         job = Job(ticket, path, h.hexdigest(), {"image": (upload.filename or "image", data,
-                                                          upload.content_type or "application/octet-stream")}, fields)
+                                                          upload.content_type or "application/octet-stream")}, fields,
+                  needs=judge_needs(fields.get("judge")))
         try:
             job = gw.enqueue(job)
         except GatewayError as exc:
@@ -509,10 +560,14 @@ def create_app(backends: list[str], *, token: str = "", serve_front: bool = True
     async def passthrough(request: Request, path: str):
         if not gw.backends:
             return error(503, NO_ENGINES)
-        b = gw.any_backend()
+        body = await request.body()
+        needs = None
+        if path == "/llm/models":  # 키를 비우면 서버 키로 모델 목록을 묻는다
+            form = await request.form()
+            needs = judge_needs(form.get("judge") if isinstance(form.get("judge"), str) else None)
+        b = gw.any_backend(needs)
         if b is None:
             return error(503, "사용할 수 있는 분석 서버가 없습니다. 잠시 후 다시 시도해 주세요.", True)
-        body = await request.body()
         headers = {"content-type": request.headers.get("content-type", "")}
         try:
             r = await gw.client.post(b.url + path, content=body, headers=headers, timeout=120.0)
@@ -531,20 +586,12 @@ def create_app(backends: list[str], *, token: str = "", serve_front: bool = True
 
     @app.get("/judge/default")
     async def judge_default():
-        """서버 .env 의 기본 판단 모델(D-22). 엔진이 가진 값을 그대로 전한다(키는 엔진도 내려보내지 않음).
+        """서버 .env 의 기본 판단 모델(D-22). 상태 확인 때 엔진에게 받아 둔 값이다(키는 엔진도 내려보내지 않음).
 
+        엔진마다 다르면 목록 위쪽 엔진 가운데 판단 모델을 둔 엔진의 값(번갈아 물으면 화면 기본값이 매번 바뀌었다).
         엔진이 없거나 응답이 없으면 규칙 기반으로 알린다(화면 기본값일 뿐이라 오류로 막지 않는다).
         """
-        b = gw.any_backend() if gw.backends else None
-        if b is None:
-            return {"provider": "rules"}
-        try:
-            r = await gw.client.get(b.url + "/judge/default", timeout=HEALTH_TIMEOUT_S)
-        except httpx.HTTPError:
-            return {"provider": "rules"}
-        if r.status_code != 200:
-            return {"provider": "rules"}
-        return Response(r.content, status_code=200, media_type="application/json")
+        return gw.judge_default()
 
     # ---------------- 번호표: 배정 전에는 게이트웨이가, 배정 뒤에는 그 엔진이 답한다
     @app.get("/queue")
